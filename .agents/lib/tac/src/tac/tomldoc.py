@@ -205,8 +205,15 @@ def document(text: str) -> dict[str, KeyDoc]:
             name = split_key(stripped[2 if array else 1 : close])
             rest = stripped[close + (2 if array else 1) :].strip()
             trailing = [rest[1:].strip()] if rest.startswith("#") else []
+            # A header below an array of tables belongs to its latest item.
+            resolved: list[str] = []
+            for i, part in enumerate(name):
+                resolved.append(part)
+                if i < len(name) - 1 and join(resolved) in counts:
+                    resolved.append(f"[{counts[join(resolved)]}]")
+            name = resolved
             if array:
-                dotted = ".".join(name)
+                dotted = join(name)
                 counts[dotted] = counts.get(dotted, -1) + 1
                 name = [*name, f"[{counts[dotted]}]"]
             table = name

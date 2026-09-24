@@ -1,0 +1,147 @@
+# =============================================================================
+# config/pipelines/order.toml: from an issue to landed.
+# A pipeline is a list of stages. An agent stage hands the next one an envelope:
+# the role it runs as, the contracts it reads and writes and the template that
+# renders its prompt; a stage without one is refused. A gate stage runs
+# deterministic checks only, an effect stage is performed by the trusted
+# runner, and a human stage waits for the owner. `tac pipeline check` names the
+# reason for every refusal; `tac pipeline plan order` prints the order a run
+# takes. Unknown keys fail loudly.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+# Must equal the file name and be listed in [pipelines] enabled in .agents/config.toml:
+# order | board | review | release | retro.
+name = "order"
+# One line on what a run of this pipeline achieves, printed by tac pipeline plan.
+description = "from an issue to landed"
+# The payloads a run starts with, by contract under contracts/handoffs/; a stage
+# may read them without an upstream stage writing them.
+entry_contracts = ["issue"]
+
+# Issue text becomes an order-request; issues from non-collaborators never reach
+# it, since tac work thread reads the owner and collaborators only.
+[[stages]]
+id = "intake"                           # the stage id, unique in the pipeline; envelopes are named after it
+kind = "agent"                          # agent (a model, with an envelope) | gate (deterministic checks) | effect (the trusted runner) | human (the owner)
+role = "chief"                          # the role charter it runs as, a file under config/roles/
+reads = ["issue"]                       # the contracts it reads: the entry, or a stage upstream writes each one
+writes = "order-request"                # the contract its result must pass, under contracts/handoffs/
+template = "handoffs/intake.md.j2"      # the prompt template under templates/; its first line names the same contracts
+on_fail = "repair-once-then-human"      # repair-once-then-human (one repair pass, then a human item) | human (a human item) | stop (the run fails)
+
+# The chief turns the request into a work order with command criteria.
+[[stages]]
+id = "specify"                          # the stage id, unique in the pipeline
+kind = "agent"                          # agent | gate | effect | human
+role = "chief"                          # the role charter it runs as
+depends_on = ["intake"]                 # the stages that finish first; the graph is acyclic
+skills = ["work-order"]                 # skills injected into the prompt, each .agents/skills/<name>/SKILL.md
+reads = ["order-request"]               # the contracts it reads
+writes = "order-spec"                   # the contract its result must pass
+template = "handoffs/specify.md.j2"     # the prompt template under templates/
+budget = { max_items = 12, max_chars = 24000 }   # what the selector hands the template: at most max_items records and max_chars characters
+on_fail = "repair-once-then-human"      # repair-once-then-human | human | stop
+
+# A builder builds the order in its own worktree until its criteria pass.
+[[stages]]
+id = "build"                            # the stage id, unique in the pipeline
+kind = "agent"                          # agent | gate | effect | human
+role = "builder"                        # the role charter it runs as
+depends_on = ["specify"]                # the stages that finish first
+skills = ["work-order"]                 # skills injected into the prompt
+reads = ["order-spec"]                  # the contracts it reads
+writes = "build-report"                 # the contract its result must pass
+template = "handoffs/build.md.j2"       # the prompt template under templates/
+max_turns = 50                          # the most turns the builder session may take
+on_fail = "human"                       # repair-once-then-human | human | stop
+
+# The build's own checks, rerun after each repair.
+[[stages.gates]]
+argv = ["just", "work-check"]           # the command, run without a shell; argv[0] is just or a script under src/tac/
+args_from = ["order_id"]                # run values appended to argv, any of: order_id | run_id | local_checks
+
+# How often a failing gate is repaired and rerun; two rounds without progress stop the run first.
+[stages.retry]
+max = 2                                 # reruns after a repair, 1 to 3
+
+# The repair between reruns: the failing criteria go back to the builder.
+[stages.retry.on_failure]
+argv = ["just", "work-repair"]          # the command, run without a shell; argv[0] is just
+args_from = ["order_id"]                # run values appended to argv, any of: order_id | run_id | local_checks
+
+# The other provider reviews the build against the order, bound to a commit.
+[[stages]]
+id = "review"                           # the stage id, unique in the pipeline
+kind = "agent"                          # agent | gate | effect | human
+role = "reviewer"                       # the role charter it runs as
+provider = "other"                      # other: the provider that did not build; only a review stage says so
+depends_on = ["build"]                  # the stages that finish first
+reads = ["build-report"]                # the contracts it reads
+writes = "review"                       # the contract its result must pass
+template = "handoffs/review.md.j2"      # the prompt template under templates/
+on_fail = "repair-once-then-human"      # repair-once-then-human | human | stop
+
+# The review is current, by someone else, from the other provider.
+[[stages.gates]]
+argv = ["just", "work-review"]          # the command, run without a shell; argv[0] is just
+args_from = ["order_id"]                # run values appended to argv, any of: order_id | run_id | local_checks
+
+# A team whose files the order touches signs off.
+[[stages]]
+id = "signoff"                          # the stage id, unique in the pipeline
+kind = "agent"                          # agent | gate | effect | human
+role = "manager"                        # the role charter it runs as
+depends_on = ["review"]                 # the stages that finish first
+when = "cross_team"                     # cross_team: runs only when the order lists a cross team, else skipped, and a join counts skipped as done
+reads = ["review"]                      # the contracts it reads
+writes = "signoff"                      # the contract its result must pass
+template = "handoffs/signoff.md.j2"     # the prompt template under templates/
+on_fail = "human"                       # repair-once-then-human | human | stop
+
+# Deterministic only: no model, no contracts.
+[[stages]]
+id = "gate"                             # the stage id, unique in the pipeline
+kind = "gate"                           # agent | gate | effect | human
+depends_on = ["review", "signoff"]      # the stages that finish first; a skipped signoff counts as done
+on_fail = "human"                       # repair-once-then-human | human | stop; a gate has no contract to repair
+
+# The order's criteria, its review and its sign-offs together.
+[[stages.gates]]
+argv = ["just", "work-accept"]          # the command, run without a shell; argv[0] is just
+args_from = ["order_id"]                # run values appended to argv, any of: order_id | run_id | local_checks
+
+# The profile's local build checks, kept apart from the checks that need a review;
+# the recipe arrives with the local quality hooks.
+[[stages.gates]]
+argv = ["just", "checks"]               # the command, run without a shell; argv[0] is just
+args_from = ["local_checks"]            # local_checks: the active profile's local_checks, like affected; also order_id | run_id
+waits_on = "M2"                         # the milestone or question that adds the recipe, like M2 or Q13; a run refuses the pipeline until then
+
+# The trusted runner commits and pushes as the machine account, journaled with an idempotency key.
+[[stages]]
+id = "publish"                          # the stage id, unique in the pipeline
+kind = "effect"                         # agent | gate | effect | human
+depends_on = ["gate"]                   # the stages that finish first; an effect always has a gate upstream
+effects = ["commit", "push", "open-pr"] # what the runner performs, each in policy.toml runner_only
+on_fail = "human"                       # repair-once-then-human | human | stop
+
+# The chief writes the owner's recap, with the one merge command.
+[[stages]]
+id = "recap"                            # the stage id, unique in the pipeline
+kind = "agent"                          # agent | gate | effect | human
+role = "chief"                          # the role charter it runs as
+depends_on = ["publish"]                # the stages that finish first
+reads = ["build-report"]                # the contracts it reads
+writes = "recap"                        # the contract its result must pass
+template = "human/recap.md.j2"          # the prompt template under templates/
+on_fail = "repair-once-then-human"      # repair-once-then-human | human | stop
+
+# Merging is the owner's own action, never an agent's.
+[[stages]]
+id = "land"                             # the stage id, unique in the pipeline
+kind = "human"                          # agent | gate | effect | human
+depends_on = ["recap"]                  # the stages that finish first
+reads = ["recap"]                       # the contracts the owner is shown
+asks = "Merge the pull request with the one command the recap prints, or say what is missing."   # the question, rendered into TODO.HUMAN.md
+owner_actions = ["merge"]               # what only the owner does here, each in policy.toml owner_only

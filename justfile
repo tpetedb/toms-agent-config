@@ -41,6 +41,14 @@ sync *args:
 check *args:
     {{ tac }} check {{ args }}
 
+# Every pipeline under .agents/config/pipelines/ is sound; each refusal names its reason.
+pipeline-check *names:
+    {{ tac }} pipeline check {{ names }}
+
+# The order a run takes a pipeline's stages in; nothing runs: just pipeline-plan order
+pipeline-plan name:
+    {{ tac }} pipeline plan {{ quote(name) }}
+
 # Refuse private terms in tracked and new files.
 private-scan:
     bash scripts/private_scan.sh

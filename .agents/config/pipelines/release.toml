@@ -1,0 +1,69 @@
+# =============================================================================
+# config/pipelines/release.toml: from changelog fragments to a tagged release.
+# A director plans it from changelog.d/, the full gate runs, the runner opens
+# the release pull request, and the owner merges it and cuts the tag from the
+# merged revision on main: merging and releasing stay the owner's own actions.
+# Stage keys are explained in full in config/pipelines/order.toml. Unknown keys
+# fail loudly.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+# Must equal the file name and be listed in [pipelines] enabled:
+# order | board | review | release | retro.
+name = "release"
+# One line on what a run of this pipeline achieves, printed by tac pipeline plan.
+description = "fragments assembled and the version bumped on a release pull request, the tag cut by the owner"
+# The payloads a run starts with: none, the plan reads the fragments in the checkout.
+entry_contracts = []
+
+# One director plans the release; it needs no quorum.
+[[stages]]
+id = "plan"                             # the stage id, unique in the pipeline
+kind = "agent"                          # agent | gate | effect | human
+role = "director"                       # the role charter it runs as
+seats = "lead"                          # lead | others: one director is enough
+reads = []                              # the contracts it reads: none, it works from changelog.d/
+writes = "release-plan"                 # the contract its result must pass
+template = "handoffs/release.md.j2"     # the prompt template under templates/
+on_fail = "repair-once-then-human"      # repair-once-then-human | human | stop
+
+# The full battery, and what the next release section would say.
+[[stages]]
+id = "verify"                           # the stage id, unique in the pipeline
+kind = "gate"                           # agent | gate | effect | human
+depends_on = ["plan"]                   # the stages that finish first
+on_fail = "human"                       # repair-once-then-human | human | stop
+
+# Lint, format, types, tests and the private scan.
+[[stages.gates]]
+argv = ["just", "verify"]               # the command, run without a shell; argv[0] is just
+
+# The fragments assemble into a release section.
+[[stages.gates]]
+argv = ["just", "changelog"]            # the command, run without a shell; argv[0] is just
+
+# The runner opens the release pull request as the machine account.
+[[stages]]
+id = "publish"                          # the stage id, unique in the pipeline
+kind = "effect"                         # agent | gate | effect | human
+depends_on = ["verify"]                 # the stages that finish first; an effect always has a gate upstream
+effects = ["commit", "push", "open-pr"] # what the runner performs, each in policy.toml runner_only
+on_fail = "human"                       # repair-once-then-human | human | stop
+
+# The owner merges the release pull request.
+[[stages]]
+id = "merge"                            # the stage id, unique in the pipeline
+kind = "human"                          # agent | gate | effect | human
+depends_on = ["publish"]                # the stages that finish first
+reads = ["release-plan"]                # the contracts the owner is shown
+asks = "Merge the release pull request with the one command it carries."   # the question, rendered into TODO.HUMAN.md
+owner_actions = ["merge"]               # what only the owner does here, each in policy.toml owner_only
+
+# The owner cuts the tag from the approved, merged revision on main and publishes the GitHub release.
+[[stages]]
+id = "cut"                              # the stage id, unique in the pipeline
+kind = "human"                          # agent | gate | effect | human
+depends_on = ["merge"]                  # the stages that finish first
+reads = ["release-plan"]                # the contracts the owner is shown
+asks = "Tag the merged revision on main with the planned version and publish the GitHub release."   # the question, rendered into TODO.HUMAN.md
+owner_actions = ["release"]             # what only the owner does here, each in policy.toml owner_only

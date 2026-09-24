@@ -16,8 +16,9 @@ import yaml
 from tac.sync import TEMPLATES_DIR, sync
 
 REPO = Path(__file__).resolve().parents[1]
-# What `tac sync` reads: the knob file, its tables, the floor, the brief, the
-# skills and the templates.
+# What `tac sync` and `tac check` read: the knob file, its tables, the floor, the
+# brief, the skills and the templates, and for the pipeline checker the
+# contracts, the handoff templates and the justfile.
 INPUTS = (
     ".agents/config.toml",
     ".agents/config",
@@ -25,6 +26,10 @@ INPUTS = (
     ".agents/context",
     ".agents/skills",
     TEMPLATES_DIR,
+    "contracts",
+    "templates/handoffs",
+    "templates/human",
+    "justfile",
 )
 
 

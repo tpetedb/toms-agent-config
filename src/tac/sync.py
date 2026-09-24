@@ -38,7 +38,7 @@ from typing import Any
 from jinja2 import StrictUndefined, TemplateError
 from jinja2.sandbox import SandboxedEnvironment
 
-from tac import adapters, contracts, handoff, tomlwrite
+from tac import adapters, contracts, handoff, pipelines, tomlwrite
 from tac.config import CONFIG_DIR, Config, load_config
 from tac.standards import FLOOR_FILE
 from tac.tomldoc import document
@@ -486,6 +486,7 @@ def check_tree(root: Path) -> list[str]:
     problems += _chain_budget(config, result)
     problems += contracts.check_contracts(root)
     problems += handoff.check_templates(root)
+    problems += pipelines.check_pipelines(root)
     return problems
 
 

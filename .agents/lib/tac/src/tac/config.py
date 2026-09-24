@@ -35,6 +35,7 @@ from tac.config_schema import (
     McpFile,
     ModelsFile,
     NetworkFile,
+    PipelineFile,
     PolicyFile,
     Profile,
     Role,
@@ -726,6 +727,7 @@ CONFIG_SCHEMAS: dict[str, type[BaseModel]] = {
     "runtime": RuntimeFile,
     "github": GitHubFile,
     "probes": ProbesFile,
+    "pipeline": PipelineFile,
 }
 CONTRACTS_DIR = "contracts/config"
 
@@ -740,9 +742,12 @@ def schema_name(rel: str) -> str | None:
         return "teams"
     folder, _, name = rel.removeprefix(f"{CONFIG_DIR}/").rpartition("/")
     if folder:
-        return {"profiles": "profile", "roles": "role", "gates": "gate-pack"}.get(
-            folder
-        )
+        return {
+            "profiles": "profile",
+            "roles": "role",
+            "gates": "gate-pack",
+            "pipelines": "pipeline",
+        }.get(folder)
     stem = name.removesuffix(".toml")
     if name.endswith(".toml") and stem in CONFIG_SCHEMAS and name in KNOWN_FILES:
         return stem

@@ -417,11 +417,11 @@ def test_only_model_facing_contracts_are_held_to_the_subset(tmp_path: Path) -> N
     root = synced(tmp_path)
     # A config schema keeps optional keys and defaults; the lint never reads it.
     config = root / "contracts/config/example.schema.json"
-    config.parent.mkdir(parents=True)
+    config.parent.mkdir(parents=True, exist_ok=True)
     config.write_text(json.dumps({"type": "object", "properties": {"a": {}}}))
     assert check_tree(root) == []
     handoff = root / MODEL_FACING_DIR / "review.schema.json"
-    handoff.parent.mkdir(parents=True)
+    handoff.parent.mkdir(parents=True, exist_ok=True)
     handoff.write_text(json.dumps({"type": "object", "properties": {"a": {}}}))
     problems = check_tree(root)
     assert (

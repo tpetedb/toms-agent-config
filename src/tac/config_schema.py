@@ -9,6 +9,7 @@ file to.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Annotated, Literal, Self
 
@@ -601,3 +602,104 @@ class GitHubFile(_Model):
     labels: Labels
     issues: Issues
     diagrams: DiagramInventory
+
+
+# ---------------------------------------------------------------- pipelines
+
+StageKind = Literal["agent", "gate", "effect", "human"]
+OnFail = Literal["repair-once-then-human", "human", "stop"]
+# What the runner may pass a gate; each is a value it wrote itself, never text
+# a model, an issue or a tool produced.
+ArgSource = Literal["order_id", "run_id", "local_checks"]
+# A gate script other than a just recipe lives in the product's own source.
+GATE_SCRIPT = r"^src/tac/[a-z0-9_/]+\.py$"
+RECIPE = r"^[a-z][a-z0-9_-]*$"
+
+
+def _no_shell(value: object) -> object:
+    if isinstance(value, str):
+        raise ValueError(
+            "a gate is an argv array run without a shell, never a shell string; "
+            f'write ["just", "<recipe>"], got {value!r}'
+        )
+    return as_tuple(value)
+
+
+class Gate(_Model):
+    """One deterministic check: argv run without a shell, argv[0] `just` or a
+    script under src/tac/, never text that could reach a shell or a template."""
+
+    argv: Annotated[tuple[Text, ...], BeforeValidator(_no_shell), Field(min_length=1)]
+    args_from: Annotated[tuple[ArgSource, ...], BeforeValidator(as_tuple)] = ()
+    # The milestone or open question that adds the recipe, like M8 or Q13; empty
+    # when the gate runs today. A run refuses a pipeline while one waits.
+    waits_on: Annotated[str, Field(pattern=r"^((M|Q)[0-9]+)?$")] = ""
+
+    @model_validator(mode="after")
+    def _runnable(self) -> Self:
+        for arg in self.argv:
+            if "{{" in arg or "{%" in arg:
+                raise ValueError(f"argv {arg!r}: a gate is never a template")
+        head = self.argv[0]
+        if head == "just":
+            if len(self.argv) < 2:
+                raise ValueError('argv ["just"] names no recipe')
+            if not re.match(RECIPE, self.argv[1]):
+                raise ValueError(
+                    f"argv[1] {self.argv[1]!r} is not a recipe name; a gate "
+                    "passes values through args_from, never in argv"
+                )
+        else:
+            if not re.match(GATE_SCRIPT, head):
+                raise ValueError(
+                    f"argv[0] must be just or a script under src/tac/, got {head!r}"
+                )
+        return self
+
+
+class Budget(_Model):
+    max_items: Whole
+    max_chars: Whole
+
+
+class Retry(_Model):
+    max: Annotated[int, Field(ge=1, le=3)]
+    on_failure: Gate | None = None
+
+
+class PipelineStage(_Model):
+    """One stage. Which keys a stage may carry depends on its kind; the pipeline
+    checker names each one that does not belong."""
+
+    id: Name
+    kind: StageKind = "agent"
+    role: Name | None = None
+    seats: Literal["lead", "others"] | None = None
+    provider: Literal["other"] | None = None
+    depends_on: Annotated[tuple[Name, ...], BeforeValidator(as_tuple)] = ()
+    when: Literal["cross_team"] | None = None
+    skills: Annotated[tuple[Name, ...], BeforeValidator(as_tuple)] = ()
+    reads: Annotated[tuple[Name, ...], BeforeValidator(as_tuple)] = ()
+    writes: Name | None = None
+    bind: dict[str, Name] = Field(default_factory=dict)
+    template: Text | None = None
+    budget: Budget | None = None
+    max_turns: Whole | None = None
+    gates: Annotated[tuple[Gate, ...], BeforeValidator(as_tuple)] = ()
+    retry: Retry | None = None
+    on_fail: OnFail | None = None
+    effects: Annotated[tuple[Name, ...], BeforeValidator(as_tuple)] = ()
+    asks: Text | None = None
+    owner_actions: Annotated[tuple[Name, ...], BeforeValidator(as_tuple)] = ()
+
+
+class PipelineFile(_Model):
+    """`.agents/config/pipelines/<name>.toml` as written."""
+
+    schema_version: Literal[1]
+    name: PipelineName
+    description: Text
+    entry_contracts: Annotated[tuple[Name, ...], BeforeValidator(as_tuple)]
+    stages: Annotated[
+        tuple[PipelineStage, ...], BeforeValidator(as_tuple), Field(min_length=1)
+    ]

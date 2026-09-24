@@ -526,12 +526,12 @@ A pipeline is a TOML file of stages. A stage names a role, its skills, the contr
 # config/pipelines/order.toml: from an issue to landed.
 schema_version = 1
 name = "order"
-entry_contract = "issue"
+entry_contracts = ["issue"]
 
 [[stages]]
 id = "intake"                            # issue text becomes an order-request; issues from non-collaborators are refused
 role = "chief"
-reads = "issue"
+reads = ["issue"]
 writes = "order-request"
 template = "handoffs/intake.md.j2"
 
@@ -540,7 +540,7 @@ id = "specify"
 role = "chief"
 depends_on = ["intake"]
 skills = ["work-order", "research-first"]
-reads = "order-request"
+reads = ["order-request"]
 writes = "order-spec"
 template = "handoffs/specify.md.j2"
 budget = { max_items = 12, max_chars = 24000 }
@@ -551,7 +551,7 @@ id = "build"
 role = "builder"
 depends_on = ["specify"]
 skills = ["house-style", "justfile", "verification-before-completion"]
-reads = "order-spec"
+reads = ["order-spec"]
 writes = "build-report"
 template = "handoffs/build.md.j2"
 max_turns = 50
@@ -564,7 +564,7 @@ id = "review"
 role = "reviewer"
 provider = "other"
 depends_on = ["build"]
-reads = "build-report"
+reads = ["build-report"]
 writes = "review"
 template = "handoffs/review.md.j2"
 gates = [{ argv = ["just", "work-review"], args_from = ["order_id"] }]
@@ -574,7 +574,7 @@ id = "signoff"
 role = "manager"
 depends_on = ["review"]
 when = "cross_team"                      # skipped when the order lists no cross team; the join below treats skipped as satisfied
-reads = "review"
+reads = ["review"]
 writes = "signoff"
 template = "handoffs/signoff.md.j2"
 
@@ -582,7 +582,7 @@ template = "handoffs/signoff.md.j2"
 id = "gate"
 kind = "gate"                            # deterministic only, no model, no contracts
 depends_on = ["review", "signoff"]
-gates = [{ argv = ["just", "work-accept"], args_from = ["order_id"] }, { argv = ["just", "checks"], args_from = ["local_checks"] }]
+gates = [{ argv = ["just", "work-accept"], args_from = ["order_id"] }, { argv = ["just", "checks"], args_from = ["local_checks"], waits_on = "M2" }]
 
 [[stages]]
 id = "publish"
@@ -594,10 +594,12 @@ effects = ["commit", "push", "open-pr"]
 id = "recap"
 role = "chief"
 depends_on = ["publish"]
-reads = "build-report"
+reads = ["build-report"]
 writes = "recap"
 template = "human/recap.md.j2"
 ```
+
+**The pipeline files as built.** The five pipelines ship under `.agents/config/pipelines/` (`order`, `board`, `review`, `release`, `retro`), read through `PipelineFile` in `src/tac/config_schema.py` and exported to `contracts/config/pipeline.schema.json`; the shipped files write gates as `[[stages.gates]]` tables, which is the same TOML as the inline form above. A stage has a `kind`: `agent` (the default: a role, the contracts it `reads` as a list, the one it `writes` and its `template`; that is its envelope, and an agent stage without one is refused), `gate` (deterministic checks, no model, no contracts), `effect` (what the trusted runner performs, each in `policy.toml` `runner_only`, never an `owner_only` action, and always with a gate stage upstream) or `human` (the owner is asked, with the `owner_only` actions only the owner takes there). A director stage names `seats`, `lead` or `others`. A pipeline enters with `entry_contracts`, a list, since `review` and `retro` start from two payloads and `release` from none. Where two upstream stages write the contract a stage reads, `bind` names the one it comes from. A gate whose recipe a later milestone adds says so with `waits_on` (the board's tally waits on M8, the local checks on M2), and a run refuses the pipeline until it is live. Skills are the ones present under `.agents/skills/`; the others the example names arrive with M4. `tac pipeline check` names the reason for every refusal and `tac check` runs it; `tac pipeline plan <name>` prints the stage order and runs nothing.
 
 **Rules `tac check` enforces on every pipeline.** `depends_on` is acyclic; every `reads` equals an upstream `writes` or the entry contract; `argv[0]` is `just` or a script under `src/tac/`; `provider = "other"` appears only on review stages; every `effect` stage runs only in the trusted runner. Every model-facing contract (the handoff payloads a model must produce) is JSON Schema draft-07 in the OpenAI strict subset: all properties required, nullable written as `[type, "null"]`, `additionalProperties: false` everywhere, no `allOf`, `not`, `if`/`then`/`else` or `dependent*`, an object root, depth at most 10; otherwise the first cross-provider review fails at the Codex API. Config and receipt schemas are not model-facing and keep optional keys and defaults.
 
