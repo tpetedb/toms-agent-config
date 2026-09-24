@@ -53,7 +53,9 @@ if ! git cat-file -e "${base}:${VERIFIER}" 2>/dev/null; then
   exit 1
 fi
 
-work="$(mktemp -d)"
+# TMPDIR by name: macOS mktemp alone picks the per-user folder, which a
+# runner gate cannot write.
+work="$(mktemp -d "${TMPDIR:-/tmp}/tac-ci.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 git archive --format=tar "$base" -- .agents | tar -xf - -C "$work"
 

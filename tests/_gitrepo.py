@@ -12,6 +12,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 ORIGIN = "https://github.com/example/demo.git"
 REPOSITORY = "example/demo"
+# The longest TMPDIR under which a store's socket path still fits AF_UNIX.
+SHORT_TMP = 40
 # The host's git config must not sign, hook or rename anything in a fixture.
 GIT = (
     "git",
@@ -75,8 +77,14 @@ def make_repo(root: Path, runner_pub: str | None = None) -> str:
 
 @contextlib.contextmanager
 def short_dir() -> Iterator[Path]:
-    """A folder with a short path, since AF_UNIX socket paths are capped."""
-    path = Path(tempfile.mkdtemp(prefix="tac-", dir="/tmp")).resolve()
+    """A folder with a short path, since AF_UNIX socket paths are capped.
+
+    Under TMPDIR when that is short, as it is inside a runner gate, whose
+    sandbox lets a test write only there and in the checkout; else /tmp.
+    """
+    base = Path(tempfile.gettempdir()).resolve()
+    parent = base if len(str(base)) <= SHORT_TMP else Path("/tmp")
+    path = Path(tempfile.mkdtemp(prefix="tac-", dir=parent)).resolve()
     try:
         yield path
     finally:

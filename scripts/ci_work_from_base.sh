@@ -44,7 +44,9 @@ base="$(git rev-parse --verify --quiet "${base_ref}^{commit}")" || {
 unset UV_PROJECT_ENVIRONMENT VIRTUAL_ENV UV_PYTHON PYTHONPATH
 
 if git cat-file -e "${base}:${CHECKER}" 2>/dev/null; then
-  work="$(mktemp -d)"
+  # TMPDIR by name: macOS mktemp alone picks the per-user folder, which a
+  # runner gate cannot write.
+  work="$(mktemp -d "${TMPDIR:-/tmp}/tac-ci.XXXXXX")"
   trap 'rm -rf "$work"' EXIT
   git archive --format=tar "$base" -- .agents | tar -xf - -C "$work"
   uv sync --quiet --frozen --no-editable --directory "$work/.agents"

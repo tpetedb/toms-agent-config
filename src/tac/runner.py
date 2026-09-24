@@ -13,20 +13,25 @@ keychain backend of milestone M3 (build condition C6) replaces it.
 
 A gate runs code a builder wrote: the justfile recipe, an order's criteria as
 shell strings, the tests `just verify` starts. The runner never runs that code
-with access to its store. Every child that touches the candidate tree (the gate
-and the runner's own `git status`, which can start a configured fsmonitor or
-filter) starts under a macOS Seatbelt profile from /usr/bin/sandbox-exec that
-denies reading and writing the store subtree and the key, connecting to the
-socket, and renaming any folder above the store, with only the variables in
-GATE_ENV_VARS and the runner's PATH. The gate runs in the checkout at the
-committed revision it judges, and a gate that leaves HEAD moved or the tree
-changed gets no receipt. Where there is no sandbox-exec (not macOS), the runner
-refuses to gate and never falls back to running unsandboxed.
+with access to its store, nor lets it write anywhere the owner's own processes
+later load code from. Every child that touches the candidate tree (the gate and
+the runner's own `git status`, which can start a configured fsmonitor or filter)
+starts under a macOS Seatbelt profile from /usr/bin/sandbox-exec. Writes are an
+allowlist: the checkout minus its toolchain, git and harness folders, and a
+private scratch folder that is the child's HOME, TMPDIR and caches; nothing else.
+The store and the key are denied to reads as well, the socket to connects, and
+Apple Events, LaunchServices and preference writes are denied, since each asks a
+process outside the sandbox to act. The child gets only the variables in
+GATE_ENV_VARS, the runner's PATH and the scratch locations. The gate runs in the
+checkout at the committed revision it judges, and a gate that leaves HEAD moved
+or the tree changed gets no receipt. Where there is no sandbox-exec (not macOS),
+the runner refuses to gate and never falls back to running unsandboxed.
 """
 
 from __future__ import annotations
 
 import contextlib
+import ctypes
 import fcntl
 import hashlib
 import json
@@ -37,9 +42,10 @@ import socket
 import socketserver
 import subprocess
 import sys
+import tempfile
 import time
 import tomllib
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
@@ -111,9 +117,31 @@ AGENT_PACKAGES = ("claude-code", "codex")
 MAX_ANCESTORS = 64
 # Seatbelt by absolute path: never a sandbox-exec found on a PATH.
 SANDBOX_EXEC = "/usr/bin/sandbox-exec"
-# All a gate child inherits besides the runner's PATH. No token, no GIT_* that
-# could point git elsewhere, no TAC_STATE_HOME naming the store.
-GATE_ENV_VARS = ("HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR")
+# All a gate child inherits besides the runner's PATH and its scratch folder. No
+# token, no GIT_* that could point git elsewhere, no TAC_STATE_HOME naming the
+# store, and not the owner's HOME, whose config the owner's processes load.
+GATE_ENV_VARS = ("USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE")
+# Inside the checkout, what a builder's own sandbox cannot write either: the
+# stamped toolchain and the judge's venv, the git directory (hooks, config) and
+# the harness config whose hooks run unsandboxed.
+GATE_PROTECTED = (".agents", ".git", ".claude", ".codex")
+# Device files a shell or a test writes to; every other write outside the
+# allowlist is refused.
+GATE_DEVICES = (
+    "/dev/null",
+    "/dev/zero",
+    "/dev/tty",
+    "/dev/dtracehelper",
+    "/dev/stdout",
+    "/dev/stderr",
+)
+# Services that open a file or start a program outside the sandbox.
+LAUNCH_SERVICES = ("com.apple.coreservices.launchservicesd",)
+LAUNCH_SERVICE_PREFIXES = ("com.apple.lsd.",)
+# A scratch folder lives under TMPDIR when that path is this short, else under
+# /tmp: a test a gate runs may bind a Unix socket under its TMPDIR, and inside a
+# gate only the gate's own short TMPDIR is writable.
+SHORT_TMP = 40
 GIT_STATUS_TIMEOUT_S = 120
 UNIX_PERMS_STORE = 0o700
 UNIX_PERMS_KEY = 0o600
@@ -337,19 +365,46 @@ def pub_file_text(private: Ed25519PrivateKey) -> str:
 # ---- the sandbox every child that runs candidate content starts in
 
 
+def inside_sandbox() -> bool:
+    """True when this process already runs under a Seatbelt profile.
+
+    A profile cannot be applied inside another, so a runner started there (or
+    the runner's tests when a gate runs them) has no sandbox to give a child.
+    """
+    if sys.platform != "darwin":
+        return False
+    try:
+        check = ctypes.CDLL(None).sandbox_check
+    except (OSError, AttributeError):
+        return False
+    check.restype = ctypes.c_int
+    check.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+    return check(os.getpid(), None, 0) != 0
+
+
 def default_sandbox() -> str | None:
-    """sandbox-exec on macOS, else None, and a gate is then refused."""
+    """sandbox-exec on macOS outside a sandbox, else None: a gate is then refused."""
     if sys.platform != "darwin" or not os.access(SANDBOX_EXEC, os.X_OK):
+        return None
+    if inside_sandbox():
         return None
     return SANDBOX_EXEC
 
 
-def seatbelt_profile(store: Path) -> tuple[str, dict[str, str]]:
-    """The profile and its parameters: no read, write or socket in the store.
+def _sbpl(value: str) -> str:
+    return json.dumps(value)
 
-    Seatbelt matches paths at the moment of access, so a child that renamed a
-    folder above the store would reach the key under a new path; every ancestor
-    is therefore denied writes, which blocks the rename and nothing inside it.
+
+def seatbelt_profile(
+    store: Path, writable: Sequence[Path], protected: Sequence[Path] = ()
+) -> tuple[str, dict[str, str]]:
+    """The profile and its parameters: writes only where allowed, nothing in the store.
+
+    Writes are denied everywhere, then allowed under `writable` and the device
+    files, then denied again under `protected`; Seatbelt applies the last rule
+    that matches. Seatbelt matches paths at the moment of access, so a child
+    that renamed a folder above the store would reach the key under a new path;
+    every ancestor is therefore denied writes, which blocks the rename.
     """
     store = store.resolve()
     params = {"STORE": str(store), "KEY": str(key_path(store))}
@@ -357,17 +412,36 @@ def seatbelt_profile(store: Path) -> tuple[str, dict[str, str]]:
     for index, folder in enumerate(store.parents):
         params[f"UP{index}"] = str(folder)
         ancestors.append(f'(literal (param "UP{index}"))')
-    profile = "\n".join(
-        [
-            "(version 1)",
-            "(allow default)",
-            '(deny file-read* file-write* (subpath (param "STORE")))',
-            '(deny file-read* file-write* (literal (param "KEY")))',
-            '(deny network-outbound (remote unix-socket (subpath (param "STORE"))))',
-            f"(deny file-write* {' '.join(ancestors)})",
-        ]
-    )
-    return profile, params
+    allowed = [f"(literal {_sbpl(device)})" for device in GATE_DEVICES]
+    allowed.append('(regex #"^/dev/fd/[0-9]+$")')
+    for index, folder in enumerate(writable):
+        params[f"W{index}"] = str(folder.resolve())
+        allowed.append(f'(subpath (param "W{index}"))')
+    denied: list[str] = []
+    for index, folder in enumerate(protected):
+        params[f"P{index}"] = str(folder.resolve())
+        denied.append(f'(subpath (param "P{index}"))')
+    services = [f"(global-name {_sbpl(name)})" for name in LAUNCH_SERVICES] + [
+        f"(global-name-prefix {_sbpl(prefix)})" for prefix in LAUNCH_SERVICE_PREFIXES
+    ]
+    rules = [
+        "(version 1)",
+        "(allow default)",
+        "(deny file-write*)",
+        f"(allow file-write* {' '.join(allowed)})",
+    ]
+    if denied:
+        rules.append(f"(deny file-write* {' '.join(denied)})")
+    rules += [
+        '(deny file-read* file-write* (subpath (param "STORE")))',
+        '(deny file-read* file-write* (literal (param "KEY")))',
+        '(deny network-outbound (remote unix-socket (subpath (param "STORE"))))',
+        f"(deny file-write* {' '.join(ancestors)})",
+        "(deny appleevent-send)",
+        "(deny user-preference-write)",
+        f"(deny mach-lookup {' '.join(services)})",
+    ]
+    return "\n".join(rules), params
 
 
 def gate_environment(environ: Mapping[str, str]) -> dict[str, str]:
@@ -470,48 +544,77 @@ class Runner:
 
     # -- isolation
 
-    def confined(self, argv: list[str]) -> list[str]:
-        """argv under the Seatbelt profile, or a refusal; never argv bare."""
+    def confined(
+        self, argv: list[str], scratch: Path, *, write_tree: bool
+    ) -> list[str]:
+        """argv under the Seatbelt profile, or a refusal; never argv bare.
+
+        The child writes its scratch folder and, when `write_tree`, the checkout
+        minus GATE_PROTECTED and the git common dir; nothing else.
+        """
         if self.sandbox is None:
             raise RunnerError(
                 "the runner runs candidate code only inside a macOS Seatbelt "
-                f"sandbox and there is no {SANDBOX_EXEC} here (platform "
-                f"{sys.platform}); it refuses to gate rather than run unsandboxed"
+                f"sandbox and cannot apply one here (platform {sys.platform}, "
+                f"{SANDBOX_EXEC} missing, or the runner itself already sandboxed); "
+                "it refuses to gate rather than run unsandboxed"
             )
-        profile, params = seatbelt_profile(self.store)
+        writable = [scratch, self.root] if write_tree else [scratch]
+        protected = [self.root / name for name in GATE_PROTECTED]
+        protected.append(git_common_dir(self.root))
+        profile, params = seatbelt_profile(self.store, writable, protected)
         defines = [part for k, v in params.items() for part in ("-D", f"{k}={v}")]
         return [self.sandbox, "-p", profile, *defines, *argv]
 
-    def child_env(self) -> dict[str, str]:
+    @contextlib.contextmanager
+    def scratch(self) -> Iterator[Path]:
+        """A private folder per child, removed after it: its HOME, TMPDIR, caches."""
+        base = Path(tempfile.gettempdir()).resolve()
+        parent = base if len(str(base)) <= SHORT_TMP else Path("/tmp")
+        folder = Path(tempfile.mkdtemp(prefix="tac-gate-", dir=parent)).resolve()
+        try:
+            for name in ("home", "tmp", "cache"):
+                (folder / name).mkdir(mode=0o700)
+            yield folder
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+    def child_env(self, scratch: Path) -> dict[str, str]:
         env = gate_environment(self.gate_env)
         env["PATH"] = self.search_path
+        env["HOME"] = str(scratch / "home")
+        env["TMPDIR"] = str(scratch / "tmp")
+        env["XDG_CACHE_HOME"] = str(scratch / "cache")
+        env["UV_CACHE_DIR"] = str(scratch / "cache" / "uv")
         return env
 
     def clean_revision(self) -> str:
-        # Sandboxed: a repository's config can make `git status` start an
-        # fsmonitor or a filter, which is candidate code.
-        program = shutil.which("git")
-        if program is None:
-            raise RunnerError("git is not installed on the runner's PATH")
-        argv = self.confined(
-            [
-                program,
-                *("-C", str(self.root), "-c", "core.fsmonitor=false", "status"),
-                *("--porcelain", "--untracked-files=normal"),
-            ]
-        )
-        try:
-            status = subprocess.run(
-                argv,
-                env=self.child_env(),
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                text=True,
-                timeout=GIT_STATUS_TIMEOUT_S,
-                check=False,
+        # Sandboxed, and with no write to the tree: a repository's config can
+        # make `git status` start an fsmonitor or a filter, which is candidate
+        # code.
+        program = self.which("git")
+        with self.scratch() as scratch:
+            argv = self.confined(
+                [
+                    program,
+                    *("-C", str(self.root), "-c", "core.fsmonitor=false", "status"),
+                    *("--porcelain", "--untracked-files=normal"),
+                ],
+                scratch,
+                write_tree=False,
             )
-        except subprocess.TimeoutExpired as exc:
-            raise RunnerError("git status did not finish") from exc
+            try:
+                status = subprocess.run(
+                    argv,
+                    env=self.child_env(scratch),
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
+                    timeout=GIT_STATUS_TIMEOUT_S,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise RunnerError("git status did not finish") from exc
         if status.returncode != 0:
             raise RunnerError(f"cannot read the working tree: {status.stderr.strip()}")
         if status.stdout.strip():
@@ -573,22 +676,25 @@ class Runner:
         ]
 
     def gate(self, request: Gate) -> dict[str, JsonValue]:
-        argv = self.confined(self.gate_argv(list(request.argv)))
+        command = self.gate_argv(list(request.argv))
+        # Refuses where there is no sandbox, before anything runs.
         binding = self.binding(request.run_id, request.stage, request.order_id)
         started = time.monotonic()
-        try:
-            done = subprocess.run(
-                argv,
-                cwd=self.root,
-                env=self.child_env(),
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                timeout=GATE_TIMEOUT_S,
-                check=False,
-            )
-            exit_code, out, err = done.returncode, done.stdout, done.stderr
-        except subprocess.TimeoutExpired as exc:
-            exit_code, out, err = -1, exc.stdout or b"", exc.stderr or b""
+        with self.scratch() as scratch:
+            argv = self.confined(command, scratch, write_tree=True)
+            try:
+                done = subprocess.run(
+                    argv,
+                    cwd=self.root,
+                    env=self.child_env(scratch),
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    timeout=GATE_TIMEOUT_S,
+                    check=False,
+                )
+                exit_code, out, err = done.returncode, done.stdout, done.stderr
+            except subprocess.TimeoutExpired as exc:
+                exit_code, out, err = -1, exc.stdout or b"", exc.stderr or b""
         # The receipt names a revision: the gate must have judged exactly that.
         try:
             after = self.clean_revision()

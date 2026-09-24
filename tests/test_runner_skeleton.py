@@ -9,7 +9,9 @@ import json
 import os
 import shutil
 import stat
+import subprocess
 import sys
+import tempfile
 import threading
 from collections.abc import Iterator
 from pathlib import Path
@@ -28,6 +30,7 @@ from tac.receipts import (
     verify,
 )
 from tac.runner import (
+    SANDBOX_EXEC,
     Runner,
     RunnerError,
     agent_command,
@@ -37,6 +40,7 @@ from tac.runner import (
     create_key,
     default_sandbox,
     ensure_store,
+    inside_sandbox,
     install_command,
     key_path,
     load_key,
@@ -100,9 +104,14 @@ def fake_client(folder: Path, name: str, body: str) -> Path:
 
 
 def fake_just(folder: Path) -> Path:
-    """A `just` that records the command line it was given and exits 3."""
+    """A `just` that prints the command line it was given and exits 3.
+
+    It also records it next to itself, which only an unsandboxed run can do:
+    the tests of a refusal assert the record is absent.
+    """
     record = folder / "just-argv"
-    fake_client(folder, "just", f'printf "%s\\n" "$@" > "{record}"\nexit 3')
+    body = f'printf "%s\\n" "$@" | tee "{record}" 2>/dev/null\nexit 3'
+    fake_client(folder, "just", body)
     return record
 
 
@@ -110,7 +119,7 @@ def make_runner(repo: Path, state: Path, clients: Path | None = None) -> Runner:
     provision(repo, state)
     clients = clients or repo.parent / "bin"
     fake_just(clients)
-    search = [str(PYTHON.parent), str(clients)]
+    search = [str(PYTHON.parent), str(clients), "/usr/bin", "/bin"]
     return open_runner(repo, env(state), search_path=os.pathsep.join(search))
 
 
@@ -225,6 +234,7 @@ def test_an_owner_terminal_chain_is_accepted() -> None:
     refuse_agent_parent({}, ancestors=chain)
 
 
+@pytest.mark.skipif(inside_sandbox(), reason="ps is setuid and cannot start in one")
 def test_the_parent_chain_is_read_from_ps() -> None:
     chain = ancestor_commands(os.getpid())
     assert chain
@@ -298,9 +308,8 @@ def test_a_gate_is_observed_signed_and_kept(repo: Path, state: Path) -> None:
     receipt = verify(signed, runner.private.public_key(), expected)
     assert receipt.observed["exit"] == 3
     assert receipt.observed["argv"] == argv
-    ran = (repo.parent / "bin" / "just-argv").read_text("utf-8").splitlines()
-    # The justfile is named, never searched for.
-    assert ran == [
+    # The justfile is named, never searched for; the fake just prints its argv.
+    ran = [
         "--justfile",
         str(repo.resolve() / "justfile"),
         "--working-directory",
@@ -308,6 +317,11 @@ def test_a_gate_is_observed_signed_and_kept(repo: Path, state: Path) -> None:
         "work-check",
         "order-a",
     ]
+    printed = "".join(f"{part}\n" for part in ran).encode("utf-8")
+    assert (
+        receipt.observed["stdout_sha256"]
+        == "sha256:" + hashlib.sha256(printed).hexdigest()
+    )
     kept = runner.store / "receipts" / "r1" / f"{receipt.receipt_id}.json"
     assert parse(kept.read_text("utf-8")) == signed
 
@@ -387,7 +401,7 @@ def trust_runner(repo: Path, state: Path, trusted: bool) -> Runner:
     return open_runner(
         repo,
         {**env(state), "CLAUDE_CONFIG_DIR": str(config)},
-        search_path=str(clients),
+        search_path=os.pathsep.join([str(clients), "/usr/bin", "/bin"]),
     )
 
 
@@ -605,8 +619,12 @@ def test_the_gate_environment_carries_no_tokens(
     # In the runner's own environment as well as the one it was opened with.
     monkeypatch.setenv("GH_TOKEN", "t1")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "t3")
-    seen = tmp_path / "env"
-    with_recipe(repo, f"env > '{seen}'")
+    owner_home = tmp_path / "owner-home"
+    owner_home.mkdir()
+    # Written inside the checkout, the one place outside its scratch a gate
+    # writes; ignored, so the tree stays clean and the gate gets its receipt.
+    write(repo, ".gitignore", "seen-env\n")
+    with_recipe(repo, "env > seen-env")
     tokens = {
         "GH_TOKEN": "t1",
         "GITHUB_TOKEN": "t2",
@@ -614,22 +632,102 @@ def test_the_gate_environment_carries_no_tokens(
         "OPENAI_API_KEY": "t4",
         "TAC_BOT_TOKEN": "t5",
         "GIT_DIR": "/elsewhere",
-        "HOME": str(tmp_path),
+        "HOME": str(owner_home),
+        "TMPDIR": str(tmp_path),
         "LANG": "C.UTF-8",
     }
     runner = real_just_runner(repo, state, tokens)
     assert gate_exit(runner) == 0
-    names = {
-        line.split("=", 1)[0] for line in seen.read_text().splitlines() if "=" in line
-    }
+    text = (repo / "seen-env").read_text()
+    seen = dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
     for name in ("GH_TOKEN", "GITHUB_TOKEN", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
-        assert name not in names
-    assert "TAC_BOT_TOKEN" not in names
-    assert "TAC_STATE_HOME" not in names
-    assert "GIT_DIR" not in names
-    assert {"HOME", "LANG", "PATH"} <= names
+        assert name not in seen
+    assert "TAC_BOT_TOKEN" not in seen
+    assert "TAC_STATE_HOME" not in seen
+    assert "GIT_DIR" not in seen
+    assert {"HOME", "TMPDIR", "UV_CACHE_DIR", "LANG", "PATH"} <= seen.keys()
     for value in ("t1", "t2", "t3", "t4", "t5"):
-        assert f"={value}" not in seen.read_text()
+        assert f"={value}" not in text
+    # The owner's HOME and TMPDIR are not the child's: it gets a scratch folder,
+    # removed once the gate is over.
+    scratch = Path(seen["HOME"]).parent
+    assert scratch.name.startswith("tac-gate-")
+    assert Path(seen["TMPDIR"]).parent == scratch
+    assert Path(seen["UV_CACHE_DIR"]).is_relative_to(scratch)
+    assert str(owner_home) not in text
+    assert not scratch.exists()
+
+
+def outside_targets(repo: Path, owner_home: Path) -> dict[str, Path]:
+    """Places a gate child must never write: each lets code run later as the
+    owner outside any sandbox, or changes the judge."""
+    common = Path(git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+    return {
+        "owner claude config": owner_home / ".claude" / "x",
+        "owner launch agents": owner_home / "Library" / "LaunchAgents" / "x",
+        "owner uv cache": owner_home / ".cache" / "uv" / "x",
+        "judge venv": repo / ".agents" / ".venv" / "x",
+        "stamped toolchain": repo / ".agents" / "lib" / "x",
+        "harness config": repo / ".claude" / "x",
+        "shared git hooks": common / "hooks" / "x",
+        "git config": common / "config",
+    }
+
+
+def prepare_targets(repo: Path, targets: dict[str, Path]) -> dict[Path, bytes | None]:
+    """Create each target's folder, and commit an ignore for the judge venv."""
+    write(repo, ".gitignore", ".agents/.venv/\n.claude/\n")
+    commit_all(repo, "ignore the venv")
+    before: dict[Path, bytes | None] = {}
+    for path in targets.values():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        before[path] = path.read_bytes() if path.exists() else None
+    return before
+
+
+@seatbelt
+@needs_just
+@pytest.mark.parametrize("worktree", [False, True], ids=["main-clone", "worktree"])
+@pytest.mark.parametrize(
+    "target",
+    [
+        "owner claude config",
+        "owner launch agents",
+        "owner uv cache",
+        "judge venv",
+        "stamped toolchain",
+        "harness config",
+        "shared git hooks",
+        "git config",
+    ],
+)
+def test_a_gate_writes_nothing_outside_the_checkout_and_its_scratch(
+    repo: Path, state: Path, tmp_path: Path, target: str, worktree: bool
+) -> None:
+    owner_home = tmp_path / "owner-home"
+    root = repo
+    if worktree:
+        root = tmp_path / "linked"
+        git(repo, "worktree", "add", "-q", "-b", "linked", str(root))
+    targets = outside_targets(root, owner_home)
+    before = prepare_targets(root, targets)
+    path = targets[target]
+    # By absolute path, by the child's own view of git, and through a link
+    # planted in the checkout.
+    link = root / "planted"
+    write(root, ".gitignore", ".agents/.venv/\n.claude/\nplanted\n")
+    with_recipe(
+        root,
+        f"ln -s '{path}' planted; echo x >> planted; echo x >> '{path}'; "
+        'echo x >> "$(git rev-parse --path-format=absolute --git-common-dir)'
+        '/hooks/x"; test "$(cat planted)" = x',
+    )
+    runner = real_just_runner(root, state, {"HOME": str(owner_home)})
+    assert gate_exit(runner) != 0
+    link.unlink(missing_ok=True)
+    for each, content in before.items():
+        now = each.read_bytes() if each.exists() else None
+        assert now == content, f"the gate wrote {each}"
 
 
 @seatbelt
@@ -646,24 +744,58 @@ def test_a_gate_that_changes_the_checkout_gets_no_receipt(
     assert not any((runner.store / "receipts").rglob("*.json"))
 
 
+@contextlib.contextmanager
+def kept_scratch(parent: Path) -> Iterator[Path]:
+    """The runner's scratch folder, kept afterwards so a test can look inside."""
+    folder = Path(tempfile.mkdtemp(prefix="tac-gate-", dir=parent)).resolve()
+    for name in ("home", "tmp", "cache"):
+        (folder / name).mkdir()
+    yield folder
+
+
 @seatbelt
 def test_the_runners_git_status_runs_sandboxed(
-    repo: Path, state: Path, tmp_path: Path
+    repo: Path, state: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # A clean filter in the repository's config is candidate code: git status
-    # may start it, so the runner starts git status inside the sandbox too.
+    # may start it, so the runner starts git status inside the sandbox too. The
+    # filter marks that it ran and tries to copy the key into the child's own
+    # TMPDIR, which the sandbox lets it write.
     store = controller_store(repo, env(state))
-    leak = tmp_path / "leak"
+    kept = tmp_path / "kept"
+    kept.mkdir()
+    monkeypatch.setattr(Runner, "scratch", lambda _self: kept_scratch(kept))
     write(repo, ".gitattributes", "*.txt filter=grab\n")
     write(repo, "a.txt", "a\n")
     commit_all(repo, "attributes")
-    git(repo, "config", "filter.grab.clean", f"cat '{key_path(store)}' > '{leak}'; cat")
+    grab = (
+        f'/usr/bin/touch "$TMPDIR/ran"; '
+        f"/bin/cat '{key_path(store)}' > \"$TMPDIR/leak\"; /bin/cat"
+    )
+    git(repo, "config", "filter.grab.clean", grab)
     later = (repo / "a.txt").stat().st_mtime + 60
     os.utime(repo / "a.txt", (later, later))
     runner = make_runner(repo, state)
     with contextlib.suppress(RunnerError):
         runner.clean_revision()
-    assert not leak.exists() or b"PRIVATE KEY" not in leak.read_bytes()
+    assert list(kept.glob("tac-gate-*/tmp/ran")), "the filter never ran"
+    for leak in kept.glob("tac-gate-*/tmp/leak"):
+        assert b"PRIVATE KEY" not in leak.read_bytes()
+
+
+@seatbelt
+def test_the_runners_git_status_cannot_write_the_tree(repo: Path, state: Path) -> None:
+    write(repo, ".gitattributes", "*.txt filter=plant\n")
+    write(repo, "a.txt", "a\n")
+    commit_all(repo, "attributes")
+    planted = repo / "planted.txt"
+    git(repo, "config", "filter.plant.clean", f"echo x > '{planted}'; /bin/cat")
+    later = (repo / "a.txt").stat().st_mtime + 60
+    os.utime(repo / "a.txt", (later, later))
+    runner = make_runner(repo, state)
+    with contextlib.suppress(RunnerError):
+        runner.clean_revision()
+    assert not planted.exists()
 
 
 def test_without_a_sandbox_the_runner_refuses_to_gate(repo: Path, state: Path) -> None:
@@ -677,6 +809,28 @@ def test_without_a_sandbox_the_runner_refuses_to_gate(repo: Path, state: Path) -
 def test_off_macos_there_is_no_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("tac.runner.sys.platform", "linux")
     assert default_sandbox() is None
+
+
+def test_inside_a_sandbox_there_is_none_to_give(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A Seatbelt profile cannot nest: a runner already sandboxed must refuse.
+    monkeypatch.setattr("tac.runner.inside_sandbox", lambda: True)
+    assert default_sandbox() is None
+
+
+@seatbelt
+def test_a_sandboxed_process_knows_it_is_sandboxed() -> None:
+    code = "from tac.runner import inside_sandbox; print(inside_sandbox())"
+    profile = "(version 1)(allow default)"
+    done = subprocess.run(
+        [SANDBOX_EXEC, "-p", profile, str(PYTHON), "-c", code],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert done.stdout.strip() == "True"
+    assert inside_sandbox() is False
 
 
 def test_a_linked_signing_key_is_refused(repo: Path, state: Path) -> None:
