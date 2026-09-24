@@ -5,7 +5,6 @@ brings its own key, its own verifier, or both, still has its forgeries refused."
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -14,16 +13,21 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from tac.receipts import Binding, SignedReceipt, policy_hash, sign
 from tac.runner import pub_file_text
-from tests._gitrepo import REPOSITORY, commit_all, git, make_repo, write
+from tests._gitrepo import (
+    REPOSITORY,
+    commit_all,
+    copy_toolchain,
+    git,
+    make_repo,
+    write,
+)
 
 REPO = Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "scripts" / "ci_verify_receipts.sh"
-# What the base revision carries of the deployed toolchain: enough to build it.
-TOOLCHAIN = (".agents/pyproject.toml", ".agents/uv.lock", ".agents/lib/tac")
 # A candidate verifier that passes everything; it must never be the one that runs.
 LENIENT = """
 
-def verify_committed(root, files, trusted, repository, head):
+def verify_committed(root, files, *args):
     return [TreeResult(str(p), True, "accepted") for p in files]
 """
 
@@ -31,17 +35,6 @@ def verify_committed(root, files, trusted, repository, head):
 @pytest.fixture
 def runner_key() -> Ed25519PrivateKey:
     return Ed25519PrivateKey.generate()
-
-
-def copy_toolchain(root: Path) -> None:
-    ignore = shutil.ignore_patterns("__pycache__", "*.pyc", ".venv")
-    for relative in TOOLCHAIN:
-        source, target = REPO / relative, root / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if source.is_dir():
-            shutil.copytree(source, target, ignore=ignore)
-        else:
-            shutil.copy2(source, target)
 
 
 def base_repo(tmp_path: Path, key: Ed25519PrivateKey, verifier: bool) -> Path:
@@ -65,6 +58,7 @@ def receipt(root: Path, key: Ed25519PrivateKey) -> SignedReceipt:
         run_id="run-1",
         stage="verify",
         policy_hash=policy_hash(root, revision),
+        order_id="demo",
     )
     return sign(key, "gate", bound, {"argv": ["just", "verify"], "exit": 0})
 
@@ -133,13 +127,31 @@ def test_a_candidate_key_and_verifier_change_nothing(
     assert "accepted" not in output
 
 
-def test_a_replayed_receipt_is_refused(
+def test_a_receipt_moved_into_another_order_is_refused(
     tmp_path: Path, runner_key: Ed25519PrivateKey
 ) -> None:
     root = base_repo(tmp_path, runner_key, verifier=True)
     signed = receipt(root, runner_key)
-    commit_receipt(root, signed, order="first")
-    commit_receipt(root, signed, order="second")
+    commit_receipt(root, signed)
+    git(root, "branch", "-f", "base")
+    name = f"{signed.receipt.receipt_id}.json"
+    (root / "work/orders/other/receipts").mkdir(parents=True)
+    git(root, "mv", f"work/orders/demo/receipts/{name}", "work/orders/other/receipts/")
+    commit_all(root, "move the receipt to another order")
     code, output = run_ci(root)
     assert code == 1, output
-    assert "presented twice" in output
+    assert "bound to order demo, committed under other" in output
+
+
+def test_a_receipt_for_a_revision_already_on_the_base_is_refused(
+    tmp_path: Path, runner_key: Ed25519PrivateKey
+) -> None:
+    root = base_repo(tmp_path, runner_key, verifier=True)
+    git(root, "branch", "-f", "base")
+    signed = receipt(root, runner_key)
+    write(root, "src/later.py", "print('later')\n")
+    commit_all(root, "later work")
+    commit_receipt(root, signed)
+    code, output = run_ci(root)
+    assert code == 1, output
+    assert "is already on the base" in output

@@ -11,5 +11,8 @@
 /pyproject.toml             @tpetedb
 /conftest.py                @tpetedb
 /bootstrap.sh               @tpetedb
-/scripts/private_scan.sh    @tpetedb
-/scripts/ci_verify_receipts.sh @tpetedb
+/scripts/                   @tpetedb
+/tests/conftest.py          @tpetedb
+/mise.toml                  @tpetedb
+/uv.lock                    @tpetedb
+/.python-version            @tpetedb

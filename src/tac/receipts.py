@@ -38,6 +38,8 @@ RECEIPTS_GLOB = "work/orders/*/receipts/*.json"
 DOMAIN = b"tac-receipt-v1\n"
 ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
 SHA_PATTERN = r"^[0-9a-f]{40}([0-9a-f]{24})?$"
+# The order id rule of `tac work`; a committed receipt sits in its order's folder.
+ORDER_PATTERN = r"^[a-z0-9][a-z0-9-]{2,48}$"
 
 Kind = Literal["gate", "probe", "dispatch", "effect"]
 
@@ -58,6 +60,9 @@ class Binding(BaseModel):
     run_id: str = Field(pattern=ID_PATTERN)
     stage: str = Field(pattern=ID_PATTERN)
     policy_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    # Signed, so a receipt cannot be moved into another order's folder; None for
+    # a receipt that stays in the controller store.
+    order_id: str | None = Field(default=None, pattern=ORDER_PATTERN)
 
 
 class Receipt(BaseModel):
@@ -257,19 +262,41 @@ class TreeResult:
     detail: str
 
 
+def order_of(path: str) -> str:
+    """The order folder a committed receipt sits in, from its repository path."""
+    parts = path.split("/")
+    if len(parts) != 5 or parts[:2] != ["work", "orders"] or parts[3] != "receipts":
+        raise ReceiptError("not under work/orders/<order>/receipts/")
+    return parts[2]
+
+
+def unchanged_since(root: Path, base: str, path: str, data: bytes) -> bool:
+    """Whether the base revision already holds exactly these bytes at this path."""
+    done = subprocess.run(
+        ["git", "-C", str(root), "cat-file", "blob", f"{base}:{path}"],
+        capture_output=True,
+        check=False,
+    )
+    return done.returncode == 0 and done.stdout == data
+
+
 def verify_committed(
     root: Path,
     files: Iterable[Path],
     trusted: Ed25519PublicKey | None,
     repository: str,
+    base: str,
     head: str,
 ) -> list[TreeResult]:
-    """Judge receipts committed in a candidate tree.
+    """Judge receipts committed in a candidate tree against where they sit.
 
-    The run and stage are sealed by the signature; what can be recomputed is:
-    the repository, that the revision is in the head's history, and the policy
-    hash at that revision.
+    The signature seals the binding; what CI holds it to is recomputed: the
+    repository, the order folder the receipt is committed in, a revision this
+    pull request brought (in the head's history, not already on the base), and
+    the policy hash at that revision. A receipt the base already holds at the
+    same path, byte for byte, landed with the base and keeps its old revision.
     """
+    base_sha = resolve(root, base)
     head_sha = resolve(root, head)
     seen: set[str] = set()
     results: list[TreeResult] = []
@@ -278,15 +305,28 @@ def verify_committed(
         try:
             if trusted is None:
                 raise MissingTrustRoot("no trusted runner key")
-            signed = parse(path.read_text(encoding="utf-8"))
+            data = path.read_bytes()
+            signed = parse(data.decode("utf-8"))
             claimed = signed.receipt.binding
             if claimed.repository != repository:
                 raise ReceiptError(
                     f"bound to {claimed.repository}, this is {repository}"
                 )
+            order = order_of(name)
+            if claimed.order_id != order:
+                raise ReceiptError(
+                    f"bound to order {claimed.order_id}, committed under {order}"
+                )
             if not is_ancestor(root, claimed.revision, head_sha):
                 raise ReceiptError(
                     f"revision {claimed.revision[:12]} is not in the head's history"
+                )
+            if is_ancestor(root, claimed.revision, base_sha) and not unchanged_since(
+                root, base_sha, name, data
+            ):
+                raise ReceiptError(
+                    f"revision {claimed.revision[:12]} is already on the base; "
+                    "a new receipt must name a revision this change brought"
                 )
             expected = claimed.model_copy(
                 update={"policy_hash": policy_hash(root, claimed.revision)}
@@ -295,6 +335,6 @@ def verify_committed(
             if path.stem != receipt.receipt_id:
                 raise ReceiptError("file name is not the receipt id")
             results.append(TreeResult(name, True, f"{receipt.kind} receipt verified"))
-        except ReceiptError as exc:
+        except (ReceiptError, UnicodeDecodeError) as exc:
             results.append(TreeResult(name, False, str(exc)))
     return results

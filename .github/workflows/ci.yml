@@ -54,15 +54,14 @@ jobs:
           # The base branch and the order branches have to be here to diff.
           fetch-depth: 0
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-      - name: Build the deployed toolchain from its named source
-        run: uv sync --frozen --no-editable --project .agents
       - name: Work orders are readable, reviewed and inside their files
-        # A branch name is chosen by whoever opens the pull request, so it
-        # reaches the shell as a variable and never as script text.
+        # Judged by the base revision's checker, never the candidate's. A branch
+        # name is chosen by whoever opens the pull request, so it reaches the
+        # shell as a variable and never as script text.
         env:
           BASE_REF: ${{ github.base_ref }}
           HEAD_REF: ${{ github.head_ref }}
-        run: uv run --frozen --no-sync --project .agents tac work ci --base "origin/$BASE_REF" --head "$HEAD_REF"
+        run: bash scripts/ci_work_from_base.sh "origin/$BASE_REF" "$HEAD_REF"
       - name: Committed receipts verify with the base revision's verifier and key
         # The verifier and runner.pub both come from the base commit, never the
         # candidate tree, so a pull request can bring neither the key nor the

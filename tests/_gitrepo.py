@@ -9,6 +9,7 @@ import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
+REPO = Path(__file__).resolve().parents[1]
 ORIGIN = "https://github.com/example/demo.git"
 REPOSITORY = "example/demo"
 # The host's git config must not sign, hook or rename anything in a fixture.
@@ -25,6 +26,8 @@ GIT = (
     "-c",
     "init.defaultBranch=main",
 )
+# What a base revision carries of the deployed toolchain: enough to build it.
+TOOLCHAIN = (".agents/pyproject.toml", ".agents/uv.lock", ".agents/lib/tac")
 PROBES = """schema_version = 1
 
 [probes.version]
@@ -78,3 +81,15 @@ def short_dir() -> Iterator[Path]:
         yield path
     finally:
         shutil.rmtree(path, ignore_errors=True)
+
+
+def copy_toolchain(root: Path, extra: tuple[str, ...] = ()) -> None:
+    """This checkout's stamped toolchain, and any other files named, into `root`."""
+    ignore = shutil.ignore_patterns("__pycache__", "*.pyc", ".venv")
+    for relative in (*TOOLCHAIN, *extra):
+        source, target = REPO / relative, root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if source.is_dir():
+            shutil.copytree(source, target, ignore=ignore)
+        else:
+            shutil.copy2(source, target)

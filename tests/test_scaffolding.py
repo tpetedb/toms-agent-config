@@ -9,6 +9,7 @@ from pathlib import Path
 import yaml
 
 from scripts.stamp_lib import stamp
+from tac.doctor import Status, check_agents_lib_current
 
 FRAGMENT = re.compile(
     r"^[a-z0-9][a-z0-9-]*\.(added|changed|deprecated|removed|fixed|security)\.md$"
@@ -46,6 +47,8 @@ def test_ci_runs_every_gate(repo: Path) -> None:
         "--no-editable --project .agents",
         "actionlint",
         "shellcheck bootstrap.sh scripts/*.sh",
+        "scripts/ci_work_from_base.sh",
+        "scripts/ci_verify_receipts.sh",
     ):
         assert gate in script, gate
 
@@ -84,6 +87,16 @@ def test_codeowners_names_the_owner_on_the_guarded_paths(repo: Path) -> None:
         "/templates/",
         "/contracts/",
         "/.github/",
+        # Run on the host or in CI, or pin what does, or hold the test guards.
+        "/scripts/",
+        "/tests/conftest.py",
+        "/conftest.py",
+        "/justfile",
+        "/bootstrap.sh",
+        "/pyproject.toml",
+        "/mise.toml",
+        "/uv.lock",
+        "/.python-version",
     ):
         assert rules.get(path) == ["@tpetedb"], path
 
@@ -132,3 +145,10 @@ def test_stamp_copies_the_package_and_its_entry_point(
     (pkg / "cli.py").write_text("")
     stamp(tmp_path)
     assert not (target / "src/tac/__init__.py").exists()
+
+
+def test_the_stamped_checker_matches_src_tac(repo: Path) -> None:
+    # CI runs this, so a pull request that changes src/tac without re-stamping
+    # .agents/lib/tac fails here, not only in a later doctor run on the host.
+    status, detail = check_agents_lib_current(repo)
+    assert status is Status.PASS, detail

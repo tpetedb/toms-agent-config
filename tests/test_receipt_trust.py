@@ -1,5 +1,6 @@
 """Build condition C3: a receipt counts only when the base's runner key signed it
-for exactly this repository, revision, run, stage and policy."""
+for exactly this repository, revision, run, stage, order and policy; CI holds a
+committed receipt to the order folder it sits in and a revision the change brought."""
 
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from tac.cli import cli
 from tac.receipts import (
+    ORDER_PATTERN,
     RUNNER_PUB,
     Binding,
     MissingTrustRoot,
@@ -26,10 +28,12 @@ from tac.receipts import (
     verify,
 )
 from tac.runner import pub_file_text
+from tac.work import ID as WORK_ORDER_ID
 from tests._gitrepo import REPOSITORY, commit_all, git, make_repo, write
 
 RUN = "run-1"
 STAGE = "verify"
+ORDER = "demo"
 
 
 @pytest.fixture
@@ -63,6 +67,7 @@ def binding(root: Path, **changes: str) -> Binding:
         "run_id": RUN,
         "stage": STAGE,
         "policy_hash": policy_hash(root, revision),
+        "order_id": ORDER,
     }
     fields.update(changes)
     return Binding(**fields)
@@ -72,7 +77,7 @@ def gate_receipt(key: Ed25519PrivateKey, bound: Binding) -> SignedReceipt:
     return sign(key, "gate", bound, {"argv": ["just", "verify"], "exit": 0})
 
 
-def commit_receipt(root: Path, signed: SignedReceipt, order: str = "demo") -> Path:
+def commit_receipt(root: Path, signed: SignedReceipt, order: str = ORDER) -> Path:
     relative = f"work/orders/{order}/receipts/{signed.receipt.receipt_id}.json"
     path = write(root, relative, signed.to_json())
     commit_all(root, "receipt")
@@ -129,6 +134,7 @@ def test_a_tree_without_receipts_needs_no_key(tmp_path: Path) -> None:
         ("repository", "example/other"),
         ("run_id", "run-2"),
         ("stage", "review"),
+        ("order_id", "other-order"),
     ],
 )
 def test_a_receipt_replayed_into_another_context_is_rejected(
@@ -167,11 +173,92 @@ def test_a_receipt_copied_into_a_second_order_is_rejected_by_ci(
 ) -> None:
     base = git(repo, "rev-parse", "HEAD~1")
     signed = gate_receipt(runner_key, binding(repo))
-    commit_receipt(repo, signed, order="first")
+    commit_receipt(repo, signed)
     commit_receipt(repo, signed, order="second")
     code, output = verify_tree(repo, base)
     assert code == 1
-    assert "presented twice" in output
+    assert f"ok   work/orders/{ORDER}/" in output
+    assert "FAIL work/orders/second/" in output
+    assert f"bound to order {ORDER}, committed under second" in output
+
+
+# ---- where a committed receipt sits: CI judges it there, not by its own claim
+
+
+def test_a_receipt_moved_into_another_order_is_rejected_by_ci(
+    repo: Path, runner_key: Ed25519PrivateKey
+) -> None:
+    signed = gate_receipt(runner_key, binding(repo, order_id="first"))
+    moved = commit_receipt(repo, signed, order="first")
+    base = git(repo, "rev-parse", "HEAD")
+    target = f"work/orders/second/receipts/{moved.name}"
+    (repo / target).parent.mkdir(parents=True)
+    git(repo, "mv", str(moved.relative_to(repo)), target)
+    commit_all(repo, "move the receipt to another order")
+    code, output = verify_tree(repo, base)
+    assert code == 1
+    assert "bound to order first, committed under second" in output
+
+
+def test_a_receipt_whose_order_is_not_its_folder_is_rejected_by_ci(
+    repo: Path, runner_key: Ed25519PrivateKey
+) -> None:
+    base = git(repo, "rev-parse", "HEAD~1")
+    commit_receipt(
+        repo, gate_receipt(runner_key, binding(repo, order_id="first")), "second"
+    )
+    code, output = verify_tree(repo, base)
+    assert code == 1
+    assert "bound to order first, committed under second" in output
+
+
+def test_a_receipt_bound_to_no_order_is_rejected_by_ci(
+    repo: Path, runner_key: Ed25519PrivateKey
+) -> None:
+    base = git(repo, "rev-parse", "HEAD~1")
+    unbound = binding(repo).model_copy(update={"order_id": None})
+    commit_receipt(repo, gate_receipt(runner_key, unbound))
+    code, output = verify_tree(repo, base)
+    assert code == 1
+    assert f"bound to order None, committed under {ORDER}" in output
+
+
+def test_a_new_receipt_for_a_revision_already_on_the_base_is_rejected_by_ci(
+    repo: Path, runner_key: Ed25519PrivateKey
+) -> None:
+    # A genuine receipt for an older revision of main, replayed into a new change.
+    base = git(repo, "rev-parse", "HEAD")
+    old = gate_receipt(runner_key, binding(repo, revision=base))
+    write(repo, "src/later.py", "print('later')\n")
+    commit_all(repo, "later work")
+    commit_receipt(repo, old)
+    code, output = verify_tree(repo, base)
+    assert code == 1
+    assert "is already on the base" in output
+
+
+def test_a_receipt_the_base_already_holds_unchanged_still_passes(
+    repo: Path, runner_key: Ed25519PrivateKey
+) -> None:
+    commit_receipt(repo, gate_receipt(runner_key, binding(repo)))
+    base = git(repo, "rev-parse", "HEAD")
+    write(repo, "src/later.py", "print('later')\n")
+    commit_all(repo, "later work")
+    code, output = verify_tree(repo, base)
+    assert code == 0, output
+    assert "gate receipt verified" in output
+
+
+def test_a_receipt_the_base_holds_but_the_candidate_rewrote_is_rejected_by_ci(
+    repo: Path, runner_key: Ed25519PrivateKey
+) -> None:
+    path = commit_receipt(repo, gate_receipt(runner_key, binding(repo)))
+    base = git(repo, "rev-parse", "HEAD")
+    path.write_text(path.read_text("utf-8").replace("\n", "\n\n"), "utf-8")
+    commit_all(repo, "reformat the receipt")
+    code, output = verify_tree(repo, base)
+    assert code == 1
+    assert "is already on the base" in output
 
 
 def test_a_receipt_from_another_repository_is_rejected_by_ci(
@@ -366,3 +453,7 @@ def test_the_receipt_contract_matches_the_models() -> None:
     )
     assert committed["$schema"] == "http://json-schema.org/draft-07/schema#"
     assert committed["additionalProperties"] is False
+
+
+def test_the_receipt_order_rule_is_the_work_order_rule() -> None:
+    assert WORK_ORDER_ID.pattern == ORDER_PATTERN

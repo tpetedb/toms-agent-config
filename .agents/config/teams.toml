@@ -33,8 +33,10 @@ review_provider = "other"
 [work.repair]
 # One bounded builder turn for `just work-repair <id>`: argv run without a
 # shell, the rendered handoff on stdin, `{order}` and `{max_turns}` the only
-# placeholders. Empty until `tac launch` exists; the handoff is then written to
-# work/orders/<id>/repair.md and the check runs again.
+# placeholders. Deferred, and empty until `tac launch` exists: a headless turn
+# needs the rendered settings overlay and MCP file (M1) and the owner's billing
+# answer Q16 (M3), so no default `claude -p` line is guessed here. Until then
+# the handoff is written to work/orders/<id>/repair.md and the check runs again.
 argv = []
 timeout_s = 1800
 max_turns = 30

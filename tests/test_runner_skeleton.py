@@ -89,15 +89,19 @@ def fake_client(folder: Path, name: str, body: str) -> Path:
     return path
 
 
+def fake_just(folder: Path) -> Path:
+    """A `just` that records the command line it was given and exits 3."""
+    record = folder / "just-argv"
+    fake_client(folder, "just", f'printf "%s\\n" "$@" > "{record}"\nexit 3')
+    return record
+
+
 def make_runner(repo: Path, state: Path, clients: Path | None = None) -> Runner:
     provision(repo, state)
-    search = [str(PYTHON.parent)] + ([str(clients)] if clients else [])
-    return open_runner(
-        repo,
-        env(state),
-        programs=(PYTHON.name,),
-        search_path=os.pathsep.join(search),
-    )
+    clients = clients or repo.parent / "bin"
+    fake_just(clients)
+    search = [str(PYTHON.parent), str(clients)]
+    return open_runner(repo, env(state), search_path=os.pathsep.join(search))
 
 
 @contextlib.contextmanager
@@ -267,7 +271,7 @@ def test_a_second_runner_on_the_same_store_is_refused(repo: Path, state: Path) -
 
 def test_a_gate_is_observed_signed_and_kept(repo: Path, state: Path) -> None:
     runner = make_runner(repo, state)
-    argv = [PYTHON.name, "-c", "raise SystemExit(3)"]
+    argv = ["just", "work-check", "order-a"]
     with serving(runner) as sock:
         gate = {"op": "gate", "run_id": "r1", "stage": "s1", "argv": argv}
         reply = request(sock, gate)
@@ -283,11 +287,21 @@ def test_a_gate_is_observed_signed_and_kept(repo: Path, state: Path) -> None:
     receipt = verify(signed, runner.private.public_key(), expected)
     assert receipt.observed["exit"] == 3
     assert receipt.observed["argv"] == argv
+    ran = (repo.parent / "bin" / "just-argv").read_text("utf-8").splitlines()
+    # The justfile is named, never searched for.
+    assert ran == [
+        "--justfile",
+        str(repo.resolve() / "justfile"),
+        "--working-directory",
+        str(repo.resolve()),
+        "work-check",
+        "order-a",
+    ]
     kept = runner.store / "receipts" / "r1" / f"{receipt.receipt_id}.json"
     assert parse(kept.read_text("utf-8")) == signed
 
 
-GATE = {"op": "gate", "run_id": "r1", "stage": "s1", "argv": ["x"]}
+GATE = {"op": "gate", "run_id": "r1", "stage": "s1", "argv": ["just", "verify"]}
 PROBE = {"op": "probe", "harness": "claude", "probe": "version", "run_id": "r"}
 REFUSED = [
     # No op signs a payload it is handed.
@@ -295,6 +309,20 @@ REFUSED = [
     # A request names what to observe and can never carry the outcome.
     ({**GATE, "exit": 0}, "refused request"),
     ({**GATE, "argv": ["sh"]}, "not a gate"),
+    ({**GATE, "argv": ["just"]}, "not a gate"),
+    # Only `just <recipe> [ids]`: no just flag can choose what runs.
+    ({**GATE, "argv": ["just", "--command", "sh", "-c", "id"]}, "not a gate recipe"),
+    ({**GATE, "argv": ["just", "-f", "/tmp/justfile", "verify"]}, "not a gate recipe"),
+    ({**GATE, "argv": ["just", "--justfile", "x", "verify"]}, "not a gate recipe"),
+    ({**GATE, "argv": ["just", "--shell", "sh", "verify"]}, "not a gate recipe"),
+    ({**GATE, "argv": ["just", "--set", "tac", "sh", "verify"]}, "not a gate recipe"),
+    ({**GATE, "argv": ["just", "tac=sh", "verify"]}, "not a gate recipe"),
+    ({**GATE, "argv": ["just", "stamp-lib"]}, "not a gate recipe"),
+    ({**GATE, "argv": ["just", "verify", "extra"]}, "takes 0 argument"),
+    ({**GATE, "argv": ["just", "work-check"]}, "takes 1 argument"),
+    ({**GATE, "argv": ["just", "work-check", "x; id"]}, "not an id"),
+    ({**GATE, "argv": ["just", "work-check", "--set"]}, "not an id"),
+    ({**GATE, "argv": ["just", "work-check", "a=b"]}, "not an id"),
     ({**GATE, "run_id": "../x"}, "run_id"),
     ({**PROBE, "harness": "pi"}, "pi"),
     ({**PROBE, "probe": "keychain"}, "no probe"),
@@ -309,14 +337,14 @@ def test_the_runner_signs_only_what_it_observes(
     with serving(runner) as sock, pytest.raises(RunnerError, match=message):
         request(sock, payload)
     assert not any((runner.store / "receipts").rglob("*.json"))
+    assert not (repo.parent / "bin" / "just-argv").exists()
 
 
 def test_a_dirty_tree_is_not_observed(repo: Path, state: Path) -> None:
     runner = make_runner(repo, state)
     write(repo, "src/uncommitted.py", "pass\n")
-    gate = {"op": "gate", "run_id": "r1", "stage": "s1", "argv": [PYTHON.name]}
     with serving(runner) as sock, pytest.raises(RunnerError, match="uncommitted"):
-        request(sock, gate)
+        request(sock, GATE)
 
 
 def test_a_probe_reads_the_committed_table_not_the_working_tree(
@@ -346,7 +374,6 @@ def trust_runner(repo: Path, state: Path, trusted: bool) -> Runner:
     return open_runner(
         repo,
         {**env(state), "CLAUDE_CONFIG_DIR": str(config)},
-        programs=(PYTHON.name,),
         search_path=str(clients),
     )
 
@@ -409,6 +436,7 @@ def test_receipt_client_writes_a_signed_probe_into_the_order(
     assert copy.stem == receipt.receipt_id
     assert receipt.kind == "probe"
     assert receipt.binding.stage == "probe.version"
+    assert receipt.binding.order_id == "demo"
     assert receipt.observed["client_version"] == "9.9.9 (Claude Code)"
     for name in ("requested_model", "actual_model", "billing_route", "exit"):
         assert name in receipt.observed

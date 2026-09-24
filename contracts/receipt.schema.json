@@ -5,6 +5,19 @@
     "Binding": {
       "additionalProperties": false,
       "properties": {
+        "order_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9][a-z0-9-]{2,48}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Order Id"
+        },
         "policy_hash": {
           "pattern": "^sha256:[0-9a-f]{64}$",
           "title": "Policy Hash",

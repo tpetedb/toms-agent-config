@@ -88,7 +88,7 @@ work-validate:
 work-check id:
     {{ tac }} work check {{ quote(id) }}
 
-# One bounded builder turn on the failing criteria, then work-check again.
+# The repair handoff, one bounded builder turn once [work.repair] argv is set, then work-check.
 work-repair id:
     {{ tac }} work repair {{ quote(id) }}
 

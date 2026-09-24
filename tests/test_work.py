@@ -1428,7 +1428,7 @@ def test_ci_runs_the_work_gate_after_the_tests_with_refs_as_variables() -> None:
     checkout = job["steps"][0]
     assert checkout["with"]["fetch-depth"] == 0
     assert checkout["with"]["persist-credentials"] is False
-    step = next(s for s in job["steps"] if "tac work ci" in s.get("run", ""))
+    step = next(s for s in job["steps"] if "ci_work_from_base.sh" in s.get("run", ""))
     # A branch name is chosen by whoever opens the pull request, so it reaches
     # the shell as a variable and never as script text.
     assert "${{" not in step["run"]
@@ -1436,7 +1436,11 @@ def test_ci_runs_the_work_gate_after_the_tests_with_refs_as_variables() -> None:
         "BASE_REF": "${{ github.base_ref }}",
         "HEAD_REF": "${{ github.head_ref }}",
     }
-    assert step["run"].startswith("uv run --frozen --no-sync --project .agents tac")
+    # The base revision's checker judges, never the candidate's.
+    assert step["run"].startswith("bash scripts/ci_work_from_base.sh ")
+    script = (REPO / "scripts/ci_work_from_base.sh").read_text()
+    assert 'git archive --format=tar "$base" -- .agents' in script
+    assert '"$tac" work ci --base' in script
 
 
 def test_the_gitignore_keeps_the_measurements_out() -> None:

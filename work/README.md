@@ -24,7 +24,7 @@ An order is active while its branch is checked out in some worktree, and landed 
 | `just work-new <id> <team> "<title>"` | a manager | writes a draft order on this branch |
 | `just work-validate` | anyone | every order is readable and no two active orders own the same file |
 | `just work-check <id>` | the builder, the build gate | nothing outside `owns` changed (the fragment and the `anyone` paths belong to everyone), then every criterion's command |
-| `just work-repair <id>` | the build gate, on a failed check | renders the failing criteria into the repair handoff, runs one bounded builder turn, then `work-check` again and exits with its status |
+| `just work-repair <id>` | the build gate, on a failed check | renders the failing criteria into the repair handoff, runs one bounded builder turn, then `work-check` again and exits with its status. The builder turn is deferred until `tac launch`: while `[work.repair] argv` in `teams.toml` is empty, it writes the handoff and says no turn ran |
 | `just work-packet <id>` | the reviewer | what to read, and the commit to put in `reviewed` |
 | `just work-review <id>` | the review gate | a readable review, current for this branch, by someone other than the builder, from the other provider, accepting every criterion |
 | `just work-accept <id>` | the final gate | the checks measured afresh, the review, and every cross team's sign-off |

@@ -29,6 +29,7 @@ import tomllib
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import IO, Annotated, Literal
 
 from cryptography.hazmat.primitives import serialization
@@ -39,6 +40,7 @@ from pydantic import ValidationError as PydanticValidationError
 from tac.probes import project_trust
 from tac.receipts import (
     ID_PATTERN,
+    ORDER_PATTERN,
     Binding,
     ReceiptError,
     SignedReceipt,
@@ -61,8 +63,24 @@ MAX_SOCKET_PATH = 103
 GATE_TIMEOUT_S = 1800
 PROBE_TIMEOUT_S = 60
 MAX_REQUEST_BYTES = 64 * 1024
-# The programs a gate may start, by name; a pipeline gate is `just <recipe>`.
-DEFAULT_PROGRAMS = ("just",)
+# A gate is `just <recipe> [args]` and nothing else: every other just flag
+# (--command, --justfile, --shell, --set, overrides) would run code the runner
+# did not choose. The table names each recipe a gate may run and how many
+# arguments it takes; arguments are ids, never flags, paths or shell text.
+GATE_PROGRAM = "just"
+DEFAULT_GATE_RECIPES: Mapping[str, int] = MappingProxyType(
+    {
+        "verify": 0,
+        "lint-ci": 0,
+        "private-scan": 0,
+        "work-validate": 0,
+        "work-check": 1,
+        "work-review": 1,
+        "work-accept": 1,
+    }
+)
+RECIPE_PATTERN = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
+GATE_ARG_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 # The clients a probe may start, by harness; the executable is never read from
 # a file an agent could write.
 HARNESS_EXECUTABLES = {"claude": "claude", "codex": "codex"}
@@ -313,6 +331,7 @@ class Gate(BaseModel):
     run_id: str = Field(pattern=ID_PATTERN)
     stage: str = Field(pattern=ID_PATTERN)
     argv: list[str] = Field(min_length=1)
+    order_id: str | None = Field(default=None, pattern=ORDER_PATTERN)
 
 
 class Probe(BaseModel):
@@ -321,6 +340,7 @@ class Probe(BaseModel):
     harness: str = Field(pattern=r"^[a-z][a-z0-9-]{0,31}$")
     probe: str = Field(pattern=r"^[a-z][a-z0-9-]{0,31}$")
     run_id: str = Field(pattern=ID_PATTERN)
+    order_id: str | None = Field(default=None, pattern=ORDER_PATTERN)
 
 
 Request = Annotated[Ping | PubKey | Gate | Probe, Field(discriminator="op")]
@@ -360,7 +380,7 @@ class Runner:
     store: Path
     private: Ed25519PrivateKey
     repository: str
-    programs: tuple[str, ...] = DEFAULT_PROGRAMS
+    recipes: Mapping[str, int] = DEFAULT_GATE_RECIPES
     # The PATH the runner resolves programs and clients on: its own, not a caller's.
     search_path: str = field(default_factory=lambda: os.environ.get("PATH", ""))
     client_env: Mapping[str, str] = field(
@@ -390,7 +410,7 @@ class Runner:
             )
         return resolve(self.root, "HEAD")
 
-    def binding(self, run_id: str, stage: str) -> Binding:
+    def binding(self, run_id: str, stage: str, order_id: str | None) -> Binding:
         revision = self.clean_revision()
         return Binding(
             repository=self.repository,
@@ -398,6 +418,7 @@ class Runner:
             run_id=run_id,
             stage=stage,
             policy_hash=policy_hash(self.root, revision),
+            order_id=order_id,
         )
 
     def which(self, name: str) -> str:
@@ -406,15 +427,43 @@ class Runner:
             raise RunnerError(f"{name} is not installed on the runner's PATH")
         return found
 
-    def gate(self, request: Gate) -> dict[str, JsonValue]:
-        program = request.argv[0]
-        if program not in self.programs:
+    def gate_argv(self, requested: list[str]) -> list[str]:
+        """The command line for `just <recipe> [args]`, or a refusal."""
+        if requested[0] != GATE_PROGRAM or len(requested) < 2:
             raise RunnerError(
-                f"{program!r} is not a gate program; "
-                f"allowed: {', '.join(self.programs)}"
+                f"{' '.join(requested[:2])!r} is not a gate; a gate is "
+                f"`{GATE_PROGRAM} <recipe> [args]`"
             )
-        binding = self.binding(request.run_id, request.stage)
-        argv = [self.which(program), *request.argv[1:]]
+        recipe, args = requested[1], requested[2:]
+        if not RECIPE_PATTERN.match(recipe) or recipe not in self.recipes:
+            raise RunnerError(
+                f"{recipe!r} is not a gate recipe; allowed: "
+                + ", ".join(sorted(self.recipes))
+            )
+        if len(args) != self.recipes[recipe]:
+            raise RunnerError(
+                f"gate recipe {recipe} takes {self.recipes[recipe]} argument(s), "
+                f"not {len(args)}"
+            )
+        for arg in args:
+            if not GATE_ARG_PATTERN.match(arg):
+                raise RunnerError(f"gate argument {arg!r} is not an id")
+        justfile = self.root / "justfile"
+        # Named explicitly so no search, no JUST_JUSTFILE and no parent justfile
+        # can choose which file the recipe comes from.
+        return [
+            self.which(GATE_PROGRAM),
+            "--justfile",
+            str(justfile),
+            "--working-directory",
+            str(self.root),
+            recipe,
+            *args,
+        ]
+
+    def gate(self, request: Gate) -> dict[str, JsonValue]:
+        argv = self.gate_argv(list(request.argv))
+        binding = self.binding(request.run_id, request.stage, request.order_id)
         started = time.monotonic()
         try:
             done = subprocess.run(
@@ -455,7 +504,9 @@ class Runner:
                 f"unknown harness {request.harness!r}; known: "
                 + ", ".join(sorted(HARNESS_EXECUTABLES))
             )
-        binding = self.binding(request.run_id, f"probe.{request.probe}")
+        binding = self.binding(
+            request.run_id, f"probe.{request.probe}", request.order_id
+        )
         spec = self.probe_spec(binding.revision, request.probe)
         executable = self.which(HARNESS_EXECUTABLES[request.harness])
         try:
@@ -518,7 +569,7 @@ def open_runner(
     environ: Mapping[str, str],
     *,
     repository: str | None = None,
-    programs: tuple[str, ...] = DEFAULT_PROGRAMS,
+    recipes: Mapping[str, int] = DEFAULT_GATE_RECIPES,
     search_path: str | None = None,
 ) -> Runner:
     top = repo_top(root)
@@ -528,7 +579,7 @@ def open_runner(
         store=store,
         private=load_key(store),
         repository=repository or origin_repository(top),
-        programs=programs,
+        recipes=recipes,
         search_path=search_path if search_path is not None else environ.get("PATH", ""),
         client_env={k: environ[k] for k in CLIENT_CONFIG_VARS if k in environ},
     )

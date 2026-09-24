@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 import tac
 from tac.receipts import (
+    ORDER_PATTERN,
     RECEIPTS_GLOB,
     RUNNER_PUB,
     Binding,
@@ -45,7 +46,7 @@ from tac.runner import (
     socket_path,
 )
 
-ORDER_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+ORDER_ID = re.compile(ORDER_PATTERN)
 
 repo_option = click.option(
     "--repo",
@@ -215,6 +216,8 @@ def receipt_client(
                 "harness": harness,
                 "probe": probe,
                 "run_id": run_id or f"probe-{harness}-{probe}",
+                # Signed into the binding, so CI can hold the copy to its folder.
+                "order_id": order,
             },
         )
         signed = receipt_from(reply)
@@ -252,6 +255,7 @@ key_env_option = click.option(
 @click.option("--revision", required=True, help="Revision the receipt must name.")
 @click.option("--run", "run_id", required=True)
 @click.option("--stage", required=True)
+@click.option("--order", "order", default=None, help="Order the receipt must name.")
 @key_env_option
 @repo_option
 def receipt_verify(
@@ -261,6 +265,7 @@ def receipt_verify(
     revision: str,
     run_id: str,
     stage: str,
+    order: str | None,
     key_env: str | None,
     repo: Path,
 ) -> None:
@@ -274,6 +279,7 @@ def receipt_verify(
             run_id=run_id,
             stage=stage,
             policy_hash=policy_hash(top, commit),
+            order_id=order,
         )
         receipt = verify(
             parse(path.read_text("utf-8")), trusted_key(top, base, key_env), expected
@@ -314,7 +320,7 @@ def receipt_verify_tree(
         click.echo(f"tac: {exc}", err=True)
         key = None
     try:
-        results = verify_committed(top, files, key, repository, head)
+        results = verify_committed(top, files, key, repository, base, head)
     except ReceiptError as exc:
         fail(str(exc))
         return
