@@ -1,12 +1,28 @@
 {
-  "_note": "Shaped on the documented response of the GitHub REST API (docs.github.com/en/rest/repos/rules, API version 2022-11-28); ids and names are placeholders. No live call recorded these.",
+  "_note": "GitHub's published example for this endpoint (github/rest-api-description at the commit in openapi_rulesets.json, MIT), with placeholder names and account URLs, completed where the example lacks a field the schema requires; tests/test_github_schema.py validates it against the published schema. No live call recorded it.",
   "body": {
     "permission": "admin",
     "role_name": "admin",
     "user": {
-      "login": "tac-bot",
+      "avatar_url": "https://github.com/images/error/tac-bot_happy.gif",
+      "events_url": "https://example.invalid/accounts/tac-bot/events{/privacy}",
+      "followers_url": "https://example.invalid/accounts/tac-bot/followers",
+      "following_url": "https://example.invalid/accounts/tac-bot/following{/other_user}",
+      "gists_url": "https://example.invalid/accounts/tac-bot/gists{/gist_id}",
+      "gravatar_id": "",
+      "html_url": "https://github.com/tac-bot",
       "id": 2,
-      "type": "User"
+      "login": "tac-bot",
+      "node_id": "MDQ6VXNlcjI=",
+      "organizations_url": "https://example.invalid/accounts/tac-bot/orgs",
+      "received_events_url": "https://example.invalid/accounts/tac-bot/received_events",
+      "repos_url": "https://example.invalid/accounts/tac-bot/repos",
+      "site_admin": false,
+      "starred_url": "https://example.invalid/accounts/tac-bot/starred{/owner}{/repo}",
+      "subscriptions_url": "https://example.invalid/accounts/tac-bot/subscriptions",
+      "type": "User",
+      "url": "https://example.invalid/accounts/tac-bot",
+      "role_name": "admin"
     }
   }
 }

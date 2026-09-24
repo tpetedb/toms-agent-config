@@ -1,5 +1,5 @@
 {
-  "_note": "Shaped on the documented response of the GitHub REST API (docs.github.com/en/rest/repos/rules, API version 2022-11-28); ids and names are placeholders. No live call recorded these.",
+  "_note": "Shaped on the documented response of the GitHub REST API (API version 2022-11-28) with placeholder ids and names; tests/test_github_schema.py validates it against the published schema in openapi_rulesets.json. No live call recorded it.",
   "body": [
     {
       "id": 101,

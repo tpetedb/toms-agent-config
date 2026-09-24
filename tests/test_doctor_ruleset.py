@@ -4,12 +4,25 @@ ruleset without code-owner review or required checks."""
 
 from __future__ import annotations
 
+import json
+import stat
+from pathlib import Path
 from typing import Any
 
 import pytest
 
-from tac.doctor import Status, ruleset_status
-from tac.github import OWNER_STEP, desired_ruleset, judge_rulesets, ruleset_problems
+import tac.doctor
+from tac.doctor import Status, ruleset_status, session_identity_status
+from tac.github import (
+    OWNER_STEP,
+    ApiError,
+    GhLogin,
+    desired_ruleset,
+    gh_auth_status,
+    judge_rulesets,
+    parse_gh_auth,
+    ruleset_problems,
+)
 from tests._github_fixtures import (
     REPO,
     FixtureTransport,
@@ -44,7 +57,7 @@ def test_each_active_branch_ruleset_is_fetched_by_id_and_tags_are_not() -> None:
 
 
 def test_no_ruleset_fails_and_names_the_owner_step() -> None:
-    status, detail = judged(FixtureTransport(rulesets([], {})))
+    status, detail = judged(FixtureTransport(rulesets(load("rulesets_list_empty"), {})))
     assert status is Status.FAIL
     assert "no active branch ruleset" in detail
     assert OWNER_STEP in detail
@@ -171,3 +184,136 @@ def test_a_list_that_cannot_be_read_is_unknown() -> None:
 
 def test_the_ruleset_tac_applies_passes_its_own_judge() -> None:
     assert ruleset_problems(desired_ruleset()) == []
+
+
+# ---- the gh identity an agent session can reach (section 8)
+
+
+def auth_json(login: str, scopes: str = "repo", state: str = "success") -> str:
+    """The shape `gh auth status --json hosts` prints (cli/cli, auth status)."""
+    entry = {
+        "state": state,
+        "active": True,
+        "host": "github.com",
+        "login": login,
+        "tokenSource": "keyring",
+        "scopes": scopes,
+        "gitProtocol": "https",
+    }
+    return json.dumps({"hosts": {"github.com": [entry]}})
+
+
+def fake_gh(folder: Path, stdout: str, code: int = 0) -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "out.json").write_text(stdout)
+    gh = folder / "gh"
+    gh.write_text(
+        "#!/bin/sh\n"
+        f'printf "%s\\n" "$@" > "{folder}/args"\n'
+        f'cat "{folder}/out.json"\n'
+        f"exit {code}\n"
+    )
+    gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
+    return gh
+
+
+def test_parse_reads_the_active_working_login() -> None:
+    login = parse_gh_auth(auth_json("demo-bot", "repo, admin:org"))
+    assert login == GhLogin("demo-bot", ("repo", "admin:org"))
+
+
+@pytest.mark.parametrize(
+    "text",
+    ['{"hosts": {}}', auth_json("x", state="error"), "not json", '{"hosts": []}'],
+)
+def test_parse_sees_no_login(text: str) -> None:
+    assert parse_gh_auth(text) is None
+
+
+def test_gh_auth_status_asks_for_json_and_never_for_the_token(tmp_path: Path) -> None:
+    gh = fake_gh(tmp_path / "bin", auth_json("demo-bot"))
+    assert gh_auth_status(str(gh), {"PATH": "/usr/bin:/bin"}) == GhLogin(
+        "demo-bot", ("repo",)
+    )
+    args = (tmp_path / "bin/args").read_text().split()
+    assert args[:2] == ["auth", "status"] and "--json" in args
+    assert "--show-token" not in args and "-t" not in args
+
+
+def test_gh_auth_status_that_fails_is_an_error(tmp_path: Path) -> None:
+    gh = fake_gh(tmp_path / "bin", "", code=1)
+    with pytest.raises(ApiError):
+        gh_auth_status(str(gh), {"PATH": "/usr/bin:/bin"})
+
+
+def owner_reply(login: str = "example", kind: str = "User") -> FixtureTransport:
+    repo = load("repo")
+    repo["owner"] = dict(repo["owner"], login=login, type=kind)
+    return FixtureTransport({("GET", f"repos/{REPO}"): [Reply(200, repo)]})
+
+
+def session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    login: GhLogin | None,
+    public: FixtureTransport | None = None,
+) -> tuple[Status, str]:
+    fake_gh(tmp_path / "bin", "{}")
+    monkeypatch.setattr(tac.doctor, "gh_auth_status", lambda _gh, _env: login)
+    monkeypatch.setattr(tac.doctor, "origin_repository", lambda _root: REPO)
+    environ = {"CLAUDECODE": "1", "PATH": str(tmp_path / "bin")}
+    return session_identity_status(tmp_path, environ, public or owner_reply())
+
+
+def test_the_owner_login_in_an_agent_session_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    status, detail = session(tmp_path, monkeypatch, GhLogin("Example", ("repo",)))
+    assert status is Status.FAIL
+    assert "an admin identity" in detail and "owns the repository" in detail
+    assert "Q14" in detail
+
+
+def test_an_admin_scope_in_an_agent_session_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    login = GhLogin("someone", ("repo", "admin:org"))
+    status, detail = session(
+        tmp_path, monkeypatch, login, owner_reply(kind="Organization")
+    )
+    assert status is Status.FAIL and "admin:org" in detail
+
+
+def test_the_machine_account_in_an_agent_session_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    status, detail = session(tmp_path, monkeypatch, GhLogin("tac-bot", ("repo",)))
+    assert status is Status.PASS and "machine account tac-bot" in detail
+
+
+def test_another_login_in_an_agent_session_is_unknown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    status, detail = session(tmp_path, monkeypatch, GhLogin("someone", ("repo",)))
+    assert status is Status.UNKNOWN and "only the machine account" in detail
+
+
+def test_a_logged_out_gh_in_an_agent_session_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    status, _ = session(tmp_path, monkeypatch, None)
+    assert status is Status.PASS
+
+
+def test_no_gh_in_an_agent_session_passes(tmp_path: Path) -> None:
+    environ = {"CLAUDECODE": "1", "PATH": str(tmp_path)}
+    assert session_identity_status(tmp_path, environ)[0] is Status.PASS
+
+
+def test_the_owner_terminal_is_not_judged_by_the_session_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(tac.doctor, "agent_session", lambda _env: None)
+    monkeypatch.setattr(tac.doctor, "gh_auth_status", pytest.fail)
+    status, detail = session_identity_status(tmp_path, {"PATH": str(tmp_path)})
+    assert status is Status.PASS and "not an agent session" in detail

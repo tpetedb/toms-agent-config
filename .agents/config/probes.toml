@@ -8,3 +8,8 @@ schema_version = 1
 description = "Discovery: the client is installed and reports its version."
 kind = "version"
 expect_exit = 0
+
+[probes.trust]
+description = "Trust: the client accepts this checkout (workspace trust in Claude Code, trust_level in Codex)."
+kind = "trust"
+expect_exit = 0

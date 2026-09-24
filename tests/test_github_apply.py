@@ -16,6 +16,7 @@ from tac.github import (
     GITHUB_ACTIONS_APP_ID,
     REQUIRED_CHECKS,
     RULESET_NAME,
+    agent_identity,
     apply_ruleset,
     desired_ruleset,
 )
@@ -65,6 +66,11 @@ def test_the_ruleset_requires_code_owners_and_squash_only() -> None:
     assert pr["parameters"]["allowed_merge_methods"] == ["squash"]
 
 
+def test_the_last_push_needs_an_approval_from_someone_else() -> None:
+    [pr] = [r for r in desired_ruleset()["rules"] if r["type"] == "pull_request"]
+    assert pr["parameters"]["require_last_push_approval"] is True
+
+
 def test_the_required_checks_come_from_github_actions_only() -> None:
     [rsc] = [
         r for r in desired_ruleset()["rules"] if r["type"] == "required_status_checks"
@@ -81,7 +87,7 @@ def test_the_required_checks_are_the_ci_jobs(repo: Path) -> None:
 
 
 def test_apply_creates_the_ruleset_when_none_exists_and_judges_it() -> None:
-    fixture = transport(listed=[])
+    fixture = transport(listed=load("rulesets_list_empty"))
     outcome = apply_ruleset(fixture, REPO, "tac-bot", desired_ruleset())
     assert outcome.ok
     assert fixture.writes() == [("POST", f"repos/{REPO}/rulesets", desired_ruleset())]
@@ -106,15 +112,25 @@ def test_apply_leaves_a_tag_ruleset_of_the_same_name_alone() -> None:
 
 
 def test_apply_refuses_an_admin_bot_and_writes_nothing() -> None:
-    fixture = transport(listed=[], role="collaborator_admin")
+    fixture = transport(listed=load("rulesets_list_empty"), role="collaborator_admin")
     outcome = apply_ruleset(fixture, REPO, "tac-bot", desired_ruleset())
     assert not outcome.ok
     assert "never admin" in outcome.lines[0]
     assert fixture.writes() == []
 
 
+def test_apply_refuses_a_maintain_bot_and_writes_nothing() -> None:
+    maintain = dict(load("collaborator_write"), permission="write")
+    maintain["role_name"] = "maintain"
+    fixture = transport(listed=[], permission=Reply(200, maintain))
+    outcome = apply_ruleset(fixture, REPO, "tac-bot", desired_ruleset())
+    assert not outcome.ok
+    assert "role 'maintain'" in outcome.lines[0]
+    assert fixture.writes() == []
+
+
 def test_apply_names_q14_when_the_bot_is_missing() -> None:
-    fixture = transport(listed=[], permission=Reply(404))
+    fixture = transport(listed=load("rulesets_list_empty"), permission=Reply(404))
     outcome = apply_ruleset(fixture, REPO, "tac-bot", desired_ruleset())
     assert not outcome.ok
     assert "Q14" in outcome.lines[0]
@@ -124,14 +140,14 @@ def test_apply_names_q14_when_the_bot_is_missing() -> None:
 def test_apply_fails_when_the_ruleset_read_back_does_not_hold() -> None:
     applied = load("ruleset_holds")
     applied["bypass_actors"] = [{"actor_id": 5, "actor_type": "RepositoryRole"}]
-    fixture = transport(listed=[], after=applied)
+    fixture = transport(listed=load("rulesets_list_empty"), after=applied)
     outcome = apply_ruleset(fixture, REPO, "tac-bot", desired_ruleset())
     assert not outcome.ok
     assert any("bypass_actors is not empty" in line for line in outcome.lines)
 
 
 def test_apply_reports_a_refused_write() -> None:
-    fixture = transport(listed=[])
+    fixture = transport(listed=load("rulesets_list_empty"))
     fixture.replies[("POST", f"repos/{REPO}/rulesets")] = [Reply(422)]
     outcome = apply_ruleset(fixture, REPO, "tac-bot", desired_ruleset())
     assert not outcome.ok
@@ -166,7 +182,7 @@ def owner_terminal(monkeypatch: pytest.MonkeyPatch, fixture: FixtureTransport) -
 def test_apply_from_the_owner_terminal_exits_zero_when_it_holds(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    owner_terminal(monkeypatch, transport(listed=[]))
+    owner_terminal(monkeypatch, transport(listed=load("rulesets_list_empty")))
     args = ["github", "apply", "--repo", REPO, "--root", str(repo)]
     result = CliRunner().invoke(cli, args)
     assert result.exit_code == 0, result.output
@@ -176,17 +192,58 @@ def test_apply_from_the_owner_terminal_exits_zero_when_it_holds(
 def test_apply_exits_non_zero_on_an_admin_bot(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    owner_terminal(monkeypatch, transport(listed=[], role="collaborator_admin"))
+    owner_terminal(
+        monkeypatch,
+        transport(listed=load("rulesets_list_empty"), role="collaborator_admin"),
+    )
     args = ["github", "apply", "--repo", REPO, "--root", str(repo)]
     result = CliRunner().invoke(cli, args)
     assert result.exit_code == 1
     assert "no ruleset was written" in result.output
 
 
+def test_the_bot_comes_from_the_agent_identity_in_the_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".github").mkdir()
+    (tmp_path / ".github/CODEOWNERS").write_text("* @example\n")
+    (tmp_path / ".agents").mkdir()
+    (tmp_path / ".agents/config.toml").write_text(
+        '[governance]\nagent_identity = "demo-bot"\n'
+    )
+    fixture = transport(listed=[])
+    fixture.replies[("GET", f"repos/{REPO}/collaborators/demo-bot/permission")] = [
+        Reply(200, load("collaborator_write"))
+    ]
+    owner_terminal(monkeypatch, fixture)
+    args = ["github", "apply", "--repo", REPO, "--root", str(tmp_path)]
+    result = CliRunner().invoke(cli, args)
+    assert result.exit_code == 0, result.output
+    assert "demo-bot has write access" in result.output
+
+
+@pytest.mark.parametrize(
+    ("config", "expected"),
+    [
+        (None, "tac-bot"),
+        ("[governance]\nquorum = 3\n", "tac-bot"),
+        ("not = [toml\n", "tac-bot"),
+        ('[governance]\nagent_identity = "demo-bot"\n', "demo-bot"),
+    ],
+)
+def test_agent_identity_falls_back_to_q14s_recommendation(
+    tmp_path: Path, config: str | None, expected: str
+) -> None:
+    if config is not None:
+        (tmp_path / ".agents").mkdir()
+        (tmp_path / ".agents/config.toml").write_text(config)
+    assert agent_identity(tmp_path) == expected
+
+
 def test_apply_refuses_without_codeowners(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    owner_terminal(monkeypatch, transport(listed=[]))
+    owner_terminal(monkeypatch, transport(listed=load("rulesets_list_empty")))
     args = ["github", "apply", "--repo", REPO, "--root", str(tmp_path)]
     result = CliRunner().invoke(cli, args)
     assert result.exit_code != 0
@@ -196,7 +253,7 @@ def test_apply_refuses_without_codeowners(
 def test_apply_refuses_a_malformed_repository(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    owner_terminal(monkeypatch, transport(listed=[]))
+    owner_terminal(monkeypatch, transport(listed=load("rulesets_list_empty")))
     args = ["github", "apply", "--repo", "../x", "--root", str(repo)]
     result = CliRunner().invoke(cli, args)
     assert result.exit_code != 0

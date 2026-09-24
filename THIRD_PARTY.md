@@ -4,7 +4,11 @@ What in this repository did not start here, where it came from and under which t
 
 ## Third-party
 
-None yet. No third-party code or text is vendored in this repository. The development tools in `pyproject.toml` are installed from PyPI at build time under their own licences and are not redistributed here.
+| What | Source | Licence | Where it lives here |
+|---|---|---|---|
+| The ruleset, collaborator-permission and repository schemas, dereferenced, and the published examples the repository and collaborator fixtures started from | [github/rest-api-description](https://github.com/github/rest-api-description) `descriptions/api.github.com/api.github.com.json`, at the commit recorded in the file | MIT, Copyright (c) GitHub | `tests/fixtures/github/openapi_rulesets.json` (cut by `scripts/github_openapi_subset.py`), `tests/fixtures/github/repo.json`, `tests/fixtures/github/collaborator_*.json` |
+
+No third-party code is vendored. The development tools in `pyproject.toml` are installed from PyPI at build time under their own licences and are not redistributed here.
 
 ## Carried over from the owner's own public projects
 

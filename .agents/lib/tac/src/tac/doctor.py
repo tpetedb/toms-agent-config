@@ -19,15 +19,21 @@ from pathlib import Path
 
 from tac.github import (
     AnonymousTransport,
+    ApiError,
     RulesetReport,
     Transport,
+    admin_reasons,
+    agent_identity,
+    gh_auth_status,
     gh_transport,
     judge_rulesets,
+    repo_owner,
 )
 from tac.probes import (
     CLIENTS,
     TRUST_STEPS,
     client_version,
+    codex_hook_trust,
     discover,
     project_trust,
 )
@@ -236,6 +242,55 @@ def check_github_ruleset(root: Path) -> tuple[Status, str]:
     return ruleset_status(judge_rulesets(transport, repo), how)
 
 
+def session_identity_status(
+    root: Path, environ: Mapping[str, str], public: Transport | None = None
+) -> tuple[Status, str]:
+    """Inside an agent session, gh must not reach an admin identity (section 8).
+
+    Reads only what `gh auth status` shows and the repository's public owner;
+    the session's token is never used for anything else.
+    """
+    reason = agent_session(environ)
+    if reason is None:
+        return Status.PASS, "not an agent session; the owner's gh belongs here"
+    gh = shutil.which("gh", path=environ.get("PATH", ""))
+    if gh is None:
+        return Status.PASS, "no gh in this agent session"
+    try:
+        login = gh_auth_status(gh, environ)
+    except ApiError as exc:
+        return Status.UNKNOWN, f"cannot read gh auth status: {exc}"
+    if login is None:
+        return Status.PASS, "gh is not logged in inside this agent session"
+    try:
+        repo = origin_repository(root)
+        owner, owner_type = repo_owner(public or AnonymousTransport(), repo)
+    except (RunnerError, ApiError, KeyError, TypeError) as exc:
+        return Status.UNKNOWN, f"gh is logged in as {login.login}; {exc}"
+    reasons = admin_reasons(login, owner, owner_type)
+    if reasons:
+        return (
+            Status.FAIL,
+            f"gh inside this agent session is logged in as {login.login}, an admin "
+            f"identity ({'; '.join(reasons)}); the owner's login never enters a "
+            "session, which gets only the machine account's token (Q14)",
+        )
+    bot = agent_identity(root)
+    if login.login.lower() == bot.lower():
+        return Status.PASS, f"gh is logged in as the machine account {bot}"
+    return (
+        Status.UNKNOWN,
+        f"gh is logged in as {login.login}; its role on {repo} is not visible "
+        f"without using its token, and only the machine account {bot} belongs in "
+        "an agent session",
+    )
+
+
+def hook_trust_status(root: Path) -> tuple[Status, str]:
+    trust = codex_hook_trust(root)
+    return REPORT_STATUS[trust.trusted], trust.detail
+
+
 def client_status(harness: str, environ: Mapping[str, str]) -> tuple[Status, str]:
     """Discovery and a minimal launch: `--version`, never a model session."""
     executable = discover(harness, environ.get("PATH", ""))
@@ -279,7 +334,9 @@ CHECKS: tuple[Check, ...] = (
     Check("generated-lock", check_generated_lock),
     Check("runner-pub", check_runner_pub),
     Check("github-ruleset", check_github_ruleset),
+    Check("session-identity", lambda root: session_identity_status(root, os.environ)),
     *(check for h in CLIENTS for check in (client_check(h), trust_check(h))),
+    Check("hook-trust-codex", hook_trust_status),
 )
 
 

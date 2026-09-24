@@ -31,7 +31,7 @@ from tac.doctor import (
 from tac.github import AnonymousTransport, GhTransport
 from tac.receipts import RUNNER_PUB, key_id
 from tac.runner import pub_file_text
-from tests._github_fixtures import REPO, FixtureTransport, rulesets, standard
+from tests._github_fixtures import REPO, FixtureTransport, load, rulesets, standard
 
 
 def passing(_root: Path) -> tuple[Status, str]:
@@ -227,7 +227,9 @@ def only_the_ruleset_check(
 def test_doctor_exits_non_zero_and_names_the_owner_step_without_a_ruleset(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    only_the_ruleset_check(monkeypatch, FixtureTransport(rulesets([], {})))
+    only_the_ruleset_check(
+        monkeypatch, FixtureTransport(rulesets(load("rulesets_list_empty"), {}))
+    )
     result = CliRunner().invoke(cli, ["doctor", "--root", str(tmp_path)])
     assert result.exit_code == 1
     assert "FAIL" in result.output and "no active branch ruleset" in result.output

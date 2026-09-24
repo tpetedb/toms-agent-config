@@ -14,10 +14,12 @@ import os
 import re
 import shutil
 import subprocess
+import tomllib
 import urllib.error
 import urllib.request
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
 API_ROOT = "https://api.github.com"
@@ -29,8 +31,14 @@ REQUIRED_CHECKS = ("verify", "work")
 # The GitHub Actions app: pinning the source stops a commit status posted by any
 # other integration from satisfying a required check.
 GITHUB_ACTIONS_APP_ID = 15368
-# Push rights without the right to edit rulesets or repository settings.
+# Push rights without the right to edit rulesets or repository settings. maintain
+# is refused too: section 8 asks for write access and nothing above it.
 BOT_ROLES = ("write",)
+# Q14's recommendation, used until .agents/config.toml names the real account.
+DEFAULT_AGENT_IDENTITY = "tac-bot"
+AGENTS_CONFIG = ".agents/config.toml"
+# Classic token scopes that administer an organisation or an enterprise.
+ADMIN_SCOPES = frozenset({"admin:org", "admin:enterprise"})
 CODEOWNERS = ".github/CODEOWNERS"
 DEFAULT_BRANCH_REFS = ("~DEFAULT_BRANCH", "~ALL")
 CALL_TIMEOUT_S = 30
@@ -143,6 +151,85 @@ def gh_transport() -> GhTransport | None:
     return GhTransport(gh) if gh else None
 
 
+def agent_identity(root: Path) -> str:
+    """The machine account agents push as: [governance] agent_identity (Q14)."""
+    try:
+        data = tomllib.loads((root / AGENTS_CONFIG).read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return DEFAULT_AGENT_IDENTITY
+    name = (data.get("governance") or {}).get("agent_identity")
+    return name if isinstance(name, str) and name else DEFAULT_AGENT_IDENTITY
+
+
+# ---- the gh identity an agent session can reach (design section 8)
+
+
+@dataclass(frozen=True, slots=True)
+class GhLogin:
+    login: str
+    scopes: tuple[str, ...]
+
+
+def parse_gh_auth(text: str) -> GhLogin | None:
+    """The active, working github.com login from `gh auth status --json hosts`."""
+    try:
+        hosts = json.loads(text).get("hosts") or {}
+    except (ValueError, AttributeError):
+        return None
+    for entry in hosts.get("github.com") or []:
+        if not isinstance(entry, Mapping) or not entry.get("active"):
+            continue
+        if entry.get("state") != "success" or not entry.get("login"):
+            return None
+        scopes = str(entry.get("scopes") or "")
+        names = tuple(s.strip() for s in scopes.split(",") if s.strip())
+        return GhLogin(str(entry["login"]), names)
+    return None
+
+
+def gh_auth_status(gh: str, environ: Mapping[str, str]) -> GhLogin | None:
+    """Who the session's own gh is logged in as, or None when it is not.
+
+    The JSON form never carries the token; the token source is not read,
+    since it can name a local path.
+    """
+    argv = [gh, "auth", "status", "--active", "--hostname", "github.com"]
+    env = {**environ, "GH_TELEMETRY": "false", "GH_PROMPT_DISABLED": "1"}
+    try:
+        done = subprocess.run(
+            [*argv, "--json", "hosts"],
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            env=env,
+            timeout=CALL_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ApiError(None, f"gh did not run: {exc.__class__.__name__}") from exc
+    if done.returncode != 0:
+        raise ApiError(None, "gh auth status did not answer")
+    return parse_gh_auth(done.stdout)
+
+
+def repo_owner(transport: Transport, repo: str) -> tuple[str, str]:
+    """The owner's login and type (User or Organization) of a repository."""
+    owner = transport.call("GET", f"repos/{repo}")["owner"]
+    return str(owner["login"]), str(owner["type"])
+
+
+def admin_reasons(login: GhLogin, owner: str, owner_type: str) -> list[str]:
+    """Why a login is an admin identity, from what a session can see without
+    using the token: the owner of a personal repository is always its admin."""
+    reasons: list[str] = []
+    if owner_type == "User" and login.login.lower() == owner.lower():
+        reasons.append(f"{login.login} owns the repository")
+    held = sorted(ADMIN_SCOPES.intersection(login.scopes))
+    if held:
+        reasons.append(f"the token holds {', '.join(held)}")
+    return reasons
+
+
 # ---- the ruleset tac applies
 
 
@@ -168,7 +255,9 @@ def desired_ruleset(checks: Sequence[str] = REQUIRED_CHECKS) -> dict[str, Any]:
                     "required_approving_review_count": 1,
                     "require_code_owner_review": True,
                     "dismiss_stale_reviews_on_push": True,
-                    "require_last_push_approval": False,
+                    # The owner approves the bot's push; a fix the owner pushes
+                    # travels as a bot pull request (section 8).
+                    "require_last_push_approval": True,
                     "required_review_thread_resolution": True,
                     "allowed_merge_methods": ["squash"],
                 },

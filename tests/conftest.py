@@ -22,6 +22,9 @@ def no_live_github(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("tac.github.GhTransport.call", refuse)
     monkeypatch.setattr("tac.github.AnonymousTransport.call", refuse)
+    # The doctor's session check reads as though gh were logged out; tests of
+    # the gh call itself use a fake gh executable.
+    monkeypatch.setattr("tac.doctor.gh_auth_status", lambda _gh, _env: None)
 
 
 @pytest.fixture(autouse=True)

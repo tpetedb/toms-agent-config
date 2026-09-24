@@ -19,6 +19,10 @@ from pathlib import Path
 # The harnesses release 1 enforces, by the executable each installs.
 CLIENTS = {"claude": "claude", "codex": "codex"}
 VERSION_TIMEOUT_S = 20
+# Where Codex finds a project's hooks; each is trusted by the hash of its
+# definition, separately from the project (design section 9).
+CODEX_HOOK_SOURCES = (".codex/hooks.json", ".codex/config.toml")
+CODEX_HOOK_STEP = "run `codex`, then `/hooks`, and approve the run.py entries once"
 # Where each client asks its owner to trust a folder (TODO.HUMAN.md).
 TRUST_STEPS = {
     "claude": "open `claude` once in this folder and accept workspace trust",
@@ -165,3 +169,37 @@ def project_trust(harness: str, root: Path, environ: Mapping[str, str]) -> Trust
     if harness == "claude":
         return claude_trust(root, claude_config(environ))
     return codex_trust(trust_candidates(root), codex_config(environ))
+
+
+def codex_project_hooks(root: Path) -> list[str]:
+    """The project files that define Codex hooks, relative to the checkout."""
+    found: list[str] = []
+    hooks_json = root / CODEX_HOOK_SOURCES[0]
+    if hooks_json.is_file():
+        found.append(CODEX_HOOK_SOURCES[0])
+    config = root / CODEX_HOOK_SOURCES[1]
+    if config.is_file():
+        try:
+            data = tomllib.loads(config.read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError):
+            data = {"hooks": "unreadable"}
+        if data.get("hooks"):
+            found.append(CODEX_HOOK_SOURCES[1])
+    return found
+
+
+def codex_hook_trust(root: Path) -> Trust:
+    """Hook trust, reported apart from project trust.
+
+    Codex keeps the approved hashes in its own state, whose layout it does not
+    document, so a checkout with hooks stays undecided until a signed probe of
+    a hook firing (design section 13) can witness it.
+    """
+    sources = codex_project_hooks(root)
+    if not sources:
+        return Trust(True, "no project hooks to trust yet")
+    return Trust(
+        None,
+        f"hooks in {', '.join(sources)} run only once approved by hash; "
+        f"the owner's step: {CODEX_HOOK_STEP}",
+    )

@@ -36,6 +36,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 from pydantic import ValidationError as PydanticValidationError
 
+from tac.probes import project_trust
 from tac.receipts import (
     ID_PATTERN,
     Binding,
@@ -65,6 +66,9 @@ DEFAULT_PROGRAMS = ("just",)
 # The clients a probe may start, by harness; the executable is never read from
 # a file an agent could write.
 HARNESS_EXECUTABLES = {"claude": "claude", "codex": "codex"}
+# The variables that locate each client's user config, the only part of the
+# runner's environment a trust probe reads.
+CLIENT_CONFIG_VARS = ("HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME")
 # Set in the shells that Claude Code and a sandboxed Codex start. A tripwire,
 # not a boundary: an agent can unset them, which is why the key moves to the
 # keychain in M3.
@@ -326,7 +330,7 @@ REQUEST = TypeAdapter(Request)
 class ProbeSpec(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     description: str
-    kind: Literal["version"]
+    kind: Literal["version", "trust"]
     expect_exit: int = 0
 
 
@@ -359,6 +363,11 @@ class Runner:
     programs: tuple[str, ...] = DEFAULT_PROGRAMS
     # The PATH the runner resolves programs and clients on: its own, not a caller's.
     search_path: str = field(default_factory=lambda: os.environ.get("PATH", ""))
+    client_env: Mapping[str, str] = field(
+        default_factory=lambda: {
+            k: os.environ[k] for k in CLIENT_CONFIG_VARS if k in os.environ
+        }
+    )
 
     def handle(self, raw: object) -> dict[str, JsonValue]:
         request = REQUEST.validate_python(raw)
@@ -465,6 +474,15 @@ class Runner:
         expected: dict[str, JsonValue] = {"exit": spec.expect_exit}
         observed_exit: dict[str, JsonValue] = {"exit": exit_code}
         missing = [] if version else ["client_version"]
+        matched = exit_code == spec.expect_exit and not missing
+        if spec.kind == "trust":
+            # Read by the runner from the client's own user config, never taken
+            # from the request.
+            trust = project_trust(request.harness, self.root, self.client_env)
+            expected["trusted"] = True
+            observed_exit["trusted"] = trust.trusted
+            observed_exit["detail"] = trust.detail
+            matched = matched and trust.trusted is True
         observed: dict[str, JsonValue] = {
             "harness": request.harness,
             "client_version": version,
@@ -479,7 +497,7 @@ class Runner:
             "billing_route": None,
             "exit": exit_code,
             "missing": list(missing),
-            "matched": exit_code == spec.expect_exit and not missing,
+            "matched": matched,
         }
         return self.issue("probe", binding, observed)
 
@@ -512,6 +530,7 @@ def open_runner(
         repository=repository or origin_repository(top),
         programs=programs,
         search_path=search_path if search_path is not None else environ.get("PATH", ""),
+        client_env={k: environ[k] for k in CLIENT_CONFIG_VARS if k in environ},
     )
 
 

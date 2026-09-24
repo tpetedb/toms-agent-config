@@ -11,7 +11,9 @@ import click
 
 from tac.doctor import find_root
 from tac.github import (
+    AGENTS_CONFIG,
     CODEOWNERS,
+    agent_identity,
     apply_ruleset,
     desired_ruleset,
     gh_transport,
@@ -23,8 +25,6 @@ LOGIN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,38}$")
 REPO_NAME = re.compile(
     r"^[A-Za-z0-9][A-Za-z0-9-]{0,38}/(?!\.\.?$)[A-Za-z0-9_.-]{1,100}$"
 )
-# Q14's recommendation; the owner names the real account with --bot.
-DEFAULT_BOT = "tac-bot"
 
 
 @click.group("github")
@@ -41,9 +41,11 @@ def github_group() -> None:
 )
 @click.option(
     "--bot",
-    default=DEFAULT_BOT,
-    show_default=True,
-    help="The machine account agents push as: write access, never admin.",
+    default=None,
+    help=(
+        "The machine account agents push as: write access, never admin. Defaults "
+        f"to [governance] agent_identity in {AGENTS_CONFIG}, else tac-bot (Q14)."
+    ),
 )
 @click.option(
     "--dry-run",
@@ -56,7 +58,9 @@ def github_group() -> None:
     default=None,
     help="Repository root. Defaults to the nearest ancestor holding .git.",
 )
-def github_apply(repo: str | None, bot: str, dry_run: bool, root: Path | None) -> None:
+def github_apply(
+    repo: str | None, bot: str | None, dry_run: bool, root: Path | None
+) -> None:
     """Check the agent identity, then create or update the ruleset and judge it.
 
     Bypass is off for everyone, the owner included. Uses the owner's own gh
@@ -72,9 +76,11 @@ def github_apply(repo: str | None, bot: str, dry_run: bool, root: Path | None) -
             f"refused inside an agent session ({reason}): tac github apply uses the "
             "owner's token and runs only in the owner's own terminal on the host"
         )
+    base = root.resolve() if root else find_root(Path.cwd())
+    if bot is None:
+        bot = agent_identity(base)
     if not LOGIN.match(bot):
         raise click.ClickException(f"not a GitHub login: {bot!r}")
-    base = root.resolve() if root else find_root(Path.cwd())
     if not (base / CODEOWNERS).is_file():
         raise click.ClickException(
             f"{CODEOWNERS} is missing; code-owner review would require nobody"

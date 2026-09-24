@@ -297,7 +297,7 @@ REFUSED = [
     ({**GATE, "argv": ["sh"]}, "not a gate"),
     ({**GATE, "run_id": "../x"}, "run_id"),
     ({**PROBE, "harness": "pi"}, "pi"),
-    ({**PROBE, "probe": "trust"}, "no probe"),
+    ({**PROBE, "probe": "keychain"}, "no probe"),
 ]
 
 
@@ -328,6 +328,55 @@ def test_a_probe_reads_the_committed_table_not_the_working_tree(
     write(repo, ".agents/config/probes.toml", "not = [toml\n")
     git(repo, "update-index", "--assume-unchanged", ".agents/config/probes.toml")
     probe = {"op": "probe", "harness": "claude", "probe": "version", "run_id": "p"}
+    with serving(runner) as sock:
+        reply = request(sock, probe)
+    assert parse(json.dumps(reply["receipt"])).receipt.observed["matched"] is True
+
+
+def trust_runner(repo: Path, state: Path, trusted: bool) -> Runner:
+    """A runner whose Claude user config does or does not trust the checkout."""
+    clients = repo.parent / "bin"
+    fake_client(clients, "claude", "echo '9.9.9 (Claude Code)'")
+    config = repo.parent / "claude-config"
+    config.mkdir()
+    entry = {"hasTrustDialogAccepted": trusted}
+    projects = {str(repo.resolve()): entry}
+    (config / ".claude.json").write_text(json.dumps({"projects": projects}))
+    provision(repo, state)
+    return open_runner(
+        repo,
+        {**env(state), "CLAUDE_CONFIG_DIR": str(config)},
+        programs=(PYTHON.name,),
+        search_path=str(clients),
+    )
+
+
+@pytest.mark.parametrize("trusted", [True, False])
+def test_a_trust_probe_signs_what_the_client_config_says(
+    repo: Path, state: Path, trusted: bool
+) -> None:
+    runner = trust_runner(repo, state, trusted)
+    probe = {"op": "probe", "harness": "claude", "probe": "trust", "run_id": "t"}
+    with serving(runner) as sock:
+        reply = request(sock, probe)
+    receipt = parse(json.dumps(reply["receipt"])).receipt
+    assert receipt.binding.stage == "probe.trust"
+    assert receipt.observed["expected"] == {"exit": 0, "trusted": True}
+    observed = receipt.observed["observed"]
+    assert isinstance(observed, dict) and observed["trusted"] is trusted
+    assert receipt.observed["client_version"] == "9.9.9 (Claude Code)"
+    assert receipt.observed["matched"] is trusted
+    # A shareable receipt names no absolute path.
+    assert str(repo.parent) not in json.dumps(reply["receipt"])
+
+
+def test_a_trust_probe_never_reads_the_callers_environment(
+    repo: Path, state: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = trust_runner(repo, state, True)
+    elsewhere = repo.parent / "elsewhere"
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(elsewhere))
+    probe = {"op": "probe", "harness": "claude", "probe": "trust", "run_id": "t"}
     with serving(runner) as sock:
         reply = request(sock, probe)
     assert parse(json.dumps(reply["receipt"])).receipt.observed["matched"] is True

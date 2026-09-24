@@ -31,6 +31,11 @@ PROBES = """schema_version = 1
 description = "Discovery: the client reports its version."
 kind = "version"
 expect_exit = 0
+
+[probes.trust]
+description = "Trust: the client accepts this checkout."
+kind = "trust"
+expect_exit = 0
 """
 
 

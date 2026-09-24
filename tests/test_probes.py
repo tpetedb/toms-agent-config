@@ -10,7 +10,13 @@ from pathlib import Path
 
 import pytest
 
-from tac.doctor import CHECKS, Status, client_status, trust_status
+from tac.doctor import (
+    CHECKS,
+    Status,
+    client_status,
+    hook_trust_status,
+    trust_status,
+)
 from tac.probes import (
     CLIENTS,
     claude_config,
@@ -101,6 +107,8 @@ def test_doctor_carries_a_client_and_a_trust_check_per_harness() -> None:
     names = [c.name for c in CHECKS]
     for harness in CLIENTS:
         assert f"client-{harness}" in names and f"trust-{harness}" in names
+    # Codex trusts hooks by hash, apart from the project (design section 9).
+    assert "hook-trust-codex" in names
 
 
 # ---- Claude Code workspace trust
@@ -238,3 +246,35 @@ def test_a_trusted_checkout_passes(tmp_path: Path) -> None:
     write_claude(tmp_path / ".claude.json", {str(root.resolve()): entry})
     status, _ = trust_status("claude", root, {"CLAUDE_CONFIG_DIR": str(tmp_path)})
     assert status is Status.PASS
+
+
+# ---- Codex hook trust, reported apart from project trust
+
+
+def test_no_project_hooks_leaves_nothing_to_trust(tmp_path: Path) -> None:
+    status, detail = hook_trust_status(tmp_path)
+    assert status is Status.PASS and "no project hooks" in detail
+
+
+def test_a_codex_config_without_hooks_leaves_nothing_to_trust(tmp_path: Path) -> None:
+    (tmp_path / ".codex").mkdir()
+    (tmp_path / ".codex/config.toml").write_text('model = "x"\n')
+    assert hook_trust_status(tmp_path)[0] is Status.PASS
+
+
+@pytest.mark.parametrize(
+    ("name", "text"),
+    [
+        ("hooks.json", '{"hooks": {"PreToolUse": []}}'),
+        ("config.toml", '[[hooks.PreToolUse]]\nmatcher = "Bash"\n'),
+        ("config.toml", "not = [toml\n"),
+    ],
+)
+def test_project_hooks_stay_undecided_and_name_the_owner_step(
+    tmp_path: Path, name: str, text: str
+) -> None:
+    (tmp_path / ".codex").mkdir()
+    (tmp_path / ".codex" / name).write_text(text)
+    status, detail = hook_trust_status(tmp_path)
+    assert status is Status.UNKNOWN
+    assert f".codex/{name}" in detail and "/hooks" in detail
