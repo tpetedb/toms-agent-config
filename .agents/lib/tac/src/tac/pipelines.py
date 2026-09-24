@@ -9,8 +9,9 @@ stage waits for the owner.
 
 `check_pipelines` names the reason for every refusal: the shape, an unknown
 role, skill, contract or template, a template whose header disagrees with the
-stage, a read no upstream stage writes, a cycle, a gate that is a shell string
-or names no recipe, an effect policy.toml keeps for the owner. `plan` gives the
+stage, a read no upstream stage writes, a cycle, a gate that is a shell string,
+names no recipe or hands it a number of values it does not take, an effect
+policy.toml keeps for the owner. `plan` gives the
 stage order without running anything; `tac run` lands with the runner (M3).
 """
 
@@ -70,8 +71,84 @@ REQUIRED: Mapping[str, tuple[tuple[str, str], ...]] = {
     "effect": (("effects", "what the runner performs"),),
     "human": (("asks", "what the owner is asked"),),
 }
-_RECIPE_LINE = re.compile(r"^@?([A-Za-z_][A-Za-z0-9_-]*)\b[^:=]*:(?!=)")
+# A line that may open a recipe; _header_words tells it from an assignment.
+_RECIPE_LINE = re.compile(r"^@?[A-Za-z_][A-Za-z0-9_-]*(?=[\s:])")
 _IMPORT_LINE = re.compile(r"""^import\??\s+['"]([^'"]+)['"]""")
+
+
+@dataclass(frozen=True, slots=True)
+class Recipe:
+    """A justfile recipe's parameters, enough to know what a gate may pass it."""
+
+    name: str
+    required: int = 0
+    optional: int = 0
+    variadic: bool = False
+
+    def takes(self, count: int) -> bool:
+        if count < self.required:
+            return False
+        return self.variadic or count <= self.required + self.optional
+
+    def wants(self) -> str:
+        """The values it takes, in words, for a refusal."""
+        if self.variadic:
+            return f"{self.required} or more values"
+        if self.optional:
+            return f"{self.required} to {self.required + self.optional} values"
+        return f"{self.required} value" + ("" if self.required == 1 else "s")
+
+
+def _header_words(line: str) -> list[str] | None:
+    """The words before a recipe header's colon, quotes and parentheses kept whole;
+    None when the line's first colon is an assignment's `:=`."""
+    words: list[str] = []
+    word, quote, depth = "", "", 0
+    for i, char in enumerate(line):
+        if quote:
+            word += char
+            if char == quote:
+                quote = ""
+        elif char in "'\"`":
+            quote = char
+            word += char
+        elif char == "(":
+            depth += 1
+            word += char
+        elif char == ")":
+            depth -= 1
+            word += char
+        elif char == ":" and depth == 0:
+            if line[i + 1 : i + 2] == "=":
+                return None
+            return [*words, word] if word else words
+        elif char.isspace() and depth == 0:
+            if word:
+                words.append(word)
+            word = ""
+        else:
+            word += char
+    return None
+
+
+def parse_recipe(line: str) -> Recipe | None:
+    """A recipe header like `work-say id role text:` or `sync *args:`, else None."""
+    if not _RECIPE_LINE.match(line) or line.startswith(("set ", "export ", "alias ")):
+        return None
+    words = _header_words(line.removeprefix("@"))
+    if not words:
+        return None
+    required = optional = 0
+    variadic = False
+    for param in (w.removeprefix("$") for w in words[1:]):
+        if param[0] in "*+":
+            variadic = True
+            required += param[0] == "+" and "=" not in param
+        elif "=" in param:
+            optional += 1
+        else:
+            required += 1
+    return Recipe(words[0], required, optional, variadic)
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,14 +157,14 @@ class Known:
 
     roles: frozenset[str]
     skills: frozenset[str]
-    recipes: frozenset[str]
+    recipes: Mapping[str, Recipe]
     runner_only: frozenset[str]
     owner_only: frozenset[str]
 
 
-def recipes(root: Path) -> frozenset[str]:
-    """The recipe names of the justfile and the files it imports."""
-    found: set[str] = set()
+def recipes(root: Path) -> dict[str, Recipe]:
+    """The recipes of the justfile and the files it imports, by name."""
+    found: dict[str, Recipe] = {}
     seen: set[Path] = set()
     todo = [root / JUSTFILE]
     while todo:
@@ -100,10 +177,10 @@ def recipes(root: Path) -> frozenset[str]:
             if imported:
                 todo.append(path.parent / imported.group(1))
                 continue
-            match = _RECIPE_LINE.match(line)
-            if match and not line.startswith(("set ", "export ", "alias ")):
-                found.add(match.group(1))
-    return frozenset(found)
+            recipe = parse_recipe(line)
+            if recipe is not None:
+                found.setdefault(recipe.name, recipe)
+    return found
 
 
 def known(root: Path, problems: list[str]) -> Known:
@@ -255,10 +332,19 @@ def _gate_problems(where: str, gate: Gate, known_: Known) -> list[str]:
                 f"justfile has recipe {gate.argv[1]}; drop waits_on"
             ]
         return []
-    if gate.argv[1] not in known_.recipes:
+    recipe = known_.recipes.get(gate.argv[1])
+    if recipe is None:
         return [
             f"{where}: gate `{shown}`: the justfile has no recipe {gate.argv[1]}; "
             "name one, or set waits_on to the milestone that adds it"
+        ]
+    # args_from values are appended after any literal argv, one value each.
+    given = len(gate.argv) - 2 + len(gate.args_from)
+    if not recipe.takes(given):
+        passed = ", ".join([*gate.argv[2:], *gate.args_from]) or "nothing"
+        return [
+            f"{where}: gate `{shown}` passes {given} value(s) ({passed}), but "
+            f"recipe {recipe.name} takes {recipe.wants()}"
         ]
     return []
 

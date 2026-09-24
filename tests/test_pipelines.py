@@ -13,7 +13,15 @@ from click.testing import CliRunner
 from tac import pipelines
 from tac.cli import cli
 from tac.config_schema import PipelineFile
-from tac.pipelines import PIPELINES_DIR, check_pipelines, plan_rows, read_pipeline
+from tac.pipelines import (
+    PIPELINES_DIR,
+    Recipe,
+    check_pipelines,
+    parse_recipe,
+    plan_rows,
+    read_pipeline,
+)
+from tac.runner import DEFAULT_GATE_RECIPES
 from tac.tomldoc import document
 from tac.work import Bad
 
@@ -193,6 +201,72 @@ def test_a_gate_recipe_the_justfile_lacks_is_refused(root: Path) -> None:
 def test_a_waiting_gate_whose_recipe_exists_is_refused(root: Path) -> None:
     edit(root, "board", '"board-tally"]', '"work-check"]')
     assert "drop waits_on" in refused(root, "board")
+
+
+def test_a_gate_passing_a_value_the_recipe_does_not_take_is_refused(
+    root: Path,
+) -> None:
+    edit(
+        root,
+        "release",
+        'argv = ["just", "verify"]',
+        'argv = ["just", "verify"]\nargs_from = ["run_id"]',
+    )
+    assert (
+        "gate `just verify` passes 1 value(s) (run_id), but recipe verify takes "
+        "0 values"
+    ) in refused(root, "release")
+
+
+def test_a_gate_missing_the_value_its_recipe_needs_is_refused(root: Path) -> None:
+    edit(root, "review", 'args_from = ["order_id"]', "args_from = []")
+    assert "recipe work-review takes 1 value" in refused(root, "review")
+
+
+def test_a_retry_repair_with_the_wrong_values_is_refused(root: Path) -> None:
+    path = root / "justfile"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(
+        text.replace("work-repair id:", "work-repair id round:"), encoding="utf-8"
+    )
+    assert "recipe work-repair takes 2 values" in refused(root)
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        ("verify: lint-ci", Recipe("verify")),
+        ("@quiet:", Recipe("quiet")),
+        ("work-say id role text:", Recipe("work-say", required=3)),
+        ('config-check base="":', Recipe("config-check", optional=1)),
+        ('pick x="a:b" +rest:', Recipe("pick", required=1, optional=1, variadic=True)),
+        ("sync *args:", Recipe("sync", variadic=True)),
+        ('keep $x y=("q" + "r"): dep', Recipe("keep", required=1, optional=1)),
+        ('tac := "uv run tac"', None),
+        ('set shell := ["bash", "-c"]', None),
+        ("mod tools", None),
+    ],
+)
+def test_recipe_headers_are_read_with_their_parameters(
+    line: str, expected: Recipe | None
+) -> None:
+    assert parse_recipe(line) == expected
+
+
+def test_the_recipes_follow_imports(root: Path) -> None:
+    (root / "extra.just").write_text("board-tally run:\n    true\n", encoding="utf-8")
+    path = root / "justfile"
+    path.write_text(
+        "import 'extra.just'\n" + path.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    assert pipelines.recipes(root)["board-tally"] == Recipe("board-tally", 1)
+
+
+def test_the_runner_gate_allowlist_agrees_with_the_justfile() -> None:
+    found = pipelines.recipes(REPO)
+    for name, count in DEFAULT_GATE_RECIPES.items():
+        assert name in found, name
+        assert found[name].takes(count), (name, count, found[name])
 
 
 def test_an_unknown_skill_is_refused(root: Path) -> None:
