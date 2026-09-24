@@ -661,6 +661,7 @@ dependencies = [
     { name = "click" },
     { name = "cryptography" },
     { name = "jinja2" },
+    { name = "jsonschema" },
     { name = "pydantic" },
 ]
 
@@ -668,7 +669,6 @@ dependencies = [
 dev = [
     { name = "actionlint-py" },
     { name = "basedpyright" },
-    { name = "jsonschema" },
     { name = "pytest" },
     { name = "pyyaml" },
     { name = "ruff" },
@@ -681,6 +681,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.2" },
     { name = "cryptography", specifier = ">=45" },
     { name = "jinja2", specifier = ">=3.1" },
+    { name = "jsonschema", specifier = ">=4.26.0" },
     { name = "pydantic", specifier = ">=2.11" },
 ]
 
@@ -688,7 +689,6 @@ requires-dist = [
 dev = [
     { name = "actionlint-py", specifier = ">=1.7.12.25" },
     { name = "basedpyright", specifier = ">=1.31" },
-    { name = "jsonschema", specifier = ">=4.26.0" },
     { name = "pytest", specifier = ">=8.4" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", specifier = ">=0.13" },

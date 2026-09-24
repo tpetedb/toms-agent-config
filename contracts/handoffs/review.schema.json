@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "review",
+  "description": "A review of one commit by the other provider, bound to that commit.",
+  "type": "object",
+  "properties": {
+    "order_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{2,48}$",
+      "description": "The order under review."
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$",
+      "description": "The commit the review read."
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "accept",
+        "changes",
+        "reject"
+      ],
+      "description": "accept lands it, changes sends it back to the builder, reject stops the order."
+    },
+    "summary": {
+      "type": "string",
+      "description": "The review in two or three sentences."
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "description": "How much the finding matters."
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The file the finding is in; null when it is about the whole change."
+          },
+          "line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The line the finding anchors to; null when there is none."
+          },
+          "summary": {
+            "type": "string",
+            "description": "The finding in one sentence."
+          },
+          "detail": {
+            "type": "string",
+            "description": "What fails, how to see it, and what would fix it."
+          }
+        },
+        "required": [
+          "severity",
+          "path",
+          "line",
+          "summary",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Each finding; empty when there is none."
+    }
+  },
+  "required": [
+    "order_id",
+    "commit",
+    "verdict",
+    "summary",
+    "findings"
+  ],
+  "additionalProperties": false
+}

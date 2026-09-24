@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "order-request",
+  "description": "What intake makes of an issue: a request for one order, or a refusal with its reason.",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "A short title for the order, in plain words."
+    },
+    "goal": {
+      "type": "string",
+      "description": "What the order must achieve, in one or two sentences."
+    },
+    "team": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The team whose paths the work falls in, from config/teams.toml; null when intake cannot tell."
+    },
+    "source_issue": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "The issue number this request came from; null when it came from the owner in chat."
+    },
+    "refused": {
+      "type": "boolean",
+      "description": "True when the issue is not taken on, for example because its author is not a collaborator."
+    },
+    "refusal_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Why the issue is refused; null unless refused is true."
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Questions the specify stage must answer before the order can be written."
+    }
+  },
+  "required": [
+    "title",
+    "goal",
+    "team",
+    "source_issue",
+    "refused",
+    "refusal_reason",
+    "open_questions"
+  ],
+  "additionalProperties": false
+}

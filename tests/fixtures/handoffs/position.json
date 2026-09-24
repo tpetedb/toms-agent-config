@@ -1,0 +1,12 @@
+{
+  "question": "Should the line length go from 88 to 100?",
+  "decision": "Keep 88.",
+  "rationale": "The formatter handles long lines already.",
+  "risks": [
+    "Some test names wrap."
+  ],
+  "alternatives": [
+    "100 for tests only, set aside: two settings to keep."
+  ],
+  "loosens_policy": false
+}

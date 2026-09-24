@@ -8,6 +8,7 @@ dependencies = [
   "click>=8.2",
   "cryptography>=45",
   "jinja2>=3.1",
+  "jsonschema>=4.26.0",
   "pydantic>=2.11",
 ]
 
@@ -22,7 +23,6 @@ build-backend = "uv_build"
 dev = [
   "actionlint-py>=1.7.12.25",
   "basedpyright>=1.31",
-  "jsonschema>=4.26.0",
   "pytest>=8.4",
   "pyyaml>=6.0",
   "ruff>=0.13",

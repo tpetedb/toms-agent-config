@@ -19,6 +19,11 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from jsonschema import Draft7Validator
+from jsonschema.exceptions import SchemaError
+
+from tac.draft07 import DRAFT_07, later_keywords
+
 MODEL_FACING_DIR = "contracts/handoffs"
 MAX_DEPTH = 10
 # Keywords the strict subset refuses, whatever they are nested in.
@@ -85,6 +90,22 @@ def strict_subset_problems(schema: Any) -> list[str]:
     return problems
 
 
+def draft07_problems(schema: Any) -> list[str]:
+    """A contract declares draft-07, is a valid one, and uses nothing later,
+    which a draft-07 validator would skip without a word."""
+    if not isinstance(schema, dict):
+        return ["not a JSON Schema object"]
+    problems = []
+    if schema.get("$schema") != DRAFT_07:
+        problems.append(f"$schema must be {DRAFT_07}")
+    try:
+        Draft7Validator.check_schema(schema)
+    except SchemaError as e:
+        problems.append(f"not a valid draft-07 schema: {e.message}")
+    problems += [f"{p} is not draft-07" for p in later_keywords(schema)]
+    return problems
+
+
 def model_facing(root: Path) -> list[Path]:
     folder = root / MODEL_FACING_DIR
     return sorted(folder.rglob("*.schema.json")) if folder.is_dir() else []
@@ -100,5 +121,6 @@ def check_contracts(root: Path) -> list[str]:
         except json.JSONDecodeError as e:
             problems.append(f"{rel}: not valid JSON: {e}")
             continue
+        problems += [f"{rel}: {p}" for p in draft07_problems(schema)]
         problems += [f"{rel}#{p}" for p in strict_subset_problems(schema)]
     return problems

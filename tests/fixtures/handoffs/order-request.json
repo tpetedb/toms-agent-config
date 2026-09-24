@@ -1,0 +1,9 @@
+{
+  "title": "Intro page",
+  "goal": "Add docs/intro.md that says what the tool does.",
+  "team": "docs",
+  "source_issue": 12,
+  "refused": false,
+  "refusal_reason": null,
+  "open_questions": []
+}

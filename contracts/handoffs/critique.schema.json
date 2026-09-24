@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "critique",
+  "description": "One director's independent critique of the lead director's position.",
+  "type": "object",
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "agree",
+        "amend",
+        "oppose"
+      ],
+      "description": "The director's stance on the position."
+    },
+    "points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "description": "How much the point matters."
+          },
+          "text": {
+            "type": "string",
+            "description": "The point, with its evidence."
+          }
+        },
+        "required": [
+          "severity",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Each point the director raises."
+    },
+    "safety_veto": {
+      "type": "boolean",
+      "description": "True sends the item to the owner, whatever the tally."
+    },
+    "veto_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Why the veto is raised; null unless safety_veto is true."
+    }
+  },
+  "required": [
+    "verdict",
+    "points",
+    "safety_veto",
+    "veto_reason"
+  ],
+  "additionalProperties": false
+}

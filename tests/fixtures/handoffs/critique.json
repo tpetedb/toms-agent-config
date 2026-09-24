@@ -1,0 +1,11 @@
+{
+  "verdict": "agree",
+  "points": [
+    {
+      "severity": "low",
+      "text": "The risk is cosmetic."
+    }
+  ],
+  "safety_veto": false,
+  "veto_reason": null
+}

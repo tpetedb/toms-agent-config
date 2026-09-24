@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "build-report",
+  "description": "What a builder reports when its turn ends.",
+  "type": "object",
+  "properties": {
+    "order_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{2,48}$",
+      "description": "The order that was built."
+    },
+    "commit": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$",
+      "description": "The commit the builder's work ends at; null when nothing was committed."
+    },
+    "summary": {
+      "type": "string",
+      "description": "What was built, in plain words."
+    },
+    "changed_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Every path the builder changed."
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "A command the builder ran."
+          },
+          "exit": {
+            "type": "integer",
+            "description": "Its exit status."
+          }
+        },
+        "required": [
+          "command",
+          "exit"
+        ],
+        "additionalProperties": false
+      },
+      "description": "The checks the builder ran and what they returned."
+    },
+    "open_items": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What is left for a later order or for the owner; empty when nothing."
+    }
+  },
+  "required": [
+    "order_id",
+    "commit",
+    "summary",
+    "changed_paths",
+    "checks",
+    "open_items"
+  ],
+  "additionalProperties": false
+}

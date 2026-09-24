@@ -1,0 +1,13 @@
+{
+  "lessons": [
+    {
+      "title": "Run the check first",
+      "text": "Run just work-check before writing the report.",
+      "paths": [],
+      "topic": [
+        "work-orders"
+      ],
+      "evidence": "review of docs-intro"
+    }
+  ]
+}

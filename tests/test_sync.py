@@ -23,6 +23,7 @@ from tac import sync as sync_mod
 from tac.cli import cli
 from tac.contracts import MODEL_FACING_DIR, strict_subset_problems
 from tac.doctor import Status, check_generated_lock
+from tac.draft07 import DRAFT_07
 from tac.sync import (
     LOCK_FILE,
     check_staged,
@@ -427,5 +428,5 @@ def test_only_model_facing_contracts_are_held_to_the_subset(tmp_path: Path) -> N
         f"{MODEL_FACING_DIR}/review.schema.json#/: property a must be required"
         in problems
     )
-    handoff.write_text(json.dumps(STRICT))
+    handoff.write_text(json.dumps({"$schema": DRAFT_07, **STRICT}))
     assert check_tree(root) == []
