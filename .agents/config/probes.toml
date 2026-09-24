@@ -1,0 +1,10 @@
+# Client probes the runner runs for `tac receipt client --harness <h> --probe <name>`.
+# The runner reads this file as committed at the revision it observes, the one the
+# receipt's policy hash covers, and starts only the harness's own executable: a
+# probe names what to observe, never a command line.
+schema_version = 1
+
+[probes.version]
+description = "Discovery: the client is installed and reports its version."
+kind = "version"
+expect_exit = 0

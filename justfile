@@ -43,6 +43,24 @@ stamp-lib:
     uv lock --project .agents
     uv sync --frozen --no-editable --project .agents
 
+# ---- the runner: host only, from the owner's terminal, never an agent session
+
+# Create the controller store and the signing key; --write-pub writes runner.pub.
+runner-init *args:
+    {{ tac }} runner init {{ args }}
+
+# Serve the runner socket in the foreground until interrupted.
+runner:
+    {{ tac }} runner serve
+
+# Is the runner up, and with which key.
+runner-status:
+    {{ tac }} runner status
+
+# Have the runner probe a client and sign what it saw: just receipt-client claude version
+receipt-client harness probe *args:
+    {{ tac }} receipt client --harness {{ quote(harness) }} --probe {{ quote(probe) }} {{ args }}
+
 # Print what the next release section would say, from changelog.d/.
 changelog:
     uv run --frozen towncrier build --draft --version Unreleased

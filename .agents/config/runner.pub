@@ -1,0 +1,7 @@
+# The trusted runner's ed25519 public key, PEM. CI verifies receipts against the
+# copy on the base revision, never the candidate's, so a pull request that edits
+# this file changes nothing about the receipts judged with it.
+#
+# Not provisioned yet: until a key is here, every receipt is refused. The owner
+# runs `tac runner init --write-pub` on the host, outside any agent session, and
+# lands this file through a pull request.
