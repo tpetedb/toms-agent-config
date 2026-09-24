@@ -15,6 +15,7 @@ from tac.adapters import charter_sha256
 from tac.config import load_config
 from tac.doctor import Status, hook_trust_status
 from tac.sync import sync
+from tac.work import Bad
 from tests._syncproject import copy_project, replace_in, synced, toml
 
 # Keys Codex ignores in a project-local .codex/config.toml.
@@ -101,6 +102,20 @@ def test_native_delegation_off_removes_the_spawn_tools(tmp_path: Path) -> None:
     )
     sync(root)
     assert toml(root / ".codex/config.toml")["agents"]["enabled"] is False
+
+
+@pytest.mark.parametrize("value", ["untrusted", "on-failure"])
+def test_an_approval_policy_codex_no_longer_takes_is_refused(
+    tmp_path: Path, value: str
+) -> None:
+    root = copy_project(tmp_path)
+    replace_in(
+        root / ".agents/config/profiles/standard.toml",
+        'approval_policy = "on-request"',
+        f'approval_policy = "{value}"',
+    )
+    with pytest.raises(Bad, match="approval_policy"):
+        load_config(root)
 
 
 def test_the_generated_config_explains_every_key(root: Path) -> None:

@@ -28,4 +28,4 @@ owner_only = ["merge", "release", "approve", "loosen-policy"]
 refuse_claude_modes = ["bypassPermissions"]          # Claude defaultMode values refused on the host, any of: default | acceptEdits | plan | bypassPermissions
 refuse_unsandboxed_commands = true                    # true refuses allowUnsandboxedCommands = true on the host
 refuse_codex_sandbox = ["danger-full-access"]        # Codex sandbox_mode values refused on the host, any of: read-only | workspace-write | danger-full-access
-refuse_codex_approval = ["never"]                    # Codex approval_policy values refused on the host, any of: untrusted | on-failure | on-request | never
+refuse_codex_approval = ["never"]                    # Codex approval_policy values refused on the host, any of: on-request | never

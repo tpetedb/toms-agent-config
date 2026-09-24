@@ -42,5 +42,5 @@ mcp_servers = "none"
 # permission mode (default | acceptEdits | plan | bypassPermissions).
 claude = { failIfUnavailable = true, allowUnsandboxedCommands = false, defaultMode = "default" }
 # Rendered into .codex/config.toml: sandbox_mode (read-only | workspace-write |
-# danger-full-access) and approval_policy (untrusted | on-failure | on-request | never).
+# danger-full-access) and approval_policy (on-request | never).
 codex = { sandbox_mode = "workspace-write", approval_policy = "on-request" }

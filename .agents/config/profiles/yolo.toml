@@ -42,5 +42,5 @@ mcp_servers = "from-conf"
 # permission mode (default | acceptEdits | plan | bypassPermissions).
 claude = { failIfUnavailable = false, allowUnsandboxedCommands = true, defaultMode = "bypassPermissions" }   # container only; a check refuses these values in any host-rendered file
 # Rendered into .codex/config.toml: sandbox_mode (read-only | workspace-write |
-# danger-full-access) and approval_policy (untrusted | on-failure | on-request | never).
+# danger-full-access) and approval_policy (on-request | never).
 codex = { sandbox_mode = "danger-full-access", approval_policy = "never" }

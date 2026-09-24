@@ -312,6 +312,34 @@ def locked_outputs(root: Path) -> list[str]:
     return sorted(lock["outputs"]) if lock else []
 
 
+def allowed_output(rel: str) -> bool:
+    """Whether some template may write `rel`: the allowlist, with `{role}` one
+    role name."""
+    for patterns in ALLOWED.values():
+        for pattern in patterns:
+            head, found, tail = pattern.partition("{role}")
+            if not found:
+                if rel == pattern:
+                    return True
+                continue
+            name = rel[len(head) : len(rel) - len(tail)]
+            if (
+                rel.startswith(head)
+                and rel.endswith(tail)
+                and len(rel) > len(head) + len(tail)
+                and ROLE_NAME.match(name)
+            ):
+                return True
+    return False
+
+
+def generated_paths(root: Path) -> tuple[str, ...]:
+    """What any work order may touch because `tac sync` rewrites it: the lock and
+    every output it lists. Only allowlisted outputs count, so a lock edited to
+    name some other file widens no order."""
+    return (LOCK_FILE, *(r for r in locked_outputs(root) if allowed_output(r)))
+
+
 # ---------------------------------------------------------------- sync
 
 

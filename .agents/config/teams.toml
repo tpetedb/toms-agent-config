@@ -16,9 +16,9 @@ schema_version = 1
 base = "origin/main"
 # Any team may own a test file; two active orders still may not own the same one.
 shared = ["tests/"]
-# What any order may touch besides what it owns: regenerated outputs, and the
-# changelog fragment every product change carries. Listed by hand until
-# .agents/generated.lock exists to name the generated outputs.
+# What any order may touch besides what it owns: the changelog fragment every
+# product change carries and the stamped copy with its lock. `tac work` adds
+# .agents/generated.lock and every output it lists, so those are not named here.
 anyone = ["changelog.d/", ".agents/lib/tac/", ".agents/uv.lock"]
 # A criterion may run a whole battery; a hung one must still end.
 check_timeout_s = 1500

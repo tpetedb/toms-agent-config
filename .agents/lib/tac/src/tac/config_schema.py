@@ -229,7 +229,9 @@ class Context(_Model):
 
 ClaudeMode = Literal["default", "acceptEdits", "plan", "bypassPermissions"]
 CodexSandbox = Literal["read-only", "workspace-write", "danger-full-access"]
-CodexApproval = Literal["untrusted", "on-failure", "on-request", "never"]
+# The values Codex's config reference lists: "untrusted" is unsupported there
+# and "on-failure" deprecated, so neither is accepted here.
+CodexApproval = Literal["on-request", "never"]
 
 
 class ClaudeProfile(_Model):

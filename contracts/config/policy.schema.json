@@ -71,8 +71,6 @@
         "refuse_codex_approval": {
           "items": {
             "enum": [
-              "untrusted",
-              "on-failure",
               "on-request",
               "never"
             ],

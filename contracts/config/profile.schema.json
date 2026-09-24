@@ -37,8 +37,6 @@
       "properties": {
         "approval_policy": {
           "enum": [
-            "untrusted",
-            "on-failure",
             "on-request",
             "never"
           ],

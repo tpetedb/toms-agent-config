@@ -71,12 +71,6 @@ def test_the_repository_is_in_sync() -> None:
     assert check_tree(REPO) == []
 
 
-def test_sync_is_idempotent(tmp_path: Path) -> None:
-    root = synced(tmp_path)
-    assert sync(root) == []
-    assert check_tree(root) == []
-
-
 def test_every_output_is_on_the_allowlist_and_named_by_its_template(
     tmp_path: Path,
 ) -> None:

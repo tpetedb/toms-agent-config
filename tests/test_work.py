@@ -19,6 +19,7 @@ import pytest
 import yaml
 
 from tac import work
+from tac.sync import generated_paths
 from tests.conftest import REPO
 
 KEEP = 8
@@ -194,6 +195,22 @@ def test_generated_files_and_the_fragment_belong_to_anyone(repo: Path) -> None:
     (repo / "changelog.d").mkdir()
     (repo / "changelog.d" / "x.fixed.md").write_text("x\n")
     assert work.run_check(order, "origin/main")["ok"]
+
+
+def test_the_generated_lock_and_its_outputs_belong_to_anyone(repo: Path) -> None:
+    lock = repo / ".agents" / "generated.lock"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    # src/scene.js is no template's output, so listing it widens nothing.
+    lock.write_text(
+        'schema_version = 1\n[outputs]\n"CLAUDE.md" = "0"\n'
+        '".claude/agents/builder.md" = "0"\n"src/scene.js" = "0"\n'
+    )
+    (repo / ".claude" / "agents").mkdir(parents=True)
+    (repo / ".claude" / "agents" / "builder.md").write_text("rendered\n")
+    (repo / "CLAUDE.md").write_text("rendered\n")
+    (repo / "src" / "scene.js").write_text("// not mine\n")
+    order = put_order(repo, "one", order_text("one", "feat/x", ["src/panel.js"]))
+    assert work.run_check(order, "origin/main")["strays"] == ["src/scene.js"]
 
 
 def test_a_failing_command_fails_the_order_and_shows_its_output(repo: Path) -> None:
@@ -1346,11 +1363,11 @@ def test_check_output_cannot_close_the_fence_around_it(repo: Path) -> None:
 def test_every_tracked_file_has_a_team() -> None:
     teams = work.load_teams(REPO)
     names = sh(REPO, "ls-files").splitlines()
+    anyone = (*teams.settings.anyone, *generated_paths(REPO))
     homeless = [
         n
         for n in names
-        if teams.of(n) is None
-        and not any(work.covers(a, n) for a in teams.settings.anyone)
+        if teams.of(n) is None and not any(work.covers(a, n) for a in anyone)
     ]
     assert homeless == [], f"add these to a team in {work.TEAMS_FILE}"
 

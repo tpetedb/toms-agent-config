@@ -477,10 +477,17 @@ def load_order(folder: Path, teams: Teams, root: Path) -> Order:
         tuple(criteria),
         data.get("issue"),
         provider,
-        teams.settings.anyone,
+        (*teams.settings.anyone, *_generated(root)),
         tuple(unknown),
         reference,
     )
+
+
+def _generated(root: Path) -> tuple[str, ...]:
+    # tac.sync imports this module, so the import waits for the first call.
+    from tac.sync import generated_paths
+
+    return generated_paths(root)
 
 
 def orders_in(root: Path, teams: Teams) -> list[Order]:
