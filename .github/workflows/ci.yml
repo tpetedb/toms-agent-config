@@ -39,3 +39,27 @@ jobs:
         run: uv run --frozen pytest -q
       - name: Private scan
         run: bash scripts/private_scan.sh
+
+  # After the tests, so that an order still waiting for its review can never
+  # hide a failing test. An order that ships code ships its accepted review and
+  # sign-offs; a single order's pull request stays inside its files.
+  work:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The base branch and the order branches have to be here to diff.
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Build the deployed toolchain from its named source
+        run: uv sync --frozen --no-editable --project .agents
+      - name: Work orders are readable, reviewed and inside their files
+        # A branch name is chosen by whoever opens the pull request, so it
+        # reaches the shell as a variable and never as script text.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: uv run --frozen --no-sync --project .agents tac work ci --base "origin/$BASE_REF" --head "$HEAD_REF"

@@ -1,0 +1,35 @@
+# An example of the format, kept as the reference `tac work validate` reads.
+# Its branch is never checked out, so it is never active, never guards an edit
+# and never collides with a real order.
+v = 1
+id = "example"
+title = "The work-order README tells a newcomer how an order is written, built, reviewed and landed"
+team = "harness"
+branch = "example/work-order"
+goal = ""
+# Whoever builds this writes their name here; a review by the same name does not count.
+builder = ""
+# The builder's provider; the review comes from the other one.
+provider = "claude"
+
+# Files, or folders ending in /. No globs: two orders may never own the same file.
+owns = ["work/README.md"]
+# Other teams whose files this order has to touch; each one signs off.
+cross = []
+# Orders that have to land before this one starts.
+needs = []
+
+[[criteria]]
+id = "c1"
+text = "Every order in this checkout is readable and no two active orders collide."
+check = "uv run --frozen tac work validate"
+
+[[criteria]]
+id = "c2"
+text = "The README names every recipe a builder and a reviewer run."
+check = "for r in work-new work-check work-packet work-review work-accept work-repair; do grep -q \"$r\" work/README.md || exit 1; done"
+
+[[criteria]]
+id = "c3"
+text = "A newcomer can write, build and hand over an order from the README alone, without reading the source."
+judge = "reviewer"

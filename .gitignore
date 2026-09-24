@@ -22,3 +22,8 @@ build/
 # Test artefacts and editor noise.
 tests/out/
 .DS_Store
+
+# What tac work measures next to an order: never committed.
+work/orders/*/result.json
+work/orders/*/touched.json
+work/orders/*/repair.md

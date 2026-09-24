@@ -270,6 +270,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
+    { name = "jinja2" },
 ]
 
 [package.dev-dependencies]
@@ -284,7 +285,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "click", specifier = ">=8.2" }]
+requires-dist = [
+    { name = "click", specifier = ">=8.2" },
+    { name = "jinja2", specifier = ">=3.1" },
+]
 
 [package.metadata.requires-dev]
 dev = [

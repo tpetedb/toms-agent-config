@@ -9,6 +9,7 @@ import click
 
 from tac import __version__
 from tac.doctor import CHECKS, exit_code, find_root, render_text, run_checks
+from tac.work_cli import work_group
 
 
 @click.group()
@@ -40,6 +41,9 @@ def doctor(root: Path | None, as_json: bool) -> None:
     else:
         click.echo(render_text(results))
     raise SystemExit(code)
+
+
+cli.add_command(work_group)
 
 
 def main() -> None:

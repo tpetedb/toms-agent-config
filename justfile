@@ -46,3 +46,57 @@ stamp-lib:
 # Print what the next release section would say, from changelog.d/.
 changelog:
     uv run --frozen towncrier build --draft --version Unreleased
+
+# ---- work orders: a task is data and its acceptance is a command (work/README.md)
+
+# Scaffold a draft order on this branch: just work-new docs-intro docs "Intro page"
+work-new id team title:
+    {{ tac }} work new {{ quote(id) }} --team {{ quote(team) }} --title {{ quote(title) }}
+
+# Every order here is readable, and no two active orders own the same file.
+work-validate:
+    {{ tac }} work validate
+
+# Ownership, then every criterion's command; the result is cached for this exact tree.
+work-check id:
+    {{ tac }} work check {{ quote(id) }}
+
+# One bounded builder turn on the failing criteria, then work-check again.
+work-repair id:
+    {{ tac }} work repair {{ quote(id) }}
+
+# What a reviewer reads, and the commit to put in review.toml.
+work-packet id:
+    {{ tac }} work packet {{ quote(id) }}
+
+# The review gate: current, by someone else, from the other provider, accepted.
+work-review id:
+    {{ tac }} work review {{ quote(id) }}
+
+# Checks, review and sign-offs together: is it ready to land.
+work-accept id:
+    {{ tac }} work accept {{ quote(id) }}
+
+# A goal as launch groups: needs first, disjoint files, the agent budget.
+work-plan goal:
+    {{ tac }} work plan {{ quote(goal) }}
+
+# Every active order in every worktree.
+work-board:
+    {{ tac }} work board
+
+# At a release: remove the orders that landed.
+work-sweep:
+    {{ tac }} work sweep
+
+# Write or refresh the order's one status comment on its issue.
+work-post id:
+    {{ tac }} work post {{ quote(id) }}
+
+# Read the order's issue: owner and collaborators only, status comments left out.
+work-thread id:
+    {{ tac }} work thread {{ quote(id) }}
+
+# Say something on the order's issue in a role: just work-say docs-intro manager:docs "..."
+work-say id role text:
+    {{ tac }} work say {{ quote(id) }} --role {{ quote(role) }} {{ quote(text) }}

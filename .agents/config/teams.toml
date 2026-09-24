@@ -1,0 +1,72 @@
+# =============================================================================
+# .agents/config/teams.toml: the teams, the paths each answers for, and the
+# knobs of `tac work`. A path belongs to the FIRST team below that covers it, so
+# the specific teams come before the general ones. `dir/` is everything under
+# it; anything else is a glob. An order owns files of its own team; files of
+# another team go in its `cross` list and need that team's sign-off.
+# Unknown keys fail loudly. work/README.md explains the orders.
+# =============================================================================
+schema_version = 1
+
+[work]
+# The branch orders are measured against and landed on.
+base = "origin/main"
+# Any team may own a test file; two active orders still may not own the same one.
+shared = ["tests/"]
+# What any order may touch besides what it owns: regenerated outputs, and the
+# changelog fragment every product change carries.
+anyone = ["changelog.d/", ".agents/lib/tac/", ".agents/uv.lock"]
+# A criterion may run a whole battery; a hung one must still end.
+check_timeout_s = 1500
+# All of an order's criteria together when a stop hook runs them, kept under
+# the hook's own time limit so the tool ends them, with a reason.
+stop_budget_s = 1500
+# How many agents an order remembers in touched.json, newest edit last.
+touched_keep = 32
+# "other": a review counts only from the provider that did not build the order.
+# "any" drops that rule, for a project with one provider.
+review_provider = "other"
+
+[work.repair]
+# One bounded builder turn for `just work-repair <id>`: argv run without a
+# shell, the rendered handoff on stdin, `{order}` and `{max_turns}` the only
+# placeholders. Empty until `tac launch` exists; the handoff is then written to
+# work/orders/<id>/repair.md and the check runs again.
+argv = []
+timeout_s = 1800
+max_turns = 30
+
+[teams.core]
+title = "The tac package and what it ships: CLI, runner, hook guard, templates, contracts"
+owns = ["src/", "hooks/", "templates/", "contracts/"]
+tests = ["tests/test_cli.py", "tests/test_doctor_exit.py", "tests/test_work.py"]
+manager = "core-manager"
+max_workers = 2
+
+[teams.harness]
+title = "How the work is done here: the agent tree, CI, scripts, tooling, the orders"
+owns = [
+  ".agents/",
+  ".github/",
+  "scripts/",
+  "work/",
+  "justfile",
+  "bootstrap.sh",
+  "mise.toml",
+  "pyproject.toml",
+  "uv.lock",
+  ".gitignore",
+  ".python-version",
+  "CHANGELOG.md",
+  "changelog.d/",
+]
+tests = ["tests/test_scaffolding.py", "tests/test_work.py"]
+manager = "harness-manager"
+max_workers = 2
+
+[teams.docs]
+title = "What a reader is told: the design, the board, the README, the owner's list"
+owns = ["docs/", "*.md", "LICENSE"]
+tests = ["tests/test_scaffolding.py"]
+manager = "docs-manager"
+max_workers = 1

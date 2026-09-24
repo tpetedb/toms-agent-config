@@ -1,0 +1,27 @@
+# A review of one order, by someone who did not build it, run on the provider
+# that did not build it. Copy to work/orders/<id>/review.toml.
+# `just work-packet <id>` prints what to read and the commit to put in
+# `reviewed`; `just work-review <id>` says whether this file passes the gate.
+v = 1
+order = ""
+by = ""
+# Your provider; it has to differ from the order's provider.
+provider = ""
+# The commit you read. If a file the order owns changes after it, the review
+# no longer counts and has to be done again.
+reviewed = ""
+# accept, or improve (then the findings say what).
+verdict = "improve"
+
+# One row per criterion of the order, checked or judged. A checked criterion
+# passing is not enough: say whether the command really proves the text.
+[[criteria]]
+id = "c1"
+verdict = "fail"
+evidence = ""
+
+# What you found, most severe first. severity: high, medium, low.
+# [[findings]]
+# severity = "medium"
+# file = ""
+# text = ""
