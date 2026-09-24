@@ -246,7 +246,8 @@ def ci(base: str | None, head: str) -> int:
     carried |= {
         o.id for o in orders.values() if head and o.branch == head and o.id not in done
     }
-    carried &= set(orders)
+    # A reference order is the format's worked example: read above, never judged.
+    carried = {oid for oid in carried if oid in orders and not orders[oid].reference}
     ships_code = any(not n.startswith("work/") for n in files)
     bad: list[str] = []
     for oid in sorted(carried):

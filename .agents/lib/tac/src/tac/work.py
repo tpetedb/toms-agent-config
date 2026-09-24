@@ -69,6 +69,7 @@ ORDER_KEYS = frozenset(
         "needs",
         "criteria",
         "issue",
+        "reference",
     }
 )
 CRITERION_KEYS = frozenset({"id", "text", "check", "judge", "timeout"})
@@ -372,6 +373,9 @@ class Order:
     provider: str = ""
     anyone: tuple[str, ...] = ()
     unknown: tuple[str, ...] = ()
+    # A worked example of the format: read and validated, never built, so it
+    # never guards an edit and never needs a review.
+    reference: bool = False
 
     @property
     def dir(self) -> Path:
@@ -405,6 +409,9 @@ def load_order(folder: Path, teams: Teams, root: Path) -> Order:
     for other in cross:
         if other not in teams.ids() or other == data["team"]:
             raise Bad(f"{path}: cross names {other!r}, which is not another team")
+    reference = data.get("reference", False)
+    if not isinstance(reference, bool):
+        raise Bad(f"{path}: reference is true or false")
     provider = str(data.get("provider", ""))
     if provider and not PROVIDER.match(provider):
         raise Bad(f"{path}: provider = {provider!r}: a short lowercase name")
@@ -469,6 +476,7 @@ def load_order(folder: Path, teams: Teams, root: Path) -> Order:
         provider,
         teams.settings.anyone,
         tuple(unknown),
+        reference,
     )
 
 
@@ -548,7 +556,7 @@ def active(
         if drafts is not None:
             drafts += bad
         for order in orders:
-            if order.branch == branch and order.id not in done:
+            if order.branch == branch and order.id not in done and not order.reference:
                 found[order.id] = order
     return list(found.values())
 

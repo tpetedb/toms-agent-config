@@ -13,7 +13,7 @@ How more than one agent works here at once without stepping on each other, and h
 | `orders/<id>/touched.json` | Which agents edited under this order, written by the hook. Not committed. |
 | `orders/<id>/repair.md` | The last repair handoff `work-repair` rendered. Not committed. |
 | `templates/` | Start from these. `just work-new <id> <team> "<title>"` writes an order. |
-| `orders/example/` | The format, kept as a reference. Its branch is never checked out, so it never guards anything. |
+| `orders/example/` | The format, kept as a reference. `reference = true` keeps it out of every gate: it is read and validated, never active, never guards an edit and CI never judges it. |
 
 An order is active while its branch is checked out in some worktree, and landed once its accepting review is on the base branch. One order, one branch, one pull request: `work-validate` names two orders that share a branch. Both are derived; nothing stores a status. `just work-new` writes a draft: it loads, and starts guarding, once `owns`, `builder` and a criterion are filled in. Someone else's draft in another worktree is named by `work-validate` and never fails it.
 

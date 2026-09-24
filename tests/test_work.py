@@ -590,6 +590,26 @@ def test_ci_finds_the_order_by_its_branch_and_wants_review_and_sign_off(
     assert ran.returncode == 0, ran.stdout
 
 
+def test_a_reference_order_is_read_but_never_judged(repo: Path) -> None:
+    """The format's worked example owns a real file; a pull request that edits
+    that file or the example itself must not wait for a review of the example."""
+    text = order_text("example", "example/never", ["src/panel.js"])
+    put_order(repo, "example", text.replace("v = 1", "v = 1\nreference = true", 1))
+    (repo / "src" / "panel.js").write_text("// a real change\n")
+    commit(repo, "the example and a change to the file it names")
+    ran = tool(repo, "ci", "--base", "origin/main", "--head", "feat/x")
+    assert ran.returncode == 0 and "0 orders" in ran.stdout, ran.stdout
+    sh(repo, "checkout", "-qb", "example/never")
+    assert work.active(repo) == []
+    # Without the flag the same file is an order in this pull request.
+    put_order(repo, "example", text)
+    commit(repo, "no longer a reference")
+    ran = tool(repo, "ci", "--base", "origin/main", "--head", "feat/x")
+    assert ran.returncode == 1 and "no review yet" in ran.stdout
+    with pytest.raises(work.Bad, match="reference is true or false"):
+        put_order(repo, "example", text.replace("v = 1", 'v = 1\nreference = "y"', 1))
+
+
 def test_a_diff_that_cannot_be_made_is_an_error_not_a_pass(repo: Path) -> None:
     ran = tool(repo, "ci", "--base", "origin/nowhere")
     assert ran.returncode == 2 and "git diff" in ran.stderr

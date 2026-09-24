@@ -1,8 +1,9 @@
 # An example of the format, kept as the reference `tac work validate` reads.
-# Its branch is never checked out, so it is never active, never guards an edit
-# and never collides with a real order.
+# `reference = true` keeps it out of every gate: it is never active, never
+# guards an edit, never collides with a real order and CI never judges it.
 v = 1
 id = "example"
+reference = true
 title = "The work-order README tells a newcomer how an order is written, built, reviewed and landed"
 team = "harness"
 branch = "example/work-order"
