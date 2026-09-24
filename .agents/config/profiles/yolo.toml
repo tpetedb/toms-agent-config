@@ -1,0 +1,46 @@
+# =============================================================================
+# config/profiles/yolo.toml: a complete profile, never a diff against another.
+# No prompts, only inside a disposable container; tac refuses it on the host.
+# A profile has no gates key: the floor and the standards registry carry the
+# gates, so no profile can switch a quality gate off. Unknown keys fail loudly.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+# Must equal the file name and [profile] active in .agents/config.toml:
+# enterprise | standard | yolo.
+name = "yolo"
+# Which actions wait for a verified human approval: external-effects (every push,
+# PR, merge, release and egress) | none (no prompts; still through the runner).
+approvals = "none"                       # no prompts inside the container; external effects still go through the runner
+# Where the agent runs: native-sandbox (the client's own sandbox on the host) |
+# container (release 1.1, own clone inside) | disposable-container (thrown away after).
+isolation = "disposable-container"       # required; tac refuses yolo on the host
+# Outbound network for agent commands: allowlist (config/network.toml) | off.
+network = "allowlist"
+# Native subagent spawns: guarded (they pass the PreToolUse handoff guard with a
+# single-use dispatch token) | off (spawn tools removed; dispatch only through tac run).
+native_delegation = "guarded"
+# The review every order gets: independent = how many reviews from a fresh session,
+# second = "deterministic" (the gate checks after review), cross_provider = the
+# reviewer comes from the provider that did not build.
+review = { independent = 1, second = "deterministic", cross_provider = true }
+effort = "models"                        # the per-role table; a profile may lower a role, never raise it; only "models" in release 1
+# Which local checks run before a push: affected-plus-security (affected tests plus
+# the security scans) | affected (tests near the change) | nearest (the closest test).
+local_checks = "nearest"
+# When a run stops: blocks_no_progress = rounds without improvement, blocks_max =
+# blocks in all, iterations = model turns, wall_minutes = wall-clock time.
+loop = { blocks_no_progress = 2, blocks_max = 8, iterations = 25, wall_minutes = 60 }
+# Context budgets: digest_max_chars = memory digest in a prompt, tool_output_max_chars
+# = one tool result, read_max_kb = one file read, agents_md_chain_max_kb = the whole
+# AGENTS.md chain (Codex caps it at 32 KiB).
+context = { digest_max_chars = 6000, tool_output_max_chars = 8000, read_max_kb = 200, agents_md_chain_max_kb = 24 }
+# MCP servers a session may load: none | from-conf (only those in config/mcp.toml).
+mcp_servers = "from-conf"
+# Rendered into .claude/settings.json: failIfUnavailable = refuse to start without the
+# sandbox, allowUnsandboxedCommands = let a command leave it, defaultMode = the
+# permission mode (default | acceptEdits | plan | bypassPermissions).
+claude = { failIfUnavailable = false, allowUnsandboxedCommands = true, defaultMode = "bypassPermissions" }   # container only; a check refuses these values in any host-rendered file
+# Rendered into .codex/config.toml: sandbox_mode (read-only | workspace-write |
+# danger-full-access) and approval_policy (untrusted | on-failure | on-request | never).
+codex = { sandbox_mode = "danger-full-access", approval_policy = "never" }

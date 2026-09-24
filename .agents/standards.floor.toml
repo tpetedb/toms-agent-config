@@ -1,0 +1,34 @@
+# =============================================================================
+# .agents/standards.floor.toml: read-only, hashed in generated.lock, evaluated from base in CI.
+# A project may only tighten it.
+# The effective standard is max(floor, project), key by key, by the rule the
+# floor schema gives each key (src/tac/standards.py): a boolean gate holds if
+# either side holds it; an enum takes the stricter of an ordered list; a set is
+# the union; a number takes the stricter bound. A change to this file that
+# loosens any key, or drops one, fails `tac config check --base <ref>`.
+# Unknown keys fail loudly.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+
+# A waiver lifts one gate until a date, with the owner's approval. None is in
+# force. To add one, replace this line with [[waivers]] tables, each holding
+#   gate: the gate it lifts, a floor key or a checker such as types;
+#   reason: why, in one line;
+#   expires: the last day it holds, ISO 8601 (YYYY-MM-DD);
+#   approved_by: "owner", the only approver that counts.
+# CI fails on an expired waiver or one the owner did not approve.
+waivers = []
+
+# ---- floor: the minimum every project keeps. Each key names the registry key
+# in config/standards.toml it bounds.
+[floor]
+tests = "required"                       # quality.tests: optional < required
+lint = "required"                        # quality.lint: optional < required
+secrets = "gitleaks"                     # quality.secrets: none < gitleaks
+changelog = "keepachangelog-1.1.0"       # changelog.format: none < keepachangelog-1.1.0
+versioning = "semver-2.0.0"              # versioning.scheme: none < semver-2.0.0
+dates = "iso-8601"                       # dates.format: any < iso-8601
+em_dashes = false                        # code.markdown.em_dashes: false (refused) is stricter than true (allowed)
+commit_max_subject = 72                  # commits.max_subject: an upper bound, a lower number is stricter
+trailers_required = ["Co-Authored-By"]   # commits.trailers_required: a set, the union of both sides applies

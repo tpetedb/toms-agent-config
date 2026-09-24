@@ -4,12 +4,14 @@
 # probe names what to observe, never a command line.
 schema_version = 1
 
+# Discovery: is the client installed, and which version.
 [probes.version]
-description = "Discovery: the client is installed and reports its version."
-kind = "version"
-expect_exit = 0
+description = "Discovery: the client is installed and reports its version."   # printed in the receipt
+kind = "version"                          # what the runner observes: version | trust
+expect_exit = 0                           # the exit status the probe must see for the receipt to pass
 
+# Trust: does the client trust this checkout.
 [probes.trust]
-description = "Trust: the client accepts this checkout (workspace trust in Claude Code, trust_level in Codex)."
-kind = "trust"
-expect_exit = 0
+description = "Trust: the client accepts this checkout (workspace trust in Claude Code, trust_level in Codex)."   # printed in the receipt
+kind = "trust"                            # what the runner observes: version | trust
+expect_exit = 0                           # the exit status the probe must see for the receipt to pass

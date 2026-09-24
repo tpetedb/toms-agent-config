@@ -70,6 +70,29 @@ runner-status:
 receipt-client harness probe *args:
     {{ tac }} receipt client --harness {{ quote(harness) }} --probe {{ quote(probe) }} {{ args }}
 
+# Every effective configuration value and the file it came from.
+config-show:
+    {{ tac }} config show
+
+# One key's value, source file and line, when it applies, and its comment: just explain profile.active
+explain key:
+    {{ tac }} explain {{ quote(key) }}
+
+# Load and cross-check the configuration; with a base, the floor may only tighten: just config-check origin/main
+config-check base="":
+    {{ tac }} config check {{ if base == "" { "" } else { "--base " + quote(base) } }}
+
+# ---- the gate pack for project.kind = "tool" (.agents/config/gates/tool.toml)
+
+# The installed command prints its version and its help and exits 0.
+gate-cli-smoke:
+    uv run --frozen tac --version
+    uv run --frozen tac --help > /dev/null
+
+# The package builds into a wheel from a clean tree, in a throwaway folder.
+gate-wheel:
+    out="$(mktemp -d)"; uv build --wheel --out-dir "$out"; rm -rf "$out"
+
 # Print what the next release section would say, from changelog.d/.
 changelog:
     uv run --frozen towncrier build --draft --version Unreleased

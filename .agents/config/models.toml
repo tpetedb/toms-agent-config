@@ -1,0 +1,90 @@
+# =============================================================================
+# config/models.toml: which model and effort each role runs on, per provider.
+# [models] policy in .agents/config.toml names this file by its `name`. The
+# requested and the actual model and effort are both recorded in every receipt,
+# and a board run never falls back to another model silently. A profile may
+# lower a role's effort, never raise it. Unknown keys fail loudly.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+# Must equal [models] policy in .agents/config.toml.
+name = "default"
+
+# ---- providers: one table per provider, the harness it runs through, and its
+# build model. A key here is a provider id used by the roles below.
+# Anthropic's models run through Claude Code.
+[providers.anthropic]
+harness = "claude"                        # the enforced harness this provider runs through: claude | codex
+build = "claude-opus-5-5"                 # the model a builder on this provider's team uses; a reviewer from here uses it too
+# The effort names this provider's client accepts, lowest first; a role's effort must be one of them.
+efforts = ["low", "medium", "high", "xhigh"]
+
+# OpenAI's models run through Codex.
+[providers.openai]
+harness = "codex"                         # the enforced harness this provider runs through: claude | codex
+build = "gpt-5.6-sol"                     # the Codex team's build model; a reviewer from here uses it too
+# The model_reasoning_effort names Codex accepts, lowest first.
+efforts = ["minimal", "low", "medium", "high", "xhigh"]
+
+# ---- roles: one table per role charter under config/roles/. `provider` says
+# which provider seats the role: a provider id, "any" (the team's own provider)
+# or "other" (the provider that did not build the work under review). Each
+# per-provider table names the model and the effort on that provider.
+
+# The chief of staff: the owner's single entry point, on Opus 5.5.
+[roles.chief]
+provider = "anthropic"                    # a provider id | any | other
+# The chief on Anthropic: model is the id the client is launched with, effort one of that provider's efforts.
+anthropic = { model = "claude-opus-5-5", effort = "high" }
+
+# A builder runs on its team's provider: Opus 5.5 on the Claude team, the build model on the Codex team.
+[roles.builder]
+provider = "any"                          # a provider id | any | other
+anthropic = { model = "claude-opus-5-5", effort = "high" }    # the Claude team's builder: model and effort
+openai = { model = "gpt-5.6-sol", effort = "high" }           # the Codex team's builder: model and effort
+
+# A reviewer is always the other provider's build model.
+[roles.reviewer]
+provider = "other"                        # a provider id | any | other
+anthropic = { model = "claude-opus-5-5", effort = "high" }    # reviewing Codex work: model and effort
+openai = { model = "gpt-5.6-sol", effort = "high" }           # reviewing Claude work: model and effort
+
+# A manager splits a goal into orders inside its team's paths.
+[roles.manager]
+provider = "any"                          # a provider id | any | other
+anthropic = { model = "claude-opus-5-5", effort = "medium" }  # a Claude team manager: model and effort
+openai = { model = "gpt-5.6-sol", effort = "medium" }         # a Codex team manager: model and effort
+
+# A scout researches and fact-checks, read-only, on a small fast model at low effort.
+[roles.scout]
+provider = "any"                          # a provider id | any | other
+anthropic = { model = "haiku", effort = "low" }               # model is Claude Code's alias for its current small model; effort low
+openai = { model = "gpt-5.6-sol", effort = "low" }            # the Codex scout: model and effort
+
+# ---- directors: one table per board seat named in [governance] directors.
+# Each seat is a separate fresh session; `launch_effort` is what the session is
+# started with and `effort` what the agent file records.
+
+# The lead director: writes the design, compiles the tally, never the proposer.
+[directors.fable]
+provider = "anthropic"                    # the provider this seat runs on: a provider id
+model = "claude-fable-5-1"                # the model id the seat is launched with
+effort = "xhigh"                          # effort in the agent file: one of the provider's efforts
+launch_effort = "ultracode"               # the --effort flag at launch; empty when the client takes no flag
+lead = true                               # true for exactly one seat: the one that designs and tallies
+
+# The second provider's seat, through a fresh `codex exec` per turn.
+[directors.astra]
+provider = "openai"                       # the provider this seat runs on: a provider id
+model = "gpt-6-astra"                     # the model id the seat is launched with
+effort = "xhigh"                          # model_reasoning_effort: one of the provider's efforts
+launch_effort = ""                        # Codex takes the effort from the agent file, so no flag
+lead = false                              # true for exactly one seat
+
+# The Opus seat: a separate fresh session, never the chief's own.
+[directors.opus]
+provider = "anthropic"                    # the provider this seat runs on: a provider id
+model = "claude-opus-5-5"                 # the model id the seat is launched with
+effort = "xhigh"                          # effort in the agent file: one of the provider's efforts
+launch_effort = "ultracode"               # the --effort flag at launch; empty when the client takes no flag
+lead = false                              # true for exactly one seat

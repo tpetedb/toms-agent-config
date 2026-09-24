@@ -1,0 +1,20 @@
+# =============================================================================
+# config/runtime.toml: every non-secret setting the launcher and the runner
+# apply per step. Secrets never live here: they come from [secrets] env_file,
+# injected per step. Unknown keys fail loudly.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+
+# ---- paths: where runtime folders live, outside the repository.
+[paths]
+worktrees = "~/.worktrees"                # agent worktrees go under <worktrees>/<repo>/<name>, created by script
+worker_store = "agents"                   # the worker store's folder inside the git common dir, shared by every worktree
+
+# ---- env: the environment a launched harness starts with.
+[env]
+claude_subprocess_env_scrub = true        # true sets CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 so tools do not inherit credentials
+codex_inherit = "core"                    # Codex shell_environment_policy.inherit: core | all | none
+gh_telemetry = false                      # false sets GH_TELEMETRY=false for every gh the harness runs
+# Variable names passed through to a launched session, beyond what the client needs itself.
+pass = ["LANG", "LC_ALL", "TERM"]

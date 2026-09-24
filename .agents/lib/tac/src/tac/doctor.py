@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from tac.config import load_config
 from tac.github import (
     AnonymousTransport,
     ApiError,
@@ -39,6 +40,7 @@ from tac.probes import (
 )
 from tac.receipts import RUNNER_PUB, MissingTrustRoot, key_id, load_public_key
 from tac.runner import RunnerError, agent_session, origin_repository
+from tac.work import Bad
 
 AGENTS = ".agents"
 LIB_SOURCE = "lib/tac"
@@ -183,9 +185,18 @@ def check_tac_import(root: Path) -> tuple[Status, str]:
 
 
 def check_agents_config(root: Path) -> tuple[Status, str]:
-    if (root / AGENTS / "config.toml").is_file():
-        return Status.PASS, f"{AGENTS}/config.toml present"
-    return Status.FAIL, f"{AGENTS}/config.toml missing; it arrives with tac-core"
+    """The knob file and every table it points at load and agree with each other."""
+    if not (root / AGENTS / "config.toml").is_file():
+        return Status.FAIL, f"{AGENTS}/config.toml missing; it arrives with tac-core"
+    try:
+        config = load_config(root)
+    except Bad as exc:
+        first = str(exc).splitlines()[0]
+        return Status.FAIL, f"the configuration does not load: {first}"
+    return Status.PASS, (
+        f"{AGENTS}/config.toml loads: profile {config.profile.name}, "
+        f"kind {config.knobs.project.kind}"
+    )
 
 
 def check_generated_lock(root: Path) -> tuple[Status, str]:

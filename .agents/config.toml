@@ -1,0 +1,111 @@
+# =============================================================================
+# .agents/config.toml: the one file you edit. Everything else under .agents/config/
+# is a table this file points at. Unknown keys fail loudly; `tac explain` prints
+# every effective value, the file it came from, and when it applies.
+# =============================================================================
+schema_version = 1
+
+# ---- project: what this repository is and what it builds.
+[project]
+# The repository's own name, used in receipts, recaps and the runtime store path.
+name = "toms-agent-config"
+# What this repository builds. The gate pack config/gates/<kind>.toml adds the
+# artefact-specific checks: app | tool | library | data-pipeline | document | mixed.
+kind = "tool"
+
+# ---- profile: how much the agents may do without asking.
+[profile]
+# A complete file under config/profiles/; switching profile is this one line.
+# enterprise: prompts for every external effect, container isolation, deepest review.
+# standard: local work without prompts; external effects go through the trusted runner.
+# yolo: no prompts, only inside a disposable container; refused on the host.
+active = "standard"
+
+# ---- governance: who leads, who decides, and who the agents are on GitHub.
+[governance]
+# The owner's single entry point: reads the room and the recap, answers short,
+# prints exact commands.
+chief = "chief"                                   # config/roles/chief.toml, Opus 5.5
+# The board convenes only on the triggers below, never on routine work.
+directors = ["fable", "astra", "opus"]           # the Opus director seat is a separate fresh session
+quorum = 3                                        # the release stage needs one director, not quorum
+tally_by = "fable"                                # never the proposer; the chief never counts its own proposal
+# What convenes the board, any of: policy-loosening | checker-change | security |
+# cross-team-dispute | unresolved-finding. The owner's own edits never convene it.
+board_triggers = ["policy-loosening", "checker-change", "security", "cross-team-dispute", "unresolved-finding"]
+# Who the agents are on GitHub: a machine account with write access and no admin,
+# holding a fine-grained token scoped to this repository. The owner's login never
+# enters a session.
+agent_identity = "tac-bot"
+# What the chief may do unattended under that identity. Merges and releases are the
+# owner's own action.
+# Any of: open-issue | comment | push-branch | open-pr.
+chief_may = ["open-issue", "comment", "push-branch", "open-pr"]
+
+# ---- models: which model and effort each role runs on.
+[models]
+# config/models.toml: model ids per provider, roles, effort per model. Requested and
+# actual model and effort are both recorded in every receipt.
+policy = "default"
+
+# ---- teams: who owns which paths, and the host's agent budget.
+[teams]
+# config/teams.toml: partitions of paths with a budget and an expiry.
+table = "default"
+max_local_agents = 4                              # the host budget, counted globally by the runner
+
+# ---- usage: when to slow down and when to stop spawning, per provider.
+[usage]
+# Share of each provider's usage window at which routing steps down to cheaper models
+# (slow_at, on the seven-day window) and new spawns pause (stop_at, on whichever window
+# is higher). Read from the client's statusline at no token cost.
+claude = { slow_at = 0.60, stop_at = 0.85 }
+openai = { slow_at = 0.50, stop_at = 0.70 }       # the same slow_at and stop_at shares for Codex; each between 0 and 1, slow_at below stop_at
+unavailable = "pause"                             # no quota reading means no new spawn
+max_age_s = 900                                   # an older sample counts as unavailable; so does a cold start before the first API response
+
+# ---- standards: the rules every change is checked against.
+[standards]
+# config/standards.toml; the floor in standards.floor.toml wins where it is stricter.
+registry = "default"
+
+# ---- pipelines: the declared ways work flows from a request to landed.
+[pipelines]
+# Each is config/pipelines/<name>.toml.
+enabled = ["order", "board", "review", "release", "retro"]
+
+# ---- memory: where the live journal lives and how much of it a stage reads.
+[memory]
+runtime_store = "git-common-dir"                  # or an absolute path; AGENTS_RUNTIME overrides it inside containers
+select_cap_chars = 6000                           # the most memory text one stage prompt receives
+retention_days = 30                               # folding raw sessions and traces is a release 1.1 job; nothing is deleted
+
+# ---- human: the owner's queue, recaps and what counts as an answer.
+[human]
+todo = "TODO.HUMAN.md"                            # rendered from .human/approvals by the chief
+recap_dir = ".human/recap"                        # dated recaps, one file per recap, <UTC basic datetime>-<slug>.md
+approvals_dir = ".human/approvals"                # the single source of truth for questions and approvals, one JSON file each
+timeout_is_consent = false                        # an elapsed timeout never approves anything
+verify = ["github-review-by-owner", "host-signed"]   # what counts as a real answer (section 7)
+
+# ---- harnesses: which coding-agent clients are enforced and which only read.
+[harnesses]
+# Enforced clients get rendered settings, hooks and agents, and may run writing
+# stages. Any of: claude | codex | copilot | opencode | pi | gemini.
+enforced = ["claude", "codex"]
+# These read AGENTS.md and the skills; no writing stage until each one is enforced.
+# Any of the clients enforced does not name: claude | codex | copilot | opencode | pi | gemini.
+instructions_only = ["copilot", "opencode", "pi", "gemini"]
+copilot_surfaces = ["cli"]                        # add "ide" or "cloud" only when their files are wanted (Q7)
+
+# ---- secrets: where the real agents.env lives; tac never reads it.
+[secrets]
+# The real agents.env lives here, outside the repository, and is injected per step by
+# the launcher; agents never receive what a step does not need.
+env_file = "~/.config/toms-agent-config/toms-agent-config/agents.env"
+
+# ---- telemetry: how much client telemetry is switched off on this machine.
+[telemetry]
+# partial keeps Remote Control and auto mode working on the owner's machine; full is
+# used inside containers and CI (section 12, Q15).
+host_tier = "partial"

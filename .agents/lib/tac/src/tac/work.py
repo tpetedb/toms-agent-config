@@ -181,7 +181,7 @@ def _int(value: object, where: str, low: int = 1) -> int:
 # ---------------------------------------------------------------- configuration
 
 
-def _as_tuple(value: object) -> object:
+def as_tuple(value: object) -> object:
     return tuple(value) if isinstance(value, list) else value
 
 
@@ -199,7 +199,7 @@ def _as_date(value: object) -> object:
 
 # Strict, so a number where a name belongs, or a string where a number belongs,
 # is refused instead of coerced; lists arrive from TOML and are kept as tuples.
-Strs = Annotated[tuple[str, ...], BeforeValidator(_as_tuple)]
+Strs = Annotated[tuple[str, ...], BeforeValidator(as_tuple)]
 Whole = Annotated[int, Field(ge=1)]
 IsoDate = Annotated[dt.date, BeforeValidator(_as_date)]
 
@@ -260,6 +260,9 @@ class Team(TeamConfig):
 
 class TeamsFile(_Config):
     schema_version: int
+    # The value [teams] table in .agents/config.toml points at. Optional, since a
+    # checker older than this key judges the file from the base revision in CI.
+    name: Annotated[str, Field(pattern=r"^[a-z][a-z0-9-]*$")] = "default"
     work: WorkConfig = WorkConfig()
     teams: Annotated[dict[str, TeamConfig], Field(min_length=1)]
 
@@ -298,7 +301,7 @@ def _max_local_agents(root: Path) -> int:
     return _int(value, f"{path}: teams.max_local_agents")
 
 
-def _explain(path: Path, error: ValidationError) -> Bad:
+def validation_error(path: Path, error: ValidationError) -> Bad:
     """Name the table and the key the way the file spells them, one line each."""
     lines = []
     for item in error.errors(include_url=False):
@@ -328,7 +331,7 @@ def load_teams(root: Path) -> Teams:
     try:
         parsed = TeamsFile.model_validate(data)
     except ValidationError as e:
-        raise _explain(path, e) from None
+        raise validation_error(path, e) from None
     for tid in parsed.teams:
         if not ID.match(tid):
             raise Bad(f"{path}: a team needs an id like 'core', got {tid!r}")
