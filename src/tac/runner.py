@@ -20,9 +20,10 @@ starts under a macOS Seatbelt profile from /usr/bin/sandbox-exec. Writes are an
 allowlist: the checkout minus its toolchain, git and harness folders, and a
 private scratch folder that is the child's HOME, TMPDIR and caches; nothing else.
 The store and the key are denied to reads as well. Connects are an allowlist too:
-Unix sockets only in the scratch folder, plus the DNS resolver's socket, and no
-loopback TCP, since a socket of a process the owner runs unsandboxed (tmux,
-Docker) would run any command for the child. Apple Events, LaunchServices and
+Unix sockets only in the scratch folder, plus the DNS resolver's socket, no
+IPv4 loopback and no outbound IPv6 (a v4-mapped address reaches loopback), since
+a socket of a process the owner runs unsandboxed (tmux, Docker) would run any
+command for the child. Apple Events, LaunchServices and
 preference writes are denied, since each asks a process outside the sandbox to
 act. The child gets only the variables in GATE_ENV_VARS, the runner's PATH and
 the scratch locations. The gate runs in the
@@ -413,7 +414,8 @@ def seatbelt_profile(
     Writes are denied everywhere, then allowed under `writable` and the device
     files, then denied again under `protected`; Seatbelt applies the last rule
     that matches. Connects to Unix sockets are denied too, then allowed under
-    `sockets` and to GATE_SOCKETS, and loopback TCP is denied: a socket or port
+    `sockets` and to GATE_SOCKETS, and IPv4 loopback and all outbound IPv6 are
+    denied: a socket or port
     outside the child's own folder may belong to a process the owner runs
     unsandboxed, which would run a command for it. Seatbelt matches paths at the
     moment of access, so a child that renamed a folder above the store would
@@ -457,7 +459,12 @@ def seatbelt_profile(
             f"(allow network-outbound (remote unix-socket {each}))"
             for each in reachable
         ),
-        '(deny network-outbound (remote ip "localhost:*"))',
+        # IPv4 loopback and all outbound IPv6: a v4-mapped address such as
+        # ::ffff:127.0.0.1 reaches an IPv4 loopback service past a localhost rule,
+        # and SBPL cannot name the mapped range alone. `ip4`, not `ip`: next to an
+        # ip6 rule, `(remote ip "localhost:*")` stops matching 127.0.0.1.
+        '(deny network-outbound (remote ip4 "localhost:*"))',
+        '(deny network-outbound (remote ip6 "*:*"))',
         '(deny file-read* file-write* (subpath (param "STORE")))',
         '(deny file-read* file-write* (literal (param "KEY")))',
         '(deny network-outbound (remote unix-socket (subpath (param "STORE"))))',

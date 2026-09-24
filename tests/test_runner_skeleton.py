@@ -653,14 +653,26 @@ def test_a_gate_cannot_reach_a_unix_socket_outside_its_scratch(
 
 @seatbelt
 @needs_just
-@pytest.mark.parametrize("host", ["127.0.0.1", "::1"])
+@pytest.mark.parametrize(
+    ("listen", "client"),
+    [
+        ("127.0.0.1", "127.0.0.1"),
+        ("::1", "::1"),
+        # An IPv6 client reaching a service bound only to IPv4 loopback.
+        ("127.0.0.1", "::ffff:127.0.0.1"),
+    ],
+)
 def test_a_gate_cannot_reach_a_loopback_port(
-    repo: Path, state: Path, host: str
+    repo: Path, state: Path, listen: str, client: str
 ) -> None:
-    family = socket.AF_INET6 if ":" in host else socket.AF_INET
-    with listening(family, (host, 0)) as srv:
+    listen_family = socket.AF_INET6 if ":" in listen else socket.AF_INET
+    family = "AF_INET6" if ":" in client else "AF_INET"
+    with listening(listen_family, (listen, 0)) as srv:
         port = srv.getsockname()[1]
-        code = f"import socket; socket.create_connection(({host!r}, {port}), 5)"
+        code = (
+            f"import socket; s = socket.socket(socket.{family}); "
+            f"s.settimeout(5); s.connect(({client!r}, {port}))"
+        )
         with_recipe(repo, f"'{PYTHON}' -c \"{code}\"")
         runner = real_just_runner(repo, state, {})
         assert gate_exit(runner) != 0
