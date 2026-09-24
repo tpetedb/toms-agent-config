@@ -1,0 +1,34 @@
+# AGENTS.md
+
+Instructions for any coding agent working in this repository (format: [agents.md](https://agents.md)). This is toms-agent-config, TAC for short: one authored `.agents/` tree that every coding-agent harness is made to obey. `docs/DESIGN.md` is the design; `TODO.HUMAN.md` holds the owner's open questions, which no agent answers for the owner.
+
+## Where things live
+
+| Path | Owns |
+|---|---|
+| `src/tac/` | The `tac` command: config, sync, check, doctor, explain, work, runner, github. |
+| `templates/adapters/<harness>/` | The Jinja templates `tac sync` renders each harness's own files from; the first line of each names its output. |
+| `contracts/` | JSON Schema draft-07 for every config file, receipt and, later, handoff payload. |
+| `.agents/` | The authored tree: `config.toml` (the one knob file), `config/`, `context/` (this brief), `skills/`, the floor, the stamped `lib/tac/` and the lock. Read-only to agents. |
+| `work/` | Work orders: the files an order owns and acceptance criteria that are commands. `work/README.md` is the short version. |
+| `tests/` | The pytest battery. |
+| `changelog.d/` | One fragment per change, `<slug>.<type>.md`; never edit `CHANGELOG.md`. |
+
+## Ways of working
+
+- A task is a work order. Done means `just work-check <id>` passes; a different agent on the other provider reviews it.
+- Change `.agents/` or `templates/adapters/`, never a generated file. `tac sync` renders them and `tac check` fails on any drift, hand edit or stale lock.
+- Test the new code, judge with the deployed copy: tests run from this project (`uv run --frozen pytest`), the judge is `uv run --frozen --no-sync --project .agents tac check`. Never sync `.agents/` from a session.
+- Python 3.12 through uv, never bare pip. `from __future__ import annotations`, frozen dataclasses or pydantic models, ruff at line length 88, basedpyright basic.
+- Config TOML is commented: every key says what it does and what it may be. Unknown keys fail loudly.
+- Comments say why, in one or two lines. Plain words, no em dashes, no emoji.
+- Never read or print a secret. Nothing private goes into a file: `bash scripts/private_scan.sh` before every commit.
+- Tests never sleep; they wait for something the code produced. Tests use temporary homes and stores, never the owner's.
+
+## Commands
+
+- `just` lists every recipe. `just verify` is the full gate: lint, format, types, tests, the private scan.
+- `just sync` renders the harness files; `just check` judges them with the deployed copy.
+- `just doctor` runs the named health checks. `just explain <key>` says where a setting comes from.
+- `just work-check <id>`, `just work-review <id>`, `just work-accept <id>` judge an order.
+- Commit with a one-line message saying what and why. Push branches and open pull requests; merges and releases are the owner's own action.

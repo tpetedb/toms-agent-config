@@ -37,6 +37,8 @@ jobs:
         run: uv run --frozen basedpyright
       - name: Tests
         run: uv run --frozen pytest -q
+      - name: Generated files match the lock, judged by the deployed checker
+        run: uv run --frozen --no-sync --project .agents tac check
       - name: Private scan
         run: bash scripts/private_scan.sh
 

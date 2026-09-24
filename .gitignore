@@ -27,3 +27,7 @@ tests/out/
 work/orders/*/result.json
 work/orders/*/touched.json
 work/orders/*/repair.md
+
+# What tac sync makes locally and never commits: per-skill links, local settings.
+.claude/skills/
+.claude/settings.local.json

@@ -1,0 +1,15 @@
+{# output: .codex/agents/{role}.toml #}
+# One custom agent, from config/roles/{{ role.name }}.toml and config/models.toml:
+# https://developers.openai.com/codex/subagents
+
+# The name Codex spawns this agent by: the charter's name.
+# charter-sha256: {{ role.charter_sha256 }}
+name = {{ role.name | toml }}
+# When to use this agent: the charter's description.
+description = {{ role.description | toml }}
+# The model this role runs on under Codex, from config/models.toml.
+model = {{ role.model | toml }}
+# low | medium | high | xhigh | max, from config/models.toml.
+model_reasoning_effort = {{ role.effort | toml }}
+# The charter's standing brief, what the role may do and what it may never do.
+developer_instructions = {{ role.developer_instructions | toml }}

@@ -1,0 +1,42 @@
+{# output: .codex/config.toml #}
+# Codex reads this only in a trusted project. Keys are Codex's own:
+# https://developers.openai.com/codex/config-reference
+# No profiles and no otel here: Codex ignores both in a project file, so the
+# active TAC profile is rendered as top-level keys and telemetry export stays
+# in the user config written by `tac init --user`.
+
+# The profile's sandbox: read-only | workspace-write | danger-full-access.
+sandbox_mode = {{ codex.sandbox_mode | toml }}
+# When Codex pauses to ask: on-request | never.
+approval_policy = {{ codex.approval_policy | toml }}
+
+# The workspace-write sandbox.
+[sandbox_workspace_write]
+# Outbound network for commands: false until a client receipt proves the
+# features.network_proxy allowlist, then the allowlist in config/network.toml.
+network_access = {{ codex.network_access | toml }}
+
+# The environment a command inherits.
+[shell_environment_policy]
+# core | all | none, from config/runtime.toml [env] codex_inherit.
+inherit = {{ codex.inherit | toml }}
+# false drops every variable whose name holds KEY, SECRET or TOKEN.
+ignore_default_excludes = false
+
+# Usage analytics for this project: false opts out.
+[analytics]
+# false turns analytics off: true | false.
+enabled = false
+
+# The /feedback command: false turns it off.
+[feedback]
+# false turns feedback submission off: true | false.
+enabled = false
+
+# Native subagents, guarded by the handoff guard; off when the profile says
+# native_delegation = "off", so dispatch goes only through tac run.
+[agents]
+# true keeps spawn_agent and its tools: true | false.
+enabled = {{ codex.agents_enabled | toml }}
+# At most this many spawned threads at once: [teams] max_local_agents.
+max_concurrent_threads_per_session = {{ codex.max_threads | toml }}

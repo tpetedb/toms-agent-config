@@ -40,6 +40,7 @@ from tac.probes import (
 )
 from tac.receipts import RUNNER_PUB, MissingTrustRoot, key_id, load_public_key
 from tac.runner import RunnerError, agent_session, origin_repository
+from tac.sync import check_tree
 from tac.work import Bad
 
 AGENTS = ".agents"
@@ -200,9 +201,13 @@ def check_agents_config(root: Path) -> tuple[Status, str]:
 
 
 def check_generated_lock(root: Path) -> tuple[Status, str]:
-    if (root / AGENTS / "generated.lock").is_file():
-        return Status.PASS, f"{AGENTS}/generated.lock present"
-    return Status.FAIL, f"{AGENTS}/generated.lock missing; run tac sync"
+    if not (root / AGENTS / "generated.lock").is_file():
+        return Status.FAIL, f"{AGENTS}/generated.lock missing; run tac sync"
+    problems = check_tree(root)
+    if problems:
+        more = f" and {len(problems) - 1} more" if len(problems) > 1 else ""
+        return Status.FAIL, f"{problems[0]}{more}; run tac check"
+    return Status.PASS, "every generated file matches the lock"
 
 
 def check_runner_pub(root: Path) -> tuple[Status, str]:

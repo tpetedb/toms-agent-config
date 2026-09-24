@@ -5,6 +5,10 @@
 /hooks/                     @tpetedb
 /templates/                 @tpetedb
 /contracts/                 @tpetedb
+/AGENTS.md                  @tpetedb
+/CLAUDE.md                  @tpetedb
+/.claude/                   @tpetedb
+/.codex/                    @tpetedb
 /.github/                   @tpetedb
 /justfile                   @tpetedb
 /.pre-commit-config.yaml    @tpetedb

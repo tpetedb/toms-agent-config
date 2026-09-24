@@ -33,6 +33,14 @@ doctor *args:
 github-apply *args:
     {{ tac }} github apply {{ args }}
 
+# Render every harness file from .agents/ and templates/adapters/, and write the lock.
+sync *args:
+    {{ tac }} sync {{ args }}
+
+# Judge the generated files against a fresh render and the lock: just check --staged
+check *args:
+    {{ tac }} check {{ args }}
+
 # Refuse private terms in tracked and new files.
 private-scan:
     bash scripts/private_scan.sh
