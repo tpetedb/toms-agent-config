@@ -17,8 +17,8 @@ instruction or can close another's tag.
 `validate` takes a stage's result and its dispatch envelope. A result without
 one is refused: nothing enters a run that was not dispatched through `render`.
 A result that fails its contract gets one repair pass, rendered from
-repair.md.j2 with the diagnostics; a second failure ends as a fixed human item,
-never as a third try.
+contract-repair.md.j2 with the diagnostics; a second failure ends as a fixed
+human item, never as a third try.
 """
 
 from __future__ import annotations
@@ -46,7 +46,9 @@ from tac.work import Bad
 TEMPLATE_ROOT = "templates"
 # The folders a handoff template may come from; a path anywhere else is refused.
 TEMPLATE_DIRS = ("handoffs", "human")
-REPAIR_TEMPLATE = "handoffs/repair.md.j2"
+# Named apart from the package's work-order repair handoff, which answers a failed
+# check rather than a failed contract.
+REPAIR_TEMPLATE = "handoffs/contract-repair.md.j2"
 SKILLS_DIR = ".agents/skills"
 ENVELOPE_CONTRACT = "contracts/envelope.schema.json"
 HUMAN_ITEM_CONTRACT = "contracts/human-item.schema.json"

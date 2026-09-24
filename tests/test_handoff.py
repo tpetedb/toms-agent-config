@@ -242,6 +242,16 @@ def test_render_needs_exactly_the_contracts_the_template_reads(
         render(root, "handoffs/release.md.j2", Stage(id="x y", run_id="r"), [])
 
 
+def test_no_handoff_template_shares_a_name_with_a_package_one() -> None:
+    # tac work repair renders the package's repair.md.j2 for a failed check; a
+    # contract repair of the same name would read as the same handoff.
+    package = {p.name for p in (REPO / "src/tac/templates").rglob("*.md.j2")}
+    shipped = {Path(t).name for t in handoff_templates(REPO)}
+    assert "repair.md.j2" in package
+    assert Path(REPAIR_TEMPLATE).name in shipped
+    assert package.isdisjoint(shipped)
+
+
 def test_hashes_change_when_inputs_change(root: Path, tmp_path: Path) -> None:
     def envelope(payload: dict[str, Any]) -> Envelope:
         given = [entry(root, write(tmp_path / "req.json", payload), "order-request")]
