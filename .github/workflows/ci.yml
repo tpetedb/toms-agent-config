@@ -36,6 +36,8 @@ jobs:
       - name: Types
         run: uv run --frozen basedpyright
       - name: Tests
+        # Linux has no Seatbelt, so the gate and probe confinement tests skip
+        # here; a macOS host run is their evidence (docs/evidence/m0-host-run.md).
         run: uv run --frozen pytest -q
       - name: Private scan
         run: bash scripts/private_scan.sh

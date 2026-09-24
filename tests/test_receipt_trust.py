@@ -1,6 +1,8 @@
 """Build condition C3: a receipt counts only when the base's runner key signed it
 for exactly this repository, revision, run, stage, order and policy; CI holds a
-committed receipt to the order folder it sits in and a revision the change brought."""
+committed receipt to the order folder it sits in, to a revision whose tree is the
+head less its receipts, and to the stage, run, command and passing result the
+base's receipts.toml expects, and asks each changed order for its required ones."""
 
 from __future__ import annotations
 
@@ -10,6 +12,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from pydantic import JsonValue
 
 from tac.cli import cli
 from tac.receipts import (
@@ -29,11 +32,19 @@ from tac.receipts import (
 )
 from tac.runner import pub_file_text
 from tac.work import ID as WORK_ORDER_ID
-from tests._gitrepo import REPOSITORY, commit_all, git, make_repo, write
+from tests._gitrepo import (
+    REPOSITORY,
+    commit_all,
+    expectations,
+    git,
+    make_repo,
+    write,
+)
 
-RUN = "run-1"
-STAGE = "verify"
 ORDER = "demo"
+# The acceptance gate expects an order's receipts under the order's own run.
+RUN = ORDER
+STAGE = "verify"
 
 
 @pytest.fixture
@@ -73,8 +84,13 @@ def binding(root: Path, **changes: str) -> Binding:
     return Binding(**fields)
 
 
-def gate_receipt(key: Ed25519PrivateKey, bound: Binding) -> SignedReceipt:
-    return sign(key, "gate", bound, {"argv": ["just", "verify"], "exit": 0})
+def gate_receipt(
+    key: Ed25519PrivateKey,
+    bound: Binding,
+    argv: tuple[str, ...] = ("just", "verify"),
+    exit_code: int = 0,
+) -> SignedReceipt:
+    return sign(key, "gate", bound, {"argv": list(argv), "exit": exit_code})
 
 
 def commit_receipt(root: Path, signed: SignedReceipt, order: str = ORDER) -> Path:
@@ -132,7 +148,7 @@ def test_a_tree_without_receipts_needs_no_key(tmp_path: Path) -> None:
     ("field", "value"),
     [
         ("repository", "example/other"),
-        ("run_id", "run-2"),
+        ("run_id", "other-run"),
         ("stage", "review"),
         ("order_id", "other-order"),
     ],
@@ -286,6 +302,166 @@ def test_a_receipt_for_a_revision_outside_the_history_is_rejected_by_ci(
     code, output = verify_tree(repo, base)
     assert code == 1
     assert "not in the head's history" in output
+
+
+# ---- the head is what the runner judged, less the receipts
+
+
+def test_a_valid_receipt_followed_by_another_code_commit_is_refused(
+    repo: Path, runner_key: Ed25519PrivateKey
+) -> None:
+    base = git(repo, "rev-parse", "HEAD~1")
+    commit_receipt(repo, gate_receipt(runner_key, binding(repo)))
+    write(repo, "src/app.py", "print('changed after the gate')\n")
+    commit_all(repo, "more code after the receipt")
+    code, output = verify_tree(repo, base)
+    assert code == 1, output
+    assert "src/app.py changed since" in output
+
+
+def test_a_second_receipt_commit_keeps_the_first_current(
+    repo: Path, runner_key: Ed25519PrivateKey
+) -> None:
+    base = git(repo, "rev-parse", "HEAD~1")
+    first = gate_receipt(runner_key, binding(repo))
+    second = gate_receipt(
+        runner_key, binding(repo, stage="work-check"), ("just", "work-check", ORDER)
+    )
+    commit_receipt(repo, first)
+    commit_receipt(repo, second)
+    code, output = verify_tree(repo, base)
+    assert code == 0, output
+    assert output.count("gate receipt verified") == 2
+
+
+# ---- what the acceptance gate expects: stage, run, command and result
+
+
+@pytest.mark.parametrize(
+    ("changes", "argv", "exit_code", "message"),
+    [
+        ({"stage": "anything"}, ("just", "verify"), 0, "stage anything is not one"),
+        ({"run_id": "run-1"}, ("just", "verify"), 0, "run run-1 is not the order's"),
+        ({}, ("just", "lint-ci"), 0, "observed argv is ['just', 'lint-ci']"),
+        ({}, ("just", "verify"), 1, "observed exit is 1; stage verify expects 0"),
+        (
+            {"stage": "work-check"},
+            ("just", "work-check", "other-order"),
+            0,
+            "expects ['just', 'work-check', 'demo']",
+        ),
+    ],
+    ids=["stage", "run", "command", "failing-result", "another-orders-check"],
+)
+def test_a_receipt_the_gate_did_not_ask_for_is_refused_by_ci(
+    repo: Path,
+    runner_key: Ed25519PrivateKey,
+    changes: dict[str, str],
+    argv: tuple[str, ...],
+    exit_code: int,
+    message: str,
+) -> None:
+    base = git(repo, "rev-parse", "HEAD~1")
+    signed = gate_receipt(runner_key, binding(repo, **changes), argv, exit_code)
+    commit_receipt(repo, signed)
+    code, output = verify_tree(repo, base)
+    assert code == 1, output
+    assert message in output
+
+
+def test_a_receipt_of_the_wrong_kind_is_refused_by_ci(
+    repo: Path, runner_key: Ed25519PrivateKey
+) -> None:
+    base = git(repo, "rev-parse", "HEAD~1")
+    observed: dict[str, JsonValue] = {"argv": ["just", "verify"], "exit": 0}
+    commit_receipt(repo, sign(runner_key, "effect", binding(repo), observed))
+    code, output = verify_tree(repo, base)
+    assert code == 1, output
+    assert "takes a gate receipt, not effect" in output
+
+
+def test_the_candidates_expectations_are_never_read(
+    repo: Path, runner_key: Ed25519PrivateKey
+) -> None:
+    base = git(repo, "rev-parse", "HEAD~1")
+    loose = (
+        'schema_version = 1\n[stages.anything]\nkind = "gate"\n'
+        "observed = { exit = 1 }\n"
+    )
+    write(repo, ".agents/config/receipts.toml", loose)
+    commit_all(repo, "candidate loosens the expectations")
+    bound = binding(repo, stage="anything")
+    commit_receipt(repo, gate_receipt(runner_key, bound, exit_code=1))
+    code, output = verify_tree(repo, base)
+    assert code == 1, output
+    assert "stage anything is not one the acceptance gate expects" in output
+
+
+def test_a_base_without_expectations_refuses_a_new_receipt(
+    repo: Path, runner_key: Ed25519PrivateKey
+) -> None:
+    git(repo, "rm", "-q", ".agents/config/receipts.toml")
+    base = commit_all(repo, "no expectations")
+    write(repo, "src/next.py", "pass\n")
+    commit_all(repo, "candidate")
+    commit_receipt(repo, gate_receipt(runner_key, binding(repo)))
+    code, output = verify_tree(repo, base)
+    assert code == 1, output
+    assert "the base has no .agents/config/receipts.toml" in output
+
+
+# ---- the receipts an order needs
+
+
+def require(repo: Path, *stages: str) -> str:
+    """Make the base expect these stages of every order a change touches."""
+    write(repo, ".agents/config/receipts.toml", expectations(*stages))
+    base = commit_all(repo, "require receipts")
+    write(repo, f"work/orders/{ORDER}/order.toml", "v = 1\n")
+    write(repo, "src/app.py", "print('the order')\n")
+    commit_all(repo, "the order's change")
+    return base
+
+
+def test_an_order_without_its_required_receipt_is_refused(repo: Path) -> None:
+    base = require(repo, "verify")
+    code, output = verify_tree(repo, base)
+    assert code == 1, output
+    assert f"work/orders/{ORDER}: no verified verify receipt" in output
+
+
+def test_an_order_with_its_required_receipts_passes(
+    repo: Path, runner_key: Ed25519PrivateKey
+) -> None:
+    base = require(repo, "verify", "work-check")
+    judged = head(repo)
+    commit_receipt(repo, gate_receipt(runner_key, binding(repo, revision=judged)))
+    check = binding(repo, revision=judged, stage="work-check")
+    commit_receipt(repo, gate_receipt(runner_key, check, ("just", "work-check", ORDER)))
+    code, output = verify_tree(repo, base)
+    assert code == 0, output
+
+
+def test_a_stale_receipt_does_not_meet_a_requirement(
+    repo: Path, runner_key: Ed25519PrivateKey
+) -> None:
+    base = require(repo, "verify")
+    commit_receipt(repo, gate_receipt(runner_key, binding(repo)))
+    write(repo, "src/app.py", "print('later')\n")
+    commit_all(repo, "more code")
+    code, output = verify_tree(repo, base)
+    assert code == 1, output
+    assert "src/app.py changed since" in output
+    assert "no verified verify receipt" in output
+
+
+def test_a_reference_order_needs_no_receipt(repo: Path) -> None:
+    write(repo, ".agents/config/receipts.toml", expectations("verify"))
+    base = commit_all(repo, "require receipts")
+    write(repo, "work/orders/example/order.toml", "v = 1\nreference = true\n")
+    commit_all(repo, "a worked example")
+    code, output = verify_tree(repo, base)
+    assert code == 0, output
 
 
 # ---- an altered field

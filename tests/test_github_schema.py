@@ -94,6 +94,10 @@ def test_an_undeclared_key_is_caught() -> None:
     [
         ("ruleset_holds", "ruleset"),
         ("ruleset_tag", "ruleset"),
+        ("ruleset_unrelated_check", "ruleset"),
+        ("ruleset_any_source_checks", "ruleset"),
+        ("ruleset_other_app_check", "ruleset"),
+        ("ruleset_zero_approvals", "ruleset"),
         ("rulesets_list", "ruleset_list"),
         ("rulesets_list_empty", "ruleset_list"),
         ("collaborator_write", "collaborator_permission"),

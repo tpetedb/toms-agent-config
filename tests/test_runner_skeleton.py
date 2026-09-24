@@ -468,6 +468,8 @@ def test_receipt_client_writes_a_signed_probe_into_the_order(
     assert receipt.kind == "probe"
     assert receipt.binding.stage == "probe.version"
     assert receipt.binding.order_id == "demo"
+    # The run CI expects of an order's receipt: the order itself.
+    assert receipt.binding.run_id == "demo"
     assert receipt.observed["client_version"] == "9.9.9 (Claude Code)"
     for name in ("requested_model", "actual_model", "billing_route", "exit"):
         assert name in receipt.observed
@@ -554,36 +556,48 @@ def key_state(store: Path) -> tuple[str, int]:
 needs_just = pytest.mark.skipif(shutil.which("just") is None, reason="needs just")
 
 
+def leak_in_checkout(repo: Path) -> Path:
+    """Where a criterion drops what it read: inside the checkout, which a gate
+    may write, and ignored so the tree stays clean and the gate gets a receipt.
+    So only the read can stop the key arriving there, never the write."""
+    write(repo, ".gitignore", "leak\n")
+    return repo / "leak"
+
+
+def assert_no_key_arrived(leak: Path, store: Path) -> None:
+    # The shell's redirect creates the file before the read is tried; a missing
+    # file means the write failed, and then the test would prove nothing.
+    assert leak.exists(), "the criterion could not write its checkout"
+    data = leak.read_bytes()
+    assert b"PRIVATE KEY" not in data
+    assert key_path(store).read_bytes() not in data
+
+
 @seatbelt
 @needs_just
-def test_a_gate_criterion_cannot_read_the_signing_key(
-    repo: Path, state: Path, tmp_path: Path
-) -> None:
+def test_a_gate_criterion_cannot_read_the_signing_key(repo: Path, state: Path) -> None:
     store = controller_store(repo, env(state))
-    leak = tmp_path / "leak"
-    key = key_path(store)
-    with_recipe(repo, f"cat '{key}' > '{leak}'")
+    leak = leak_in_checkout(repo)
+    with_recipe(repo, f"cat '{key_path(store)}' > leak")
     runner = real_just_runner(repo, state, {})
     before = key_state(runner.store)
     assert gate_exit(runner) != 0
-    assert not leak.exists() or b"PRIVATE KEY" not in leak.read_bytes()
+    assert_no_key_arrived(leak, runner.store)
     assert key_state(runner.store) == before
 
 
 @seatbelt
 @needs_just
-def test_a_gate_cannot_move_the_store_out_of_the_way(
-    repo: Path, state: Path, tmp_path: Path
-) -> None:
+def test_a_gate_cannot_move_the_store_out_of_the_way(repo: Path, state: Path) -> None:
     store = controller_store(repo, env(state))
     moved = state.parent / (state.name + "-moved")
-    leak = tmp_path / "leak"
     inner = moved / store.relative_to(state) / "signing-key.pem"
-    with_recipe(repo, f"mv '{state}' '{moved}' && cat '{inner}' > '{leak}'")
+    leak = leak_in_checkout(repo)
+    with_recipe(repo, f"mv '{state}' '{moved}'; cat '{inner}' > leak")
     runner = real_just_runner(repo, state, {})
     assert gate_exit(runner) != 0
     assert not moved.exists()
-    assert not leak.exists() or b"PRIVATE KEY" not in leak.read_bytes()
+    assert_no_key_arrived(leak, runner.store)
 
 
 @seatbelt
@@ -605,11 +619,18 @@ def test_a_gate_cannot_write_into_the_store(repo: Path, state: Path) -> None:
 @seatbelt
 @needs_just
 def test_a_gate_cannot_reach_the_runner_socket(repo: Path, state: Path) -> None:
-    sock = socket_path(controller_store(repo, env(state)))
-    code = f"import socket; socket.socket(socket.AF_UNIX).connect({str(sock)!r})"
+    # A server this test binds at the runner's socket path, so a connect that
+    # got through would wait in its backlog: the proof is that none arrived.
+    path = str(socket_path(controller_store(repo, env(state))))
+    code = f"import socket; socket.socket(socket.AF_UNIX).connect({path!r})"
     with_recipe(repo, f"'{PYTHON}' -c \"{code}\"")
     runner = real_just_runner(repo, state, {})
-    assert gate_exit(runner) != 0
+    argv = ["just", "work-check", "order-a"]
+    gate = {"op": "gate", "run_id": "g", "stage": "s", "argv": argv}
+    with listening(socket.AF_UNIX, path) as srv:
+        signed = parse(json.dumps(runner.handle(gate)["receipt"]))
+        assert signed.receipt.observed["exit"] != 0
+        assert not connected_to(srv)
 
 
 @contextlib.contextmanager
@@ -880,6 +901,49 @@ def test_the_runners_git_status_cannot_write_the_tree(repo: Path, state: Path) -
     with contextlib.suppress(RunnerError):
         runner.clean_revision()
     assert not planted.exists()
+
+
+# ---- the probe child: a client's startup code is confined like a gate
+
+
+@seatbelt
+def test_a_probe_client_cannot_read_the_key_see_a_token_or_write_the_tree(
+    repo: Path, state: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # In the runner's own environment: an unconfined child would inherit it.
+    monkeypatch.setenv("GH_TOKEN", "probe-token-t1")
+    store = controller_store(repo, env(state))
+    planted = repo / "planted"
+    clients = repo.parent / "bin"
+    # The line the runner reads as the version carries what the client reached.
+    fake_client(
+        clients,
+        "claude",
+        f"echo x > '{planted}'\n"
+        f"key=$(/usr/bin/head -1 '{key_path(store)}' 2>/dev/null)\n"
+        f'echo "$key|${{GH_TOKEN:-none}}|$HOME"',
+    )
+    runner = make_runner(repo, state, clients)
+    with serving(runner) as sock:
+        reply = request(sock, PROBE)
+    version = parse(json.dumps(reply["receipt"])).receipt.observed["client_version"]
+    assert isinstance(version, str)
+    key, token, home = version.split("|")
+    assert key == ""
+    assert token == "none"
+    assert Path(home).parent.name.startswith("tac-gate-")
+    assert not planted.exists()
+
+
+def test_without_a_sandbox_the_runner_refuses_to_probe(repo: Path, state: Path) -> None:
+    ran = repo.parent / "probe-ran"
+    clients = repo.parent / "bin"
+    fake_client(clients, "claude", f"touch '{ran}'; echo 9.9.9")
+    runner = dataclasses.replace(make_runner(repo, state, clients), sandbox=None)
+    with serving(runner) as sock, pytest.raises(RunnerError, match="or probe"):
+        request(sock, PROBE)
+    assert not ran.exists()
+    assert not any((runner.store / "receipts").rglob("*.json"))
 
 
 def test_without_a_sandbox_the_runner_refuses_to_gate(repo: Path, state: Path) -> None:

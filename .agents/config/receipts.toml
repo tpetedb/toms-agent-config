@@ -1,0 +1,30 @@
+# What the acceptance gate expects of a committed receipt. CI reads this file as
+# committed at the base revision, never the candidate's, the way it reads
+# runner.pub, so a pull request cannot loosen what its own receipts are held to.
+#
+# Every receipt committed under work/orders/<id>/receipts/ is taken with the
+# order id as its run id, names a revision whose tree is the pull request's head
+# less its receipts, and shows, under its stage below, exactly the command and
+# the passing result listed. "{order}" stands for the order id.
+schema_version = 1
+
+# The stages every order a pull request changes must carry a receipt for.
+# Empty while runner.pub holds no key: until the owner provisions it
+# (TODO.HUMAN.md), no receipt can verify, so none can be required.
+required = []
+
+[stages.verify]
+kind = "gate"
+observed = { argv = ["just", "verify"], exit = 0 }
+
+[stages.work-check]
+kind = "gate"
+observed = { argv = ["just", "work-check", "{order}"], exit = 0 }
+
+[stages."probe.version"]
+kind = "probe"
+observed = { probe = "version", matched = true }
+
+[stages."probe.trust"]
+kind = "probe"
+observed = { probe = "trust", matched = true }
