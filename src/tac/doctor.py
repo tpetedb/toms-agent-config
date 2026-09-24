@@ -89,6 +89,35 @@ def check_agents_lib(root: Path) -> tuple[Status, str]:
     return Status.PASS, f"stamped copy present in {AGENTS}/{LIB_SOURCE}"
 
 
+def _package_files(folder: Path) -> dict[str, bytes]:
+    return {
+        str(f.relative_to(folder)): f.read_bytes()
+        for f in sorted(folder.rglob("*"))
+        if f.is_file() and "__pycache__" not in f.parts and f.suffix != ".pyc"
+    }
+
+
+def check_agents_lib_current(root: Path) -> tuple[Status, str]:
+    """The deployed checker judges with the stamped copy, so a src/tac change
+    that was never stamped is judged by yesterday's rules."""
+    source = root / "src" / "tac"
+    if not source.is_dir():
+        return Status.PASS, "no src/tac here; the stamp is the pinned release"
+    stamped = root / AGENTS / LIB_SOURCE / "src" / "tac"
+    if not stamped.is_dir():
+        return Status.FAIL, f"no stamped copy in {AGENTS}/{LIB_SOURCE}"
+    want, have = _package_files(source), _package_files(stamped)
+    stale = sorted(n for n in want.keys() | have.keys() if want.get(n) != have.get(n))
+    if stale:
+        shown = ", ".join(stale[:3]) + (", ..." if len(stale) > 3 else "")
+        return (
+            Status.FAIL,
+            f"{AGENTS}/{LIB_SOURCE} differs from src/tac in {len(stale)} file(s) "
+            f"({shown}); run just stamp-lib on the host",
+        )
+    return Status.PASS, f"{AGENTS}/{LIB_SOURCE} matches src/tac"
+
+
 def check_agents_venv(root: Path) -> tuple[Status, str]:
     if venv_python(root).is_file():
         return Status.PASS, f"{AGENTS}/.venv has an interpreter"
@@ -151,6 +180,7 @@ CHECKS: tuple[Check, ...] = (
     Check("uv-on-path", check_uv),
     Check("agents-project", check_agents_project),
     Check("agents-lib", check_agents_lib),
+    Check("agents-lib-current", check_agents_lib_current),
     Check("agents-venv", check_agents_venv),
     Check("tac-import", check_tac_import),
     Check("agents-config", check_agents_config),

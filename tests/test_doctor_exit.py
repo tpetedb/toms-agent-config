@@ -8,6 +8,7 @@ from tac.doctor import (
     Check,
     CheckResult,
     Status,
+    check_agents_lib_current,
     check_agents_project,
     check_tac_import,
     classify_tac_origin,
@@ -139,3 +140,30 @@ def test_tac_import_runs_with_a_fixed_path(tmp_path: Path, monkeypatch) -> None:
     python.chmod(python.stat().st_mode | stat.S_IXUSR)
     monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ.get('PATH', '')}")
     assert check_tac_import(tmp_path)[0] is Status.PASS
+
+
+def write_package(folder: Path, files: dict[str, str]) -> None:
+    for name, text in files.items():
+        (folder / name).parent.mkdir(parents=True, exist_ok=True)
+        (folder / name).write_text(text)
+
+
+def test_a_stamp_that_matches_src_passes(tmp_path: Path) -> None:
+    files = {"__init__.py": "", "work.py": "x = 1\n"}
+    write_package(tmp_path / "src/tac", files)
+    write_package(tmp_path / ".agents/lib/tac/src/tac", files)
+    # Bytecode caches are the interpreter's, not the stamp's.
+    write_package(tmp_path / "src/tac/__pycache__", {"work.cpython-312.pyc": "?"})
+    assert check_agents_lib_current(tmp_path)[0] is Status.PASS
+
+
+def test_a_stamp_behind_src_fails_and_names_the_file(tmp_path: Path) -> None:
+    write_package(tmp_path / "src/tac", {"__init__.py": "", "work.py": "x = 2\n"})
+    write_package(tmp_path / ".agents/lib/tac/src/tac", {"__init__.py": ""})
+    status, detail = check_agents_lib_current(tmp_path)
+    assert status is Status.FAIL
+    assert "work.py" in detail and "just stamp-lib" in detail
+
+
+def test_a_project_without_src_tac_judges_by_its_pinned_stamp(tmp_path: Path) -> None:
+    assert check_agents_lib_current(tmp_path)[0] is Status.PASS

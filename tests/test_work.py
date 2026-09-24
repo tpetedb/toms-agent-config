@@ -1089,6 +1089,37 @@ def test_an_unknown_schema_version_of_teams_toml_is_refused(repo: Path) -> None:
         work.load_teams(repo)
 
 
+@pytest.mark.parametrize(
+    ("before", "after", "names"),
+    [
+        (f"touched_keep = {KEEP}", 'touched_keep = "8"', r"\[work\.touched_keep\]"),
+        (f"touched_keep = {KEEP}", "touched_keep = true", r"\[work\.touched_keep\]"),
+        (f"touched_keep = {KEEP}", "touched_keep = 0", r"\[work\.touched_keep\]"),
+        ('review_provider = "other"', 'review_provider = "same"', "review_provider"),
+        ('base = "origin/main"', 'base = " "', r"\[work\.base\]"),
+        ('owns = ["src/scene.js"]', "owns = []", r"\[teams\.scene\.owns\]"),
+        ('owns = ["src/scene.js"]', 'owns = "src/"', r"\[teams\.scene\.owns\]"),
+    ],
+)
+def test_teams_toml_is_typed_strictly_and_names_the_key(
+    repo: Path, before: str, after: str, names: str
+) -> None:
+    """A value of the wrong type is refused, never coerced: "8" is not 8."""
+    assert before in TEAMS
+    write_teams(repo, TEAMS.replace(before, after))
+    with pytest.raises(work.Bad, match=names):
+        work.load_teams(repo)
+
+
+def test_a_quoted_expiry_date_reads_as_a_date(repo: Path) -> None:
+    write_teams(
+        repo,
+        TEAMS.replace('owns = ["src/"]', 'owns = ["src/"]\nexpires = "2000-01-01"'),
+    )
+    panels = work.load_teams(repo).get("panels")
+    assert panels is not None and panels.expired()
+
+
 def test_an_unknown_key_in_an_order_is_a_warning_not_a_refusal(repo: Path) -> None:
     text = order_text("one", "feat/x", ["src/panel.js"]).replace(
         "v = 1", 'v = 1\nexternal_acceptance = "x"', 1
@@ -1327,6 +1358,24 @@ def test_every_document_calls_a_hook_a_reminder() -> None:
     text = (REPO / "work" / "README.md").read_text()
     assert "hook holds" not in text
     assert "A hook is a reminder" in text
+    for name in ("docs/adr/0001-work-orders.md", ".agents/skills/work-order/SKILL.md"):
+        doc = (REPO / name).read_text()
+        assert "hook holds" not in doc, f"{name}: a hook reminds"
+        assert "reminder" in doc, f"{name}: say that the checks decide"
+
+
+def test_the_work_order_skill_names_only_recipes_that_exist() -> None:
+    text = (REPO / ".agents" / "skills" / "work-order" / "SKILL.md").read_text()
+    front = yaml.safe_load(text.split("---")[1])
+    assert front["name"] == "work-order"
+    assert front["metadata"]["source"].startswith("https://github.com/")
+    justfile = (REPO / "justfile").read_text()
+    named = set(re.findall(r"just (work-[a-z]+)", text))
+    assert named, "the skill tells an agent which recipes to run"
+    for recipe in sorted(named):
+        assert re.search(rf"^{recipe}\b", justfile, re.M), recipe
+    for path in re.findall(r"`((?:docs|work)/[^`<]+\.(?:md|toml))`", text):
+        assert (REPO / path).is_file(), f"the skill points at {path}"
 
 
 def test_the_justfile_has_every_work_recipe_on_the_deployed_copy() -> None:
@@ -1379,3 +1428,23 @@ def test_the_gitignore_keeps_the_measurements_out() -> None:
 def test_the_config_teams_parse_as_plain_toml() -> None:
     data = tomllib.loads((REPO / work.TEAMS_FILE).read_text())
     assert data["schema_version"] == work.SCHEMA_VERSION
+    # And through the same models every command reads it with.
+    assert work.load_teams(REPO).ids() == set(data["teams"])
+
+
+# ------------------------------------------------------------ carried to M2
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="order 3 tac-hooks (M2) wires the guard for Claude and Codex through "
+    "hooks/run.py; when it does this passes, and that order removes the marker "
+    "and names the exact commands",
+)
+def test_the_hooks_are_wired_to_events_claude_code_has() -> None:
+    claude = json.loads((REPO / ".claude" / "settings.json").read_text())["hooks"]
+    for event in ("PreToolUse", "Stop", "SubagentStop"):
+        assert [h["command"] for group in claude[event] for h in group["hooks"]]
+    codex = json.loads((REPO / ".codex" / "hooks.json").read_text())["hooks"]
+    for event in ("PreToolUse", "Stop"):
+        assert [h["command"] for group in codex[event] for h in group["hooks"]]

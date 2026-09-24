@@ -1,6 +1,6 @@
 # work/
 
-How more than one agent works here at once without stepping on each other, and how anyone can tell that a task is done. An order is one unit of work: the files it owns and acceptance criteria that are commands. `tac work` checks it; the `just work-*` recipes, the pipeline gates, the hooks and CI all call the same code. It is ported from vibe-map's `tools/work.py`, where the format was proven over some fifty orders.
+How more than one agent works here at once without stepping on each other, and how anyone can tell that a task is done. An order is one unit of work: the files it owns and acceptance criteria that are commands. `tac work` checks it; the `just work-*` recipes, the pipeline gates, the hooks and CI all call the same code. It is ported from vibe-map's `tools/work.py`, where the format was proven over some fifty orders. [ADR 0001](../docs/adr/0001-work-orders.md) has the reasons, and the `work-order` skill in `.agents/skills/` is what an agent loads.
 
 | Path | What it is |
 |---|---|

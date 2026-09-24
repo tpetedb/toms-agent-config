@@ -4,7 +4,8 @@
 # the specific teams come before the general ones. `dir/` is everything under
 # it; anything else is a glob. An order owns files of its own team; files of
 # another team go in its `cross` list and need that team's sign-off.
-# Unknown keys fail loudly. work/README.md explains the orders.
+# Unknown keys and values of the wrong type fail loudly ("8" is not 8).
+# work/README.md explains the orders.
 # =============================================================================
 schema_version = 1
 
@@ -14,7 +15,8 @@ base = "origin/main"
 # Any team may own a test file; two active orders still may not own the same one.
 shared = ["tests/"]
 # What any order may touch besides what it owns: regenerated outputs, and the
-# changelog fragment every product change carries.
+# changelog fragment every product change carries. Listed by hand until
+# .agents/generated.lock exists to name the generated outputs.
 anyone = ["changelog.d/", ".agents/lib/tac/", ".agents/uv.lock"]
 # A criterion may run a whole battery; a hung one must still end.
 check_timeout_s = 1500
@@ -24,7 +26,8 @@ stop_budget_s = 1500
 # How many agents an order remembers in touched.json, newest edit last.
 touched_keep = 32
 # "other": a review counts only from the provider that did not build the order.
-# "any" drops that rule, for a project with one provider.
+# "any" drops that rule, for a project with one provider, or one adopting tac
+# whose existing orders were written before orders named a provider.
 review_provider = "other"
 
 [work.repair]

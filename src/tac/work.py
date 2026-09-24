@@ -26,9 +26,16 @@ import time
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any, Literal
 
 import jinja2
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    ValidationError,
+)
 
 TEAMS_FILE = ".agents/config/teams.toml"
 KNOBS_FILE = ".agents/config.toml"
@@ -164,12 +171,6 @@ def _only(data: dict[str, Any], allowed: set[str], where: str) -> None:
         raise Bad(f"{where}: unknown key {', '.join(unknown)}")
 
 
-def _strs(value: object, where: str) -> tuple[str, ...]:
-    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
-        raise Bad(f"{where}: a list of strings")
-    return tuple(value)
-
-
 def _int(value: object, where: str, low: int = 1) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < low:
         raise Bad(f"{where}: a whole number of at least {low}")
@@ -179,45 +180,87 @@ def _int(value: object, where: str, low: int = 1) -> int:
 # ---------------------------------------------------------------- configuration
 
 
-@dataclass(frozen=True, slots=True)
-class Repair:
+def _as_tuple(value: object) -> object:
+    return tuple(value) if isinstance(value, list) else value
+
+
+def _as_date(value: object) -> object:
+    """TOML has a date type, but a quoted date is the common mistake; both work."""
+    if isinstance(value, str):
+        try:
+            return dt.date.fromisoformat(value)
+        except ValueError as e:
+            raise ValueError("an ISO 8601 date, like 2026-12-31") from e
+    if isinstance(value, dt.datetime):
+        return value.date()
+    return value
+
+
+# Strict, so a number where a name belongs, or a string where a number belongs,
+# is refused instead of coerced; lists arrive from TOML and are kept as tuples.
+Strs = Annotated[tuple[str, ...], BeforeValidator(_as_tuple)]
+Whole = Annotated[int, Field(ge=1)]
+IsoDate = Annotated[dt.date, BeforeValidator(_as_date)]
+
+
+class _Config(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+
+class Repair(_Config):
     """One bounded builder turn. `argv` runs without a shell and reads the
     rendered handoff on stdin; `{order}` and `{max_turns}` are the only
     placeholders, so nothing a model or a check printed reaches a command line."""
 
-    argv: tuple[str, ...] = ()
-    timeout_s: int = 1800
-    max_turns: int = 30
+    argv: Strs = ()
+    timeout_s: Whole = 1800
+    max_turns: Whole = 30
 
 
-@dataclass(frozen=True, slots=True)
-class Settings:
-    base: str = "origin/main"
-    shared: tuple[str, ...] = ()
-    anyone: tuple[str, ...] = ("changelog.d/",)
-    check_timeout_s: int = 1500
-    stop_budget_s: int = 1500
-    touched_keep: int = 32
-    review_provider: str = "other"
-    max_local_agents: int = 4
-    repair: Repair = field(default_factory=Repair)
+class WorkConfig(_Config):
+    """The `[work]` table as written in teams.toml."""
+
+    base: Annotated[str, Field(pattern=r"\S")] = "origin/main"
+    shared: Strs = ()
+    anyone: Strs = ("changelog.d/",)
+    check_timeout_s: Whole = 1500
+    stop_budget_s: Whole = 1500
+    touched_keep: Whole = 32
+    review_provider: Literal["other", "any"] = "other"
+    repair: Repair = Repair()
 
 
-@dataclass(frozen=True, slots=True)
-class Team:
-    id: str
-    title: str
-    owns: tuple[str, ...]
-    tests: tuple[str, ...] = ()
+class Settings(WorkConfig):
+    """`[work]` plus the host budget, which is named once in the knob file."""
+
+    max_local_agents: Whole = 4
+
+
+class TeamConfig(_Config):
+    """One `[teams.<id>]` table as written in teams.toml."""
+
+    title: str = ""
+    owns: Annotated[Strs, Field(min_length=1)]
+    tests: Strs = ()
     manager: str = ""
-    max_workers: int | None = None
-    models: dict[str, str] = field(default_factory=dict)
-    skills: tuple[str, ...] = ()
-    budget_usd: float | None = None
-    expires: dt.date | None = None
+    max_workers: Whole | None = None
+    models: dict[str, str] = Field(default_factory=dict)
+    skills: Strs = ()
+    budget_usd: Annotated[float, Field(ge=0)] | None = None
+    expires: IsoDate | None = None
+
+
+class Team(TeamConfig):
+    id: str
 
     def expired(self, today: dt.date | None = None) -> bool:
         return self.expires is not None and (today or dt.date.today()) > self.expires
+
+
+class TeamsFile(_Config):
+    schema_version: int
+    work: WorkConfig = WorkConfig()
+    teams: Annotated[dict[str, TeamConfig], Field(min_length=1)]
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,114 +297,21 @@ def _max_local_agents(root: Path) -> int:
     return _int(value, f"{path}: teams.max_local_agents")
 
 
-def _settings(raw: object, path: Path, root: Path) -> Settings:
-    if not isinstance(raw, dict):
-        raise Bad(f"{path}: [work] is a table")
-    where = f"{path}: [work]"
-    _only(
-        raw,
-        {
-            "base",
-            "shared",
-            "anyone",
-            "check_timeout_s",
-            "stop_budget_s",
-            "touched_keep",
-            "review_provider",
-            "repair",
-        },
-        where,
-    )
-    d = Settings()
-    rep = raw.get("repair", {})
-    if not isinstance(rep, dict):
-        raise Bad(f"{where}.repair is a table")
-    _only(rep, {"argv", "timeout_s", "max_turns"}, f"{where}.repair")
-    review_provider = str(raw.get("review_provider", d.review_provider))
-    if review_provider not in ("other", "any"):
-        raise Bad(f"{where}: review_provider is other or any")
-    base = raw.get("base", d.base)
-    if not isinstance(base, str) or not base.strip():
-        raise Bad(f"{where}: base names a branch, like origin/main")
-    return Settings(
-        base=base,
-        shared=_strs(raw.get("shared", list(d.shared)), f"{where}.shared"),
-        anyone=_strs(raw.get("anyone", list(d.anyone)), f"{where}.anyone"),
-        check_timeout_s=_int(
-            raw.get("check_timeout_s", d.check_timeout_s), f"{where}.check_timeout_s"
-        ),
-        stop_budget_s=_int(
-            raw.get("stop_budget_s", d.stop_budget_s), f"{where}.stop_budget_s"
-        ),
-        touched_keep=_int(
-            raw.get("touched_keep", d.touched_keep), f"{where}.touched_keep"
-        ),
-        review_provider=review_provider,
-        max_local_agents=_max_local_agents(root),
-        repair=Repair(
-            argv=_strs(rep.get("argv", []), f"{where}.repair.argv"),
-            timeout_s=_int(rep.get("timeout_s", 1800), f"{where}.repair.timeout_s"),
-            max_turns=_int(rep.get("max_turns", 30), f"{where}.repair.max_turns"),
-        ),
-    )
-
-
-TEAM_KEYS = {
-    "title",
-    "owns",
-    "tests",
-    "manager",
-    "max_workers",
-    "models",
-    "skills",
-    "budget_usd",
-    "expires",
-}
-
-
-def _team(tid: str, raw: object, path: Path) -> Team:
-    where = f"{path}: [teams.{tid}]"
-    if not ID.match(tid):
-        raise Bad(f"{path}: a team needs an id like 'core', got {tid!r}")
-    if not isinstance(raw, dict):
-        raise Bad(f"{where} is a table")
-    _only(raw, TEAM_KEYS, where)
-    owns = _strs(raw.get("owns", []), f"{where}.owns")
-    if not owns:
-        raise Bad(f"{path}: team {tid} owns no paths")
-    models = raw.get("models", {})
-    if not isinstance(models, dict) or not all(
-        isinstance(v, str) for v in models.values()
-    ):
-        raise Bad(f"{where}.models: a table of provider = model id")
-    budget = raw.get("budget_usd")
-    if budget is not None and (
-        isinstance(budget, bool) or not isinstance(budget, int | float) or budget < 0
-    ):
-        raise Bad(f"{where}.budget_usd: a number of dollars")
-    expires = raw.get("expires")
-    if isinstance(expires, str):
-        try:
-            expires = dt.date.fromisoformat(expires)
-        except ValueError as e:
-            raise Bad(f"{where}.expires: an ISO 8601 date, like 2026-12-31") from e
-    elif isinstance(expires, dt.datetime):
-        expires = expires.date()
-    elif expires is not None and not isinstance(expires, dt.date):
-        raise Bad(f"{where}.expires: an ISO 8601 date, like 2026-12-31")
-    workers = raw.get("max_workers")
-    return Team(
-        id=tid,
-        title=str(raw.get("title", "")),
-        owns=owns,
-        tests=_strs(raw.get("tests", []), f"{where}.tests"),
-        manager=str(raw.get("manager", "")),
-        max_workers=None if workers is None else _int(workers, f"{where}.max_workers"),
-        models=dict(models),
-        skills=_strs(raw.get("skills", []), f"{where}.skills"),
-        budget_usd=None if budget is None else float(budget),
-        expires=expires,
-    )
+def _explain(path: Path, error: ValidationError) -> Bad:
+    """Name the table and the key the way the file spells them, one line each."""
+    lines = []
+    for item in error.errors(include_url=False):
+        loc = [str(part) for part in item["loc"]]
+        if item["type"] == "extra_forbidden":
+            table, what = loc[:-1], f"unknown key {loc[-1]}"
+        elif item["type"] == "tuple_type":
+            # The model keeps lists as tuples; the file only knows lists.
+            table, what = loc, 'a list of strings, like ["src/"]'
+        else:
+            table, what = loc, item["msg"]
+        where = f"{path}: [{'.'.join(table)}]" if table else str(path)
+        lines.append(f"{where}: {what}")
+    return Bad("\n".join(lines))
 
 
 def load_teams(root: Path) -> Teams:
@@ -372,14 +322,25 @@ def load_teams(root: Path) -> Teams:
             f"{path}: schema_version = {data.get('schema_version')!r}, "
             f"this tac reads {SCHEMA_VERSION}"
         )
-    _only(data, {"schema_version", "work", "teams"}, str(path))
-    settings = _settings(data.get("work", {}), path, root)
-    raw = data.get("teams", {})
-    if not isinstance(raw, dict) or not raw:
+    if not isinstance(data.get("teams"), dict) or not data["teams"]:
         raise Bad(f"{path}: no [teams.<id>] tables")
+    try:
+        parsed = TeamsFile.model_validate(data)
+    except ValidationError as e:
+        raise _explain(path, e) from None
+    for tid in parsed.teams:
+        if not ID.match(tid):
+            raise Bad(f"{path}: a team needs an id like 'core', got {tid!r}")
+    settings = Settings.model_validate(
+        {**parsed.work.model_dump(), "max_local_agents": _max_local_agents(root)}
+    )
     # TOML keeps the order the tables were written in, and the first team that
     # covers a path is its home, so the specific teams come first.
-    return Teams(tuple(_team(t, r, path) for t, r in raw.items()), settings)
+    teams = tuple(
+        Team.model_validate({**cfg.model_dump(), "id": tid})
+        for tid, cfg in parsed.teams.items()
+    )
+    return Teams(teams, settings)
 
 
 # ---------------------------------------------------------------- orders
