@@ -1,0 +1,40 @@
+{
+  "_note": "Shaped on the documented response of the GitHub REST API (docs.github.com/en/rest/repos/rules, API version 2022-11-28); ids and names are placeholders. No live call recorded these.",
+  "body": {
+    "id": 102,
+    "name": "release tags",
+    "target": "tag",
+    "source_type": "Repository",
+    "source": "example/demo",
+    "enforcement": "active",
+    "bypass_actors": [],
+    "conditions": {
+      "ref_name": {
+        "include": [
+          "refs/tags/v*"
+        ],
+        "exclude": []
+      }
+    },
+    "rules": [
+      {
+        "type": "deletion"
+      },
+      {
+        "type": "update"
+      }
+    ],
+    "node_id": "RRS_lACqUmVwb3NpdG9yec102",
+    "_links": {
+      "self": {
+        "href": "https://api.github.com/repos/example/demo/rulesets/102"
+      },
+      "html": {
+        "href": "https://github.com/example/demo/rules/102"
+      }
+    },
+    "created_at": "2026-09-24T10:00:00.000Z",
+    "updated_at": "2026-09-24T10:00:00.000Z",
+    "current_user_can_bypass": "never"
+  }
+}

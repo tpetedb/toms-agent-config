@@ -1,0 +1,11 @@
+{
+  "_note": "Shaped on the documented response of the GitHub REST API (docs.github.com/en/rest/repos/rules, API version 2022-11-28); ids and names are placeholders. No live call recorded these.",
+  "body": {
+    "id": 1,
+    "name": "demo",
+    "full_name": "example/demo",
+    "private": false,
+    "default_branch": "main",
+    "visibility": "public"
+  }
+}

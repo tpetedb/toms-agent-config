@@ -9,6 +9,7 @@ import click
 
 from tac import __version__
 from tac.doctor import CHECKS, exit_code, find_root, render_text, run_checks
+from tac.github_cli import github_group
 from tac.runner_cli import receipt_group, runner_group
 from tac.work_cli import work_group
 
@@ -47,6 +48,7 @@ def doctor(root: Path | None, as_json: bool) -> None:
 cli.add_command(work_group)
 cli.add_command(runner_group)
 cli.add_command(receipt_group)
+cli.add_command(github_group)
 
 
 def main() -> None:

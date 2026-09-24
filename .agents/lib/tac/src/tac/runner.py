@@ -177,22 +177,32 @@ def agent_command(commands: list[str]) -> str | None:
     return None
 
 
-def refuse_agent_parent(
+def agent_session(
     environ: Mapping[str, str], ancestors: list[str] | None = None
-) -> None:
+) -> str | None:
+    """Why this process looks like part of an agent session, or None.
+
+    A tripwire, not the boundary: an agent can unset a variable or detach.
+    """
     markers = [name for name in AGENT_MARKERS if environ.get(name)]
     if markers:
-        raise RunnerError(
-            "the runner is a host process and never a child of an agent session "
-            f"({', '.join(markers)} is set); start it from the owner's terminal"
-        )
+        return f"{', '.join(markers)} is set"
     chain = ancestor_commands(os.getppid()) if ancestors is None else ancestors
     found = agent_command(chain)
     if found is not None:
         name = Path(found.split()[0]).name if found.split() else "?"
+        return f"{name} is among its parents"
+    return None
+
+
+def refuse_agent_parent(
+    environ: Mapping[str, str], ancestors: list[str] | None = None
+) -> None:
+    reason = agent_session(environ, ancestors)
+    if reason is not None:
         raise RunnerError(
             "the runner is a host process and never a child of an agent session "
-            f"({name} is among its parents); start it from the owner's terminal"
+            f"({reason}); start it from the owner's terminal"
         )
 
 

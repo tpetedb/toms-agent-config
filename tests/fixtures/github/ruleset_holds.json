@@ -1,0 +1,73 @@
+{
+  "_note": "Shaped on the documented response of the GitHub REST API (docs.github.com/en/rest/repos/rules, API version 2022-11-28); ids and names are placeholders. No live call recorded these.",
+  "body": {
+    "id": 101,
+    "name": "tac-default-branch",
+    "target": "branch",
+    "source_type": "Repository",
+    "source": "example/demo",
+    "enforcement": "active",
+    "bypass_actors": [],
+    "conditions": {
+      "ref_name": {
+        "include": [
+          "~DEFAULT_BRANCH"
+        ],
+        "exclude": []
+      }
+    },
+    "rules": [
+      {
+        "type": "deletion"
+      },
+      {
+        "type": "non_fast_forward"
+      },
+      {
+        "type": "required_linear_history"
+      },
+      {
+        "type": "pull_request",
+        "parameters": {
+          "required_approving_review_count": 1,
+          "dismiss_stale_reviews_on_push": true,
+          "require_code_owner_review": true,
+          "require_last_push_approval": false,
+          "required_review_thread_resolution": true,
+          "allowed_merge_methods": [
+            "squash"
+          ]
+        }
+      },
+      {
+        "type": "required_status_checks",
+        "parameters": {
+          "strict_required_status_checks_policy": true,
+          "do_not_enforce_on_create": false,
+          "required_status_checks": [
+            {
+              "context": "verify",
+              "integration_id": 15368
+            },
+            {
+              "context": "work",
+              "integration_id": 15368
+            }
+          ]
+        }
+      }
+    ],
+    "node_id": "RRS_lACqUmVwb3NpdG9yec101",
+    "_links": {
+      "self": {
+        "href": "https://api.github.com/repos/example/demo/rulesets/101"
+      },
+      "html": {
+        "href": "https://github.com/example/demo/rules/101"
+      }
+    },
+    "created_at": "2026-09-24T10:00:00.000Z",
+    "updated_at": "2026-09-24T10:00:00.000Z",
+    "current_user_can_bypass": "never"
+  }
+}

@@ -1,26 +1,37 @@
 from __future__ import annotations
 
+import json
 import os
 import stat
 from pathlib import Path
 
+import pytest
+from click.testing import CliRunner
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+import tac.cli
+import tac.doctor
+from tac.cli import cli
 from tac.doctor import (
+    CHECKS,
     Check,
     CheckResult,
     Status,
     check_agents_lib_current,
     check_agents_project,
+    check_github_ruleset,
     check_runner_pub,
     check_tac_import,
     classify_tac_origin,
     exit_code,
     find_root,
+    ruleset_transport,
     run_checks,
 )
+from tac.github import AnonymousTransport, GhTransport
 from tac.receipts import RUNNER_PUB, key_id
 from tac.runner import pub_file_text
+from tests._github_fixtures import REPO, FixtureTransport, rulesets, standard
 
 
 def passing(_root: Path) -> tuple[Status, str]:
@@ -197,3 +208,67 @@ def test_runner_pub_missing_fails(tmp_path: Path) -> None:
     status, detail = check_runner_pub(tmp_path)
     assert status is Status.FAIL
     assert "missing" in detail
+
+
+# ---- the ruleset check through the command line (build condition C5)
+
+
+def only_the_ruleset_check(
+    monkeypatch: pytest.MonkeyPatch, transport: FixtureTransport
+) -> None:
+    [check] = [c for c in CHECKS if c.name == "github-ruleset"]
+    monkeypatch.setattr(tac.cli, "CHECKS", (check,))
+    monkeypatch.setattr(tac.doctor, "origin_repository", lambda _root: REPO)
+    monkeypatch.setattr(
+        tac.doctor, "ruleset_transport", lambda _env: (transport, "fixture")
+    )
+
+
+def test_doctor_exits_non_zero_and_names_the_owner_step_without_a_ruleset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    only_the_ruleset_check(monkeypatch, FixtureTransport(rulesets([], {})))
+    result = CliRunner().invoke(cli, ["doctor", "--root", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "FAIL" in result.output and "no active branch ruleset" in result.output
+    assert "the owner's step" in result.output and "tac github apply" in result.output
+
+
+def test_doctor_exits_non_zero_on_a_seeded_bypass_actor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    only_the_ruleset_check(monkeypatch, standard(bypass_actors=[{"actor_id": 5}]))
+    result = CliRunner().invoke(cli, ["doctor", "--json", "--root", str(tmp_path)])
+    assert result.exit_code == 1
+    [check] = json.loads(result.output)["checks"]
+    assert check["status"] == "fail" and "bypass_actors is not empty" in check["detail"]
+
+
+def test_doctor_exits_zero_when_the_ruleset_holds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    only_the_ruleset_check(monkeypatch, standard())
+    result = CliRunner().invoke(cli, ["doctor", "--root", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+
+
+def test_an_agent_session_reads_rulesets_without_any_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(tac.doctor, "gh_transport", pytest.fail)
+    transport, how = ruleset_transport({"CLAUDECODE": "1"})
+    assert isinstance(transport, AnonymousTransport)
+    assert not transport.authenticated and "agent session" in how
+
+
+def test_the_owner_terminal_reads_rulesets_with_gh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner_gh = GhTransport("/usr/bin/false")
+    monkeypatch.setattr(tac.doctor, "agent_session", lambda _env: None)
+    monkeypatch.setattr(tac.doctor, "gh_transport", lambda: owner_gh)
+    assert ruleset_transport({}) == (owner_gh, "read with the owner's gh on the host")
+
+
+def test_the_ruleset_check_is_unknown_without_an_origin(tmp_path: Path) -> None:
+    assert check_github_ruleset(tmp_path)[0] is Status.UNKNOWN

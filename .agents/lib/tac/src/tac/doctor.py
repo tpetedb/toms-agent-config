@@ -1,21 +1,38 @@
 """`tac doctor`: named checks of this checkout, each pass, fail or unknown.
 
 Unknown counts against the exit code: a check that cannot prove its claim has
-not passed. Checks read the filesystem and run local interpreters only; the
-ruleset check that needs the owner's token arrives with `tac github`.
+not passed. Checks read the filesystem, run local interpreters and each client's
+`--version`, and read GitHub: with the owner's `gh` on the host, anonymously
+inside an agent session, so an agent never carries the owner's token.
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tomllib
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from tac.github import (
+    AnonymousTransport,
+    RulesetReport,
+    Transport,
+    gh_transport,
+    judge_rulesets,
+)
+from tac.probes import (
+    CLIENTS,
+    TRUST_STEPS,
+    client_version,
+    discover,
+    project_trust,
+)
 from tac.receipts import RUNNER_PUB, MissingTrustRoot, key_id, load_public_key
+from tac.runner import RunnerError, agent_session, origin_repository
 
 AGENTS = ".agents"
 LIB_SOURCE = "lib/tac"
@@ -191,10 +208,63 @@ def check_runner_pub(root: Path) -> tuple[Status, str]:
     return Status.PASS, f"{RUNNER_PUB} holds runner key {key_id(public)}"
 
 
-def check_github_ruleset(_root: Path) -> tuple[Status, str]:
-    return (
-        Status.UNKNOWN,
-        "not verified: needs tac github apply and the owner's token on the host",
+def ruleset_transport(environ: Mapping[str, str]) -> tuple[Transport, str]:
+    """The owner's gh on the host; no credential at all inside an agent session."""
+    reason = agent_session(environ)
+    if reason is not None:
+        return AnonymousTransport(), f"read anonymously: agent session, {reason}"
+    gh = gh_transport()
+    if gh is None:
+        return AnonymousTransport(), "read anonymously: gh not found"
+    return gh, "read with the owner's gh on the host"
+
+
+REPORT_STATUS = {True: Status.PASS, False: Status.FAIL, None: Status.UNKNOWN}
+
+
+def ruleset_status(report: RulesetReport, how: str) -> tuple[Status, str]:
+    return REPORT_STATUS[report.ok], f"{report.detail} ({how})"
+
+
+def check_github_ruleset(root: Path) -> tuple[Status, str]:
+    """Build condition C5: every active branch ruleset, fetched by id, holds."""
+    try:
+        repo = origin_repository(root)
+    except RunnerError as exc:
+        return Status.UNKNOWN, str(exc)
+    transport, how = ruleset_transport(os.environ)
+    return ruleset_status(judge_rulesets(transport, repo), how)
+
+
+def client_status(harness: str, environ: Mapping[str, str]) -> tuple[Status, str]:
+    """Discovery and a minimal launch: `--version`, never a model session."""
+    executable = discover(harness, environ.get("PATH", ""))
+    if executable is None:
+        return Status.FAIL, f"{CLIENTS[harness]} not found on PATH"
+    version = client_version(executable, environ)
+    if version is None:
+        return Status.FAIL, f"{CLIENTS[harness]} found, but --version did not answer"
+    return Status.PASS, f"found, version {version}"
+
+
+def trust_status(
+    harness: str, root: Path, environ: Mapping[str, str]
+) -> tuple[Status, str]:
+    trust = project_trust(harness, root, environ)
+    if trust.trusted is None:
+        return Status.UNKNOWN, trust.detail
+    if not trust.trusted:
+        return Status.FAIL, f"{trust.detail}; the owner's step: {TRUST_STEPS[harness]}"
+    return Status.PASS, trust.detail
+
+
+def client_check(harness: str) -> Check:
+    return Check(f"client-{harness}", lambda _root: client_status(harness, os.environ))
+
+
+def trust_check(harness: str) -> Check:
+    return Check(
+        f"trust-{harness}", lambda root: trust_status(harness, root, os.environ)
     )
 
 
@@ -209,6 +279,7 @@ CHECKS: tuple[Check, ...] = (
     Check("generated-lock", check_generated_lock),
     Check("runner-pub", check_runner_pub),
     Check("github-ruleset", check_github_ruleset),
+    *(check for h in CLIENTS for check in (client_check(h), trust_check(h))),
 )
 
 

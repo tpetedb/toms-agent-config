@@ -29,6 +29,10 @@ lint-ci:
 doctor *args:
     {{ tac }} doctor {{ args }}
 
+# Owner only, host only, after Q14: check the bot, then create or update the ruleset.
+github-apply *args:
+    {{ tac }} github apply {{ args }}
+
 # Refuse private terms in tracked and new files.
 private-scan:
     bash scripts/private_scan.sh
