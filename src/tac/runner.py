@@ -10,6 +10,18 @@ It serves only from its own venv in the controller store, built non-editable
 from the stamped package, so it never imports code from a checkout an agent can
 write. The signing key is a file in the controller store, mode 0600, until the
 keychain backend of milestone M3 (build condition C6) replaces it.
+
+A gate runs code a builder wrote: the justfile recipe, an order's criteria as
+shell strings, the tests `just verify` starts. The runner never runs that code
+with access to its store. Every child that touches the candidate tree (the gate
+and the runner's own `git status`, which can start a configured fsmonitor or
+filter) starts under a macOS Seatbelt profile from /usr/bin/sandbox-exec that
+denies reading and writing the store subtree and the key, connecting to the
+socket, and renaming any folder above the store, with only the variables in
+GATE_ENV_VARS and the runner's PATH. The gate runs in the checkout at the
+committed revision it judges, and a gate that leaves HEAD moved or the tree
+changed gets no receipt. Where there is no sandbox-exec (not macOS), the runner
+refuses to gate and never falls back to running unsandboxed.
 """
 
 from __future__ import annotations
@@ -24,6 +36,7 @@ import shutil
 import socket
 import socketserver
 import subprocess
+import sys
 import time
 import tomllib
 from collections.abc import Iterator, Mapping
@@ -96,6 +109,12 @@ AGENT_MARKERS = ("CLAUDECODE", "CODEX_SANDBOX")
 AGENT_PROCESSES = ("claude", "codex")
 AGENT_PACKAGES = ("claude-code", "codex")
 MAX_ANCESTORS = 64
+# Seatbelt by absolute path: never a sandbox-exec found on a PATH.
+SANDBOX_EXEC = "/usr/bin/sandbox-exec"
+# All a gate child inherits besides the runner's PATH. No token, no GIT_* that
+# could point git elsewhere, no TAC_STATE_HOME naming the store.
+GATE_ENV_VARS = ("HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR")
+GIT_STATUS_TIMEOUT_S = 120
 UNIX_PERMS_STORE = 0o700
 UNIX_PERMS_KEY = 0o600
 
@@ -294,6 +313,9 @@ def create_key(store: Path) -> Ed25519PrivateKey:
 
 def load_key(store: Path) -> Ed25519PrivateKey:
     path = key_path(store)
+    if path.is_symlink():
+        # A link would put the key outside the subtree the gate sandbox denies.
+        raise RunnerError(f"{KEY_NAME} must be a plain file in the store, not a link")
     if not path.is_file():
         raise RunnerError("no signing key; run `tac runner init` on the host")
     if path.stat().st_mode & 0o077:
@@ -310,6 +332,46 @@ def pub_file_text(private: Ed25519PrivateKey) -> str:
         "# the copy on the base revision, never the candidate's.\n"
         f"# key id {key_id(private.public_key())}\n" + public_pem(private.public_key())
     )
+
+
+# ---- the sandbox every child that runs candidate content starts in
+
+
+def default_sandbox() -> str | None:
+    """sandbox-exec on macOS, else None, and a gate is then refused."""
+    if sys.platform != "darwin" or not os.access(SANDBOX_EXEC, os.X_OK):
+        return None
+    return SANDBOX_EXEC
+
+
+def seatbelt_profile(store: Path) -> tuple[str, dict[str, str]]:
+    """The profile and its parameters: no read, write or socket in the store.
+
+    Seatbelt matches paths at the moment of access, so a child that renamed a
+    folder above the store would reach the key under a new path; every ancestor
+    is therefore denied writes, which blocks the rename and nothing inside it.
+    """
+    store = store.resolve()
+    params = {"STORE": str(store), "KEY": str(key_path(store))}
+    ancestors: list[str] = []
+    for index, folder in enumerate(store.parents):
+        params[f"UP{index}"] = str(folder)
+        ancestors.append(f'(literal (param "UP{index}"))')
+    profile = "\n".join(
+        [
+            "(version 1)",
+            "(allow default)",
+            '(deny file-read* file-write* (subpath (param "STORE")))',
+            '(deny file-read* file-write* (literal (param "KEY")))',
+            '(deny network-outbound (remote unix-socket (subpath (param "STORE"))))',
+            f"(deny file-write* {' '.join(ancestors)})",
+        ]
+    )
+    return profile, params
+
+
+def gate_environment(environ: Mapping[str, str]) -> dict[str, str]:
+    return {k: environ[k] for k in GATE_ENV_VARS if k in environ}
 
 
 # ---- what a request may say: never an outcome, only what to observe
@@ -388,6 +450,11 @@ class Runner:
             k: os.environ[k] for k in CLIENT_CONFIG_VARS if k in os.environ
         }
     )
+    # None where no sandbox exists: every gate is then refused.
+    sandbox: str | None = field(default_factory=default_sandbox)
+    gate_env: Mapping[str, str] = field(
+        default_factory=lambda: gate_environment(os.environ)
+    )
 
     def handle(self, raw: object) -> dict[str, JsonValue]:
         request = REQUEST.validate_python(raw)
@@ -401,9 +468,53 @@ class Runner:
 
     # -- observation
 
+    # -- isolation
+
+    def confined(self, argv: list[str]) -> list[str]:
+        """argv under the Seatbelt profile, or a refusal; never argv bare."""
+        if self.sandbox is None:
+            raise RunnerError(
+                "the runner runs candidate code only inside a macOS Seatbelt "
+                f"sandbox and there is no {SANDBOX_EXEC} here (platform "
+                f"{sys.platform}); it refuses to gate rather than run unsandboxed"
+            )
+        profile, params = seatbelt_profile(self.store)
+        defines = [part for k, v in params.items() for part in ("-D", f"{k}={v}")]
+        return [self.sandbox, "-p", profile, *defines, *argv]
+
+    def child_env(self) -> dict[str, str]:
+        env = gate_environment(self.gate_env)
+        env["PATH"] = self.search_path
+        return env
+
     def clean_revision(self) -> str:
-        status = git(self.root, "status", "--porcelain", "--untracked-files=normal")
-        if status.returncode != 0 or status.stdout.strip():
+        # Sandboxed: a repository's config can make `git status` start an
+        # fsmonitor or a filter, which is candidate code.
+        program = shutil.which("git")
+        if program is None:
+            raise RunnerError("git is not installed on the runner's PATH")
+        argv = self.confined(
+            [
+                program,
+                *("-C", str(self.root), "-c", "core.fsmonitor=false", "status"),
+                *("--porcelain", "--untracked-files=normal"),
+            ]
+        )
+        try:
+            status = subprocess.run(
+                argv,
+                env=self.child_env(),
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=GIT_STATUS_TIMEOUT_S,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RunnerError("git status did not finish") from exc
+        if status.returncode != 0:
+            raise RunnerError(f"cannot read the working tree: {status.stderr.strip()}")
+        if status.stdout.strip():
             raise RunnerError(
                 "the working tree has uncommitted changes; a receipt names a "
                 "revision, so the runner observes committed trees only"
@@ -462,13 +573,15 @@ class Runner:
         ]
 
     def gate(self, request: Gate) -> dict[str, JsonValue]:
-        argv = self.gate_argv(list(request.argv))
+        argv = self.confined(self.gate_argv(list(request.argv)))
         binding = self.binding(request.run_id, request.stage, request.order_id)
         started = time.monotonic()
         try:
             done = subprocess.run(
                 argv,
                 cwd=self.root,
+                env=self.child_env(),
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 timeout=GATE_TIMEOUT_S,
                 check=False,
@@ -476,6 +589,15 @@ class Runner:
             exit_code, out, err = done.returncode, done.stdout, done.stderr
         except subprocess.TimeoutExpired as exc:
             exit_code, out, err = -1, exc.stdout or b"", exc.stderr or b""
+        # The receipt names a revision: the gate must have judged exactly that.
+        try:
+            after = self.clean_revision()
+        except RunnerError as exc:
+            raise RunnerError(
+                f"the gate changed the checkout, so no receipt: {exc}"
+            ) from exc
+        if after != binding.revision:
+            raise RunnerError("the gate moved HEAD, so no receipt")
         observed: dict[str, JsonValue] = {
             "argv": list(request.argv),
             "exit": exit_code,
@@ -582,6 +704,8 @@ def open_runner(
         recipes=recipes,
         search_path=search_path if search_path is not None else environ.get("PATH", ""),
         client_env={k: environ[k] for k in CLIENT_CONFIG_VARS if k in environ},
+        sandbox=default_sandbox(),
+        gate_env=gate_environment(environ),
     )
 
 

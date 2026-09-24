@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
+import hashlib
 import json
 import os
+import shutil
 import stat
 import sys
 import threading
@@ -32,8 +35,10 @@ from tac.runner import (
     bind,
     controller_store,
     create_key,
+    default_sandbox,
     ensure_store,
     install_command,
+    key_path,
     load_key,
     open_runner,
     refuse_agent_parent,
@@ -47,6 +52,11 @@ from tac.runner import (
 from tests._gitrepo import REPOSITORY, commit_all, git, make_repo, short_dir, write
 
 PYTHON = Path(sys.executable)
+# A gate or probe observes the candidate tree only inside the macOS Seatbelt
+# sandbox; elsewhere the runner refuses, which has its own test below.
+seatbelt = pytest.mark.skipif(
+    default_sandbox() is None, reason="needs macOS sandbox-exec"
+)
 # Keeps an agent session's own markers out of the commands under test.
 NO_AGENT = {"CLAUDECODE": None, "CODEX_SANDBOX": None}
 
@@ -269,6 +279,7 @@ def test_a_second_runner_on_the_same_store_is_refused(repo: Path, state: Path) -
         bind(runner)
 
 
+@seatbelt
 def test_a_gate_is_observed_signed_and_kept(repo: Path, state: Path) -> None:
     runner = make_runner(repo, state)
     argv = ["just", "work-check", "order-a"]
@@ -325,7 +336,7 @@ REFUSED = [
     ({**GATE, "argv": ["just", "work-check", "a=b"]}, "not an id"),
     ({**GATE, "run_id": "../x"}, "run_id"),
     ({**PROBE, "harness": "pi"}, "pi"),
-    ({**PROBE, "probe": "keychain"}, "no probe"),
+    pytest.param({**PROBE, "probe": "keychain"}, "no probe", marks=seatbelt),
 ]
 
 
@@ -340,6 +351,7 @@ def test_the_runner_signs_only_what_it_observes(
     assert not (repo.parent / "bin" / "just-argv").exists()
 
 
+@seatbelt
 def test_a_dirty_tree_is_not_observed(repo: Path, state: Path) -> None:
     runner = make_runner(repo, state)
     write(repo, "src/uncommitted.py", "pass\n")
@@ -347,6 +359,7 @@ def test_a_dirty_tree_is_not_observed(repo: Path, state: Path) -> None:
         request(sock, GATE)
 
 
+@seatbelt
 def test_a_probe_reads_the_committed_table_not_the_working_tree(
     repo: Path, state: Path
 ) -> None:
@@ -378,6 +391,7 @@ def trust_runner(repo: Path, state: Path, trusted: bool) -> Runner:
     )
 
 
+@seatbelt
 @pytest.mark.parametrize("trusted", [True, False])
 def test_a_trust_probe_signs_what_the_client_config_says(
     repo: Path, state: Path, trusted: bool
@@ -397,6 +411,7 @@ def test_a_trust_probe_signs_what_the_client_config_says(
     assert str(repo.parent) not in json.dumps(reply["receipt"])
 
 
+@seatbelt
 def test_a_trust_probe_never_reads_the_callers_environment(
     repo: Path, state: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -420,6 +435,7 @@ def client(repo: Path, sock: Path, *args: str) -> tuple[int, str]:
     return result.exit_code, result.output
 
 
+@seatbelt
 def test_receipt_client_writes_a_signed_probe_into_the_order(
     repo: Path, state: Path
 ) -> None:
@@ -442,6 +458,7 @@ def test_receipt_client_writes_a_signed_probe_into_the_order(
         assert name in receipt.observed
 
 
+@seatbelt
 def test_receipt_client_exits_non_zero_when_observed_differs(
     repo: Path, state: Path
 ) -> None:
@@ -472,6 +489,7 @@ def test_receipt_client_refuses_a_bad_order_id(repo: Path, state: Path) -> None:
     assert "not an order id" in output
 
 
+@seatbelt
 def test_a_new_commit_makes_an_old_probe_receipt_stale(repo: Path, state: Path) -> None:
     clients = repo.parent / "bin"
     fake_client(clients, "claude", "echo 1.0")
@@ -485,6 +503,189 @@ def test_a_new_commit_makes_an_old_probe_receipt_stale(repo: Path, state: Path) 
     now = old.model_copy(update={"revision": revision})
     with pytest.raises(ReceiptError, match="revision"):
         verify(signed, runner.private.public_key(), now)
+
+
+# ---- the gate child: candidate code never reaches the store
+
+
+def with_recipe(repo: Path, body: str) -> None:
+    """Commit a justfile whose work-check recipe is candidate code."""
+    write(repo, "justfile", f"work-check id:\n    {body}\n")
+    commit_all(repo, "candidate justfile")
+
+
+def real_just_runner(repo: Path, state: Path, environ: dict[str, str]) -> Runner:
+    provision(repo, state)
+    found = shutil.which("just")
+    assert found is not None
+    search = os.pathsep.join([str(Path(found).parent), "/usr/bin", "/bin"])
+    return open_runner(repo, {**env(state), **environ}, search_path=search)
+
+
+def gate_exit(runner: Runner, order: str = "order-a") -> int:
+    argv = ["just", "work-check", order]
+    with serving(runner) as sock:
+        reply = request(sock, {"op": "gate", "run_id": "g", "stage": "s", "argv": argv})
+    exit_code = parse(json.dumps(reply["receipt"])).receipt.observed["exit"]
+    assert isinstance(exit_code, int)
+    return exit_code
+
+
+def key_state(store: Path) -> tuple[str, int]:
+    path = key_path(store)
+    return hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_mode
+
+
+needs_just = pytest.mark.skipif(shutil.which("just") is None, reason="needs just")
+
+
+@seatbelt
+@needs_just
+def test_a_gate_criterion_cannot_read_the_signing_key(
+    repo: Path, state: Path, tmp_path: Path
+) -> None:
+    store = controller_store(repo, env(state))
+    leak = tmp_path / "leak"
+    key = key_path(store)
+    with_recipe(repo, f"cat '{key}' > '{leak}'")
+    runner = real_just_runner(repo, state, {})
+    before = key_state(runner.store)
+    assert gate_exit(runner) != 0
+    assert not leak.exists() or b"PRIVATE KEY" not in leak.read_bytes()
+    assert key_state(runner.store) == before
+
+
+@seatbelt
+@needs_just
+def test_a_gate_cannot_move_the_store_out_of_the_way(
+    repo: Path, state: Path, tmp_path: Path
+) -> None:
+    store = controller_store(repo, env(state))
+    moved = state.parent / (state.name + "-moved")
+    leak = tmp_path / "leak"
+    inner = moved / store.relative_to(state) / "signing-key.pem"
+    with_recipe(repo, f"mv '{state}' '{moved}' && cat '{inner}' > '{leak}'")
+    runner = real_just_runner(repo, state, {})
+    assert gate_exit(runner) != 0
+    assert not moved.exists()
+    assert not leak.exists() or b"PRIVATE KEY" not in leak.read_bytes()
+
+
+@seatbelt
+@needs_just
+def test_a_gate_cannot_write_into_the_store(repo: Path, state: Path) -> None:
+    store = controller_store(repo, env(state))
+    forged = store / "receipts" / "forged.json"
+    key = key_path(store)
+    with_recipe(
+        repo, f"echo x >> '{key}'; echo '{{}}' > '{forged}'; test -e '{forged}'"
+    )
+    runner = real_just_runner(repo, state, {})
+    before = key_state(runner.store)
+    assert gate_exit(runner) != 0
+    assert not forged.exists()
+    assert key_state(runner.store) == before
+
+
+@seatbelt
+@needs_just
+def test_a_gate_cannot_reach_the_runner_socket(repo: Path, state: Path) -> None:
+    sock = socket_path(controller_store(repo, env(state)))
+    code = f"import socket; socket.socket(socket.AF_UNIX).connect({str(sock)!r})"
+    with_recipe(repo, f"'{PYTHON}' -c \"{code}\"")
+    runner = real_just_runner(repo, state, {})
+    assert gate_exit(runner) != 0
+
+
+@seatbelt
+@needs_just
+def test_the_gate_environment_carries_no_tokens(
+    repo: Path, state: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # In the runner's own environment as well as the one it was opened with.
+    monkeypatch.setenv("GH_TOKEN", "t1")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "t3")
+    seen = tmp_path / "env"
+    with_recipe(repo, f"env > '{seen}'")
+    tokens = {
+        "GH_TOKEN": "t1",
+        "GITHUB_TOKEN": "t2",
+        "ANTHROPIC_API_KEY": "t3",
+        "OPENAI_API_KEY": "t4",
+        "TAC_BOT_TOKEN": "t5",
+        "GIT_DIR": "/elsewhere",
+        "HOME": str(tmp_path),
+        "LANG": "C.UTF-8",
+    }
+    runner = real_just_runner(repo, state, tokens)
+    assert gate_exit(runner) == 0
+    names = {
+        line.split("=", 1)[0] for line in seen.read_text().splitlines() if "=" in line
+    }
+    for name in ("GH_TOKEN", "GITHUB_TOKEN", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+        assert name not in names
+    assert "TAC_BOT_TOKEN" not in names
+    assert "TAC_STATE_HOME" not in names
+    assert "GIT_DIR" not in names
+    assert {"HOME", "LANG", "PATH"} <= names
+    for value in ("t1", "t2", "t3", "t4", "t5"):
+        assert f"={value}" not in seen.read_text()
+
+
+@seatbelt
+@needs_just
+def test_a_gate_that_changes_the_checkout_gets_no_receipt(
+    repo: Path, state: Path
+) -> None:
+    with_recipe(repo, "echo x > stray.txt")
+    runner = real_just_runner(repo, state, {})
+    argv = ["just", "work-check", "order-a"]
+    gate = {"op": "gate", "run_id": "g", "stage": "s", "argv": argv}
+    with serving(runner) as sock, pytest.raises(RunnerError, match="changed"):
+        request(sock, gate)
+    assert not any((runner.store / "receipts").rglob("*.json"))
+
+
+@seatbelt
+def test_the_runners_git_status_runs_sandboxed(
+    repo: Path, state: Path, tmp_path: Path
+) -> None:
+    # A clean filter in the repository's config is candidate code: git status
+    # may start it, so the runner starts git status inside the sandbox too.
+    store = controller_store(repo, env(state))
+    leak = tmp_path / "leak"
+    write(repo, ".gitattributes", "*.txt filter=grab\n")
+    write(repo, "a.txt", "a\n")
+    commit_all(repo, "attributes")
+    git(repo, "config", "filter.grab.clean", f"cat '{key_path(store)}' > '{leak}'; cat")
+    later = (repo / "a.txt").stat().st_mtime + 60
+    os.utime(repo / "a.txt", (later, later))
+    runner = make_runner(repo, state)
+    with contextlib.suppress(RunnerError):
+        runner.clean_revision()
+    assert not leak.exists() or b"PRIVATE KEY" not in leak.read_bytes()
+
+
+def test_without_a_sandbox_the_runner_refuses_to_gate(repo: Path, state: Path) -> None:
+    runner = dataclasses.replace(make_runner(repo, state), sandbox=None)
+    with serving(runner) as sock, pytest.raises(RunnerError, match="refuses to gate"):
+        request(sock, GATE)
+    assert not any((runner.store / "receipts").rglob("*.json"))
+    assert not (repo.parent / "bin" / "just-argv").exists()
+
+
+def test_off_macos_there_is_no_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("tac.runner.sys.platform", "linux")
+    assert default_sandbox() is None
+
+
+def test_a_linked_signing_key_is_refused(repo: Path, state: Path) -> None:
+    store = provision(repo, state)
+    real = state / "elsewhere.pem"
+    key_path(store).rename(real)
+    key_path(store).symlink_to(real)
+    with pytest.raises(RunnerError, match="not a link"):
+        load_key(store)
 
 
 # ---- the runner's own venv
