@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import shutil
+import socket
 import stat
 import subprocess
 import sys
@@ -609,6 +610,77 @@ def test_a_gate_cannot_reach_the_runner_socket(repo: Path, state: Path) -> None:
     with_recipe(repo, f"'{PYTHON}' -c \"{code}\"")
     runner = real_just_runner(repo, state, {})
     assert gate_exit(runner) != 0
+
+
+@contextlib.contextmanager
+def listening(family: socket.AddressFamily, address: str | tuple[str, int]):
+    """A server socket this test owns, never one of the owner's own services."""
+    server = socket.socket(family)
+    try:
+        server.bind(address)
+        server.listen(4)
+        server.setblocking(False)
+        yield server
+    finally:
+        server.close()
+
+
+def connected_to(server: socket.socket) -> bool:
+    """Whether a client got through: a completed connect waits in the backlog."""
+    try:
+        conn, _ = server.accept()
+    except BlockingIOError:
+        return False
+    conn.close()
+    return True
+
+
+@seatbelt
+@needs_just
+def test_a_gate_cannot_reach_a_unix_socket_outside_its_scratch(
+    repo: Path, state: Path
+) -> None:
+    # Stands in for the owner's tmux or Docker socket: a process outside the
+    # sandbox that would run a command for whoever connects.
+    with short_dir() as outside, listening(socket.AF_UNIX, str(outside / "s")) as srv:
+        path = str(outside / "s")
+        code = f"import socket; socket.socket(socket.AF_UNIX).connect({path!r})"
+        with_recipe(repo, f"'{PYTHON}' -c \"{code}\"")
+        runner = real_just_runner(repo, state, {})
+        assert gate_exit(runner) != 0
+        assert not connected_to(srv)
+
+
+@seatbelt
+@needs_just
+@pytest.mark.parametrize("host", ["127.0.0.1", "::1"])
+def test_a_gate_cannot_reach_a_loopback_port(
+    repo: Path, state: Path, host: str
+) -> None:
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    with listening(family, (host, 0)) as srv:
+        port = srv.getsockname()[1]
+        code = f"import socket; socket.create_connection(({host!r}, {port}), 5)"
+        with_recipe(repo, f"'{PYTHON}' -c \"{code}\"")
+        runner = real_just_runner(repo, state, {})
+        assert gate_exit(runner) != 0
+        assert not connected_to(srv)
+
+
+@seatbelt
+@needs_just
+def test_a_gate_may_serve_and_reach_a_unix_socket_in_its_scratch(
+    repo: Path, state: Path
+) -> None:
+    # A test a gate runs may bind a socket under its TMPDIR and connect to it.
+    code = (
+        "import os, socket; p = os.path.join(os.environ['TMPDIR'], 's'); "
+        "a = socket.socket(socket.AF_UNIX); a.bind(p); a.listen(1); "
+        "socket.socket(socket.AF_UNIX).connect(p)"
+    )
+    with_recipe(repo, f"'{PYTHON}' -c \"{code}\"")
+    runner = real_just_runner(repo, state, {})
+    assert gate_exit(runner) == 0
 
 
 @seatbelt

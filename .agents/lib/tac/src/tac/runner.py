@@ -19,10 +19,13 @@ the runner's own `git status`, which can start a configured fsmonitor or filter)
 starts under a macOS Seatbelt profile from /usr/bin/sandbox-exec. Writes are an
 allowlist: the checkout minus its toolchain, git and harness folders, and a
 private scratch folder that is the child's HOME, TMPDIR and caches; nothing else.
-The store and the key are denied to reads as well, the socket to connects, and
-Apple Events, LaunchServices and preference writes are denied, since each asks a
-process outside the sandbox to act. The child gets only the variables in
-GATE_ENV_VARS, the runner's PATH and the scratch locations. The gate runs in the
+The store and the key are denied to reads as well. Connects are an allowlist too:
+Unix sockets only in the scratch folder, plus the DNS resolver's socket, and no
+loopback TCP, since a socket of a process the owner runs unsandboxed (tmux,
+Docker) would run any command for the child. Apple Events, LaunchServices and
+preference writes are denied, since each asks a process outside the sandbox to
+act. The child gets only the variables in GATE_ENV_VARS, the runner's PATH and
+the scratch locations. The gate runs in the
 checkout at the committed revision it judges, and a gate that leaves HEAD moved
 or the tree changed gets no receipt. Where there is no sandbox-exec (not macOS),
 the runner refuses to gate and never falls back to running unsandboxed.
@@ -135,6 +138,10 @@ GATE_DEVICES = (
     "/dev/stdout",
     "/dev/stderr",
 )
+# The one Unix socket outside its scratch folder a gate child may connect to:
+# name resolution goes through it. Every other socket may belong to a process
+# the owner runs unsandboxed (tmux, Docker), which would act for the child.
+GATE_SOCKETS = ("/private/var/run/mDNSResponder",)
 # Services that open a file or start a program outside the sandbox.
 LAUNCH_SERVICES = ("com.apple.coreservices.launchservicesd",)
 LAUNCH_SERVICE_PREFIXES = ("com.apple.lsd.",)
@@ -396,15 +403,22 @@ def _sbpl(value: str) -> str:
 
 
 def seatbelt_profile(
-    store: Path, writable: Sequence[Path], protected: Sequence[Path] = ()
+    store: Path,
+    writable: Sequence[Path],
+    protected: Sequence[Path] = (),
+    sockets: Sequence[Path] = (),
 ) -> tuple[str, dict[str, str]]:
     """The profile and its parameters: writes only where allowed, nothing in the store.
 
     Writes are denied everywhere, then allowed under `writable` and the device
     files, then denied again under `protected`; Seatbelt applies the last rule
-    that matches. Seatbelt matches paths at the moment of access, so a child
-    that renamed a folder above the store would reach the key under a new path;
-    every ancestor is therefore denied writes, which blocks the rename.
+    that matches. Connects to Unix sockets are denied too, then allowed under
+    `sockets` and to GATE_SOCKETS, and loopback TCP is denied: a socket or port
+    outside the child's own folder may belong to a process the owner runs
+    unsandboxed, which would run a command for it. Seatbelt matches paths at the
+    moment of access, so a child that renamed a folder above the store would
+    reach the key under a new path; every ancestor is therefore denied writes,
+    which blocks the rename.
     """
     store = store.resolve()
     params = {"STORE": str(store), "KEY": str(key_path(store))}
@@ -421,6 +435,10 @@ def seatbelt_profile(
     for index, folder in enumerate(protected):
         params[f"P{index}"] = str(folder.resolve())
         denied.append(f'(subpath (param "P{index}"))')
+    reachable = [f"(literal {_sbpl(name)})" for name in GATE_SOCKETS]
+    for index, folder in enumerate(sockets):
+        params[f"S{index}"] = str(folder.resolve())
+        reachable.append(f'(subpath (param "S{index}"))')
     services = [f"(global-name {_sbpl(name)})" for name in LAUNCH_SERVICES] + [
         f"(global-name-prefix {_sbpl(prefix)})" for prefix in LAUNCH_SERVICE_PREFIXES
     ]
@@ -433,6 +451,13 @@ def seatbelt_profile(
     if denied:
         rules.append(f"(deny file-write* {' '.join(denied)})")
     rules += [
+        "(deny network-outbound (remote unix-socket))",
+        # One rule per place: filters listed inside one `remote` must all match.
+        *(
+            f"(allow network-outbound (remote unix-socket {each}))"
+            for each in reachable
+        ),
+        '(deny network-outbound (remote ip "localhost:*"))',
         '(deny file-read* file-write* (subpath (param "STORE")))',
         '(deny file-read* file-write* (literal (param "KEY")))',
         '(deny network-outbound (remote unix-socket (subpath (param "STORE"))))',
@@ -550,7 +575,8 @@ class Runner:
         """argv under the Seatbelt profile, or a refusal; never argv bare.
 
         The child writes its scratch folder and, when `write_tree`, the checkout
-        minus GATE_PROTECTED and the git common dir; nothing else.
+        minus GATE_PROTECTED and the git common dir; nothing else. It connects
+        only to Unix sockets in its scratch folder and to GATE_SOCKETS.
         """
         if self.sandbox is None:
             raise RunnerError(
@@ -562,7 +588,9 @@ class Runner:
         writable = [scratch, self.root] if write_tree else [scratch]
         protected = [self.root / name for name in GATE_PROTECTED]
         protected.append(git_common_dir(self.root))
-        profile, params = seatbelt_profile(self.store, writable, protected)
+        profile, params = seatbelt_profile(
+            self.store, writable, protected, sockets=[scratch]
+        )
         defines = [part for k, v in params.items() for part in ("-D", f"{k}={v}")]
         return [self.sandbox, "-p", profile, *defines, *argv]
 
