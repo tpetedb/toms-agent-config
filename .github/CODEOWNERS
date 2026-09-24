@@ -1,0 +1,14 @@
+# Changes to the checker, its policy or its wiring need the owner's review.
+# Anything not listed here is reviewed under the ordinary rules.
+/.agents/                   @tpetedb
+/src/tac/                   @tpetedb
+/hooks/                     @tpetedb
+/templates/                 @tpetedb
+/contracts/                 @tpetedb
+/.github/                   @tpetedb
+/justfile                   @tpetedb
+/.pre-commit-config.yaml    @tpetedb
+/pyproject.toml             @tpetedb
+/conftest.py                @tpetedb
+/bootstrap.sh               @tpetedb
+/scripts/private_scan.sh    @tpetedb

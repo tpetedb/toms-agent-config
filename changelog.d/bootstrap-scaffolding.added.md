@@ -1,0 +1,1 @@
+The `tac` package with `tac --version` and a `tac doctor` that runs named checks and exits non-zero until every one passes, the agent toolchain in `.agents/` installed non-editable from its stamped copy, `bootstrap.sh`, the `justfile`, CI on pull requests with a read-only token, and CODEOWNERS.
