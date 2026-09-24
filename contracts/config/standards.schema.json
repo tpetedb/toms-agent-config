@@ -1,0 +1,370 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "Changelog": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "title": "Format",
+          "type": "string"
+        },
+        "fragments": {
+          "title": "Fragments",
+          "type": "string"
+        },
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        },
+        "types": {
+          "items": {
+            "enum": [
+              "added",
+              "changed",
+              "deprecated",
+              "removed",
+              "fixed",
+              "security"
+            ],
+            "type": "string"
+          },
+          "title": "Types",
+          "type": "array"
+        }
+      },
+      "required": [
+        "format",
+        "fragments",
+        "types",
+        "tool"
+      ],
+      "title": "Changelog",
+      "type": "object"
+    },
+    "Code": {
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "$ref": "#/definitions/Linter"
+        },
+        "markdown": {
+          "$ref": "#/definitions/MarkdownCode"
+        },
+        "python": {
+          "$ref": "#/definitions/PythonCode"
+        },
+        "shell": {
+          "$ref": "#/definitions/ShellCode"
+        },
+        "sql": {
+          "$ref": "#/definitions/Linter"
+        },
+        "toml": {
+          "$ref": "#/definitions/Formatter"
+        },
+        "yaml": {
+          "$ref": "#/definitions/Linter"
+        }
+      },
+      "required": [
+        "python",
+        "shell",
+        "sql",
+        "markdown",
+        "yaml",
+        "toml",
+        "actions"
+      ],
+      "title": "Code",
+      "type": "object"
+    },
+    "Commits": {
+      "additionalProperties": false,
+      "properties": {
+        "convention": {
+          "enum": [
+            "what-and-why",
+            "conventional-1.0.0"
+          ],
+          "title": "Convention",
+          "type": "string"
+        },
+        "max_subject": {
+          "minimum": 1,
+          "title": "Max Subject",
+          "type": "integer"
+        },
+        "trailers_required": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Trailers Required",
+          "type": "array"
+        }
+      },
+      "required": [
+        "convention",
+        "max_subject",
+        "trailers_required"
+      ],
+      "title": "Commits",
+      "type": "object"
+    },
+    "Dates": {
+      "additionalProperties": false,
+      "properties": {
+        "basic_in_filenames": {
+          "title": "Basic In Filenames",
+          "type": "boolean"
+        },
+        "format": {
+          "title": "Format",
+          "type": "string"
+        },
+        "timezone": {
+          "title": "Timezone",
+          "type": "string"
+        }
+      },
+      "required": [
+        "format",
+        "timezone",
+        "basic_in_filenames"
+      ],
+      "title": "Dates",
+      "type": "object"
+    },
+    "Diagrams": {
+      "additionalProperties": false,
+      "properties": {
+        "architecture": {
+          "title": "Architecture",
+          "type": "string"
+        },
+        "flowcharts": {
+          "title": "Flowcharts",
+          "type": "string"
+        },
+        "tool": {
+          "const": "mermaid",
+          "title": "Tool",
+          "type": "string"
+        },
+        "validate": {
+          "title": "Validate",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "flowcharts",
+        "architecture",
+        "validate"
+      ],
+      "title": "Diagrams",
+      "type": "object"
+    },
+    "Formatter": {
+      "additionalProperties": false,
+      "properties": {
+        "formatter": {
+          "title": "Formatter",
+          "type": "string"
+        }
+      },
+      "required": [
+        "formatter"
+      ],
+      "title": "Formatter",
+      "type": "object"
+    },
+    "Linter": {
+      "additionalProperties": false,
+      "properties": {
+        "linter": {
+          "title": "Linter",
+          "type": "string"
+        }
+      },
+      "required": [
+        "linter"
+      ],
+      "title": "Linter",
+      "type": "object"
+    },
+    "MarkdownCode": {
+      "additionalProperties": false,
+      "properties": {
+        "em_dashes": {
+          "title": "Em Dashes",
+          "type": "boolean"
+        },
+        "linter": {
+          "title": "Linter",
+          "type": "string"
+        }
+      },
+      "required": [
+        "linter",
+        "em_dashes"
+      ],
+      "title": "MarkdownCode",
+      "type": "object"
+    },
+    "PythonCode": {
+      "additionalProperties": false,
+      "properties": {
+        "formatter": {
+          "title": "Formatter",
+          "type": "string"
+        },
+        "line_length": {
+          "minimum": 1,
+          "title": "Line Length",
+          "type": "integer"
+        },
+        "linter": {
+          "title": "Linter",
+          "type": "string"
+        },
+        "types": {
+          "title": "Types",
+          "type": "string"
+        }
+      },
+      "required": [
+        "formatter",
+        "linter",
+        "types",
+        "line_length"
+      ],
+      "title": "PythonCode",
+      "type": "object"
+    },
+    "Quality": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "title": "Data",
+          "type": "string"
+        },
+        "dependencies": {
+          "title": "Dependencies",
+          "type": "string"
+        },
+        "licences": {
+          "title": "Licences",
+          "type": "string"
+        },
+        "lint": {
+          "title": "Lint",
+          "type": "string"
+        },
+        "secrets": {
+          "title": "Secrets",
+          "type": "string"
+        },
+        "tests": {
+          "title": "Tests",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tests",
+        "lint",
+        "secrets",
+        "dependencies",
+        "licences",
+        "data"
+      ],
+      "title": "Quality",
+      "type": "object"
+    },
+    "ShellCode": {
+      "additionalProperties": false,
+      "properties": {
+        "dialect": {
+          "title": "Dialect",
+          "type": "string"
+        },
+        "linter": {
+          "title": "Linter",
+          "type": "string"
+        }
+      },
+      "required": [
+        "linter",
+        "dialect"
+      ],
+      "title": "ShellCode",
+      "type": "object"
+    },
+    "Versioning": {
+      "additionalProperties": false,
+      "properties": {
+        "scheme": {
+          "title": "Scheme",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scheme",
+        "source"
+      ],
+      "title": "Versioning",
+      "type": "object"
+    }
+  },
+  "description": "config/standards.toml as written; the floor is applied after.",
+  "properties": {
+    "changelog": {
+      "$ref": "#/definitions/Changelog"
+    },
+    "code": {
+      "$ref": "#/definitions/Code"
+    },
+    "commits": {
+      "$ref": "#/definitions/Commits"
+    },
+    "dates": {
+      "$ref": "#/definitions/Dates"
+    },
+    "diagrams": {
+      "$ref": "#/definitions/Diagrams"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "title": "Name",
+      "type": "string"
+    },
+    "quality": {
+      "$ref": "#/definitions/Quality"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "versioning": {
+      "$ref": "#/definitions/Versioning"
+    }
+  },
+  "required": [
+    "schema_version",
+    "name",
+    "versioning",
+    "changelog",
+    "commits",
+    "dates",
+    "diagrams",
+    "code",
+    "quality"
+  ],
+  "title": "Registry",
+  "type": "object"
+}

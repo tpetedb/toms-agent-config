@@ -29,6 +29,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
+from tac.draft07 import draft07
+
 SCHEMA_VERSION = 1
 RUNNER_PUB = ".agents/config/runner.pub"
 # The files whose committed bytes make up the policy a receipt was taken under.
@@ -90,13 +92,7 @@ class SignedReceipt(BaseModel):
 
 def receipt_json_schema() -> dict[str, JsonValue]:
     """The signed receipt as JSON Schema draft-07, generated from the models."""
-    schema = SignedReceipt.model_json_schema(ref_template="#/definitions/{model}")
-    definitions = schema.pop("$defs", {})
-    return {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        **schema,
-        "definitions": definitions,
-    }
+    return draft07(SignedReceipt)
 
 
 def canonical_bytes(receipt: Receipt) -> bytes:

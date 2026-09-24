@@ -1,0 +1,477 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "Governance": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_identity": {
+          "pattern": "^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$",
+          "title": "Agent Identity",
+          "type": "string"
+        },
+        "board_triggers": {
+          "items": {
+            "enum": [
+              "policy-loosening",
+              "checker-change",
+              "security",
+              "cross-team-dispute",
+              "unresolved-finding"
+            ],
+            "type": "string"
+          },
+          "title": "Board Triggers",
+          "type": "array"
+        },
+        "chief": {
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "title": "Chief",
+          "type": "string"
+        },
+        "chief_may": {
+          "items": {
+            "enum": [
+              "open-issue",
+              "comment",
+              "push-branch",
+              "open-pr"
+            ],
+            "type": "string"
+          },
+          "title": "Chief May",
+          "type": "array"
+        },
+        "directors": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "type": "string"
+          },
+          "title": "Directors",
+          "type": "array"
+        },
+        "quorum": {
+          "minimum": 1,
+          "title": "Quorum",
+          "type": "integer"
+        },
+        "tally_by": {
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "title": "Tally By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "chief",
+        "directors",
+        "quorum",
+        "tally_by",
+        "board_triggers",
+        "agent_identity",
+        "chief_may"
+      ],
+      "title": "Governance",
+      "type": "object"
+    },
+    "Harnesses": {
+      "additionalProperties": false,
+      "properties": {
+        "copilot_surfaces": {
+          "items": {
+            "enum": [
+              "cli",
+              "ide",
+              "cloud"
+            ],
+            "type": "string"
+          },
+          "title": "Copilot Surfaces",
+          "type": "array"
+        },
+        "enforced": {
+          "items": {
+            "enum": [
+              "claude",
+              "codex",
+              "copilot",
+              "opencode",
+              "pi",
+              "gemini"
+            ],
+            "type": "string"
+          },
+          "minLength": 1,
+          "title": "Enforced",
+          "type": "array"
+        },
+        "instructions_only": {
+          "items": {
+            "enum": [
+              "claude",
+              "codex",
+              "copilot",
+              "opencode",
+              "pi",
+              "gemini"
+            ],
+            "type": "string"
+          },
+          "title": "Instructions Only",
+          "type": "array"
+        }
+      },
+      "required": [
+        "enforced",
+        "instructions_only",
+        "copilot_surfaces"
+      ],
+      "title": "Harnesses",
+      "type": "object"
+    },
+    "Human": {
+      "additionalProperties": false,
+      "properties": {
+        "approvals_dir": {
+          "minLength": 1,
+          "title": "Approvals Dir",
+          "type": "string"
+        },
+        "recap_dir": {
+          "minLength": 1,
+          "title": "Recap Dir",
+          "type": "string"
+        },
+        "timeout_is_consent": {
+          "const": false,
+          "title": "Timeout Is Consent",
+          "type": "boolean"
+        },
+        "todo": {
+          "minLength": 1,
+          "title": "Todo",
+          "type": "string"
+        },
+        "verify": {
+          "items": {
+            "enum": [
+              "github-review-by-owner",
+              "host-signed"
+            ],
+            "type": "string"
+          },
+          "minLength": 1,
+          "title": "Verify",
+          "type": "array"
+        }
+      },
+      "required": [
+        "todo",
+        "recap_dir",
+        "approvals_dir",
+        "timeout_is_consent",
+        "verify"
+      ],
+      "title": "Human",
+      "type": "object"
+    },
+    "Memory": {
+      "additionalProperties": false,
+      "properties": {
+        "retention_days": {
+          "minimum": 1,
+          "title": "Retention Days",
+          "type": "integer"
+        },
+        "runtime_store": {
+          "minLength": 1,
+          "title": "Runtime Store",
+          "type": "string"
+        },
+        "select_cap_chars": {
+          "minimum": 1,
+          "title": "Select Cap Chars",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "runtime_store",
+        "select_cap_chars",
+        "retention_days"
+      ],
+      "title": "Memory",
+      "type": "object"
+    },
+    "ModelsRef": {
+      "additionalProperties": false,
+      "properties": {
+        "policy": {
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "title": "Policy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "policy"
+      ],
+      "title": "ModelsRef",
+      "type": "object"
+    },
+    "Pipelines": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "items": {
+            "enum": [
+              "order",
+              "board",
+              "review",
+              "release",
+              "retro"
+            ],
+            "type": "string"
+          },
+          "title": "Enabled",
+          "type": "array"
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "title": "Pipelines",
+      "type": "object"
+    },
+    "ProfileRef": {
+      "additionalProperties": false,
+      "properties": {
+        "active": {
+          "enum": [
+            "enterprise",
+            "standard",
+            "yolo"
+          ],
+          "title": "Active",
+          "type": "string"
+        }
+      },
+      "required": [
+        "active"
+      ],
+      "title": "ProfileRef",
+      "type": "object"
+    },
+    "Project": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "app",
+            "tool",
+            "library",
+            "data-pipeline",
+            "document",
+            "mixed"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind"
+      ],
+      "title": "Project",
+      "type": "object"
+    },
+    "Secrets": {
+      "additionalProperties": false,
+      "properties": {
+        "env_file": {
+          "minLength": 1,
+          "title": "Env File",
+          "type": "string"
+        }
+      },
+      "required": [
+        "env_file"
+      ],
+      "title": "Secrets",
+      "type": "object"
+    },
+    "StandardsRef": {
+      "additionalProperties": false,
+      "properties": {
+        "registry": {
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "title": "Registry",
+          "type": "string"
+        }
+      },
+      "required": [
+        "registry"
+      ],
+      "title": "StandardsRef",
+      "type": "object"
+    },
+    "TeamsRef": {
+      "additionalProperties": false,
+      "properties": {
+        "max_local_agents": {
+          "minimum": 1,
+          "title": "Max Local Agents",
+          "type": "integer"
+        },
+        "table": {
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "title": "Table",
+          "type": "string"
+        }
+      },
+      "required": [
+        "table",
+        "max_local_agents"
+      ],
+      "title": "TeamsRef",
+      "type": "object"
+    },
+    "Telemetry": {
+      "additionalProperties": false,
+      "properties": {
+        "host_tier": {
+          "enum": [
+            "partial",
+            "full"
+          ],
+          "title": "Host Tier",
+          "type": "string"
+        }
+      },
+      "required": [
+        "host_tier"
+      ],
+      "title": "Telemetry",
+      "type": "object"
+    },
+    "Threshold": {
+      "additionalProperties": false,
+      "properties": {
+        "slow_at": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Slow At",
+          "type": "number"
+        },
+        "stop_at": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Stop At",
+          "type": "number"
+        }
+      },
+      "required": [
+        "slow_at",
+        "stop_at"
+      ],
+      "title": "Threshold",
+      "type": "object"
+    },
+    "Usage": {
+      "additionalProperties": false,
+      "properties": {
+        "claude": {
+          "$ref": "#/definitions/Threshold"
+        },
+        "max_age_s": {
+          "minimum": 1,
+          "title": "Max Age S",
+          "type": "integer"
+        },
+        "openai": {
+          "$ref": "#/definitions/Threshold"
+        },
+        "unavailable": {
+          "const": "pause",
+          "title": "Unavailable",
+          "type": "string"
+        }
+      },
+      "required": [
+        "claude",
+        "openai",
+        "unavailable",
+        "max_age_s"
+      ],
+      "title": "Usage",
+      "type": "object"
+    }
+  },
+  "description": "`.agents/config.toml` as written.",
+  "properties": {
+    "governance": {
+      "$ref": "#/definitions/Governance"
+    },
+    "harnesses": {
+      "$ref": "#/definitions/Harnesses"
+    },
+    "human": {
+      "$ref": "#/definitions/Human"
+    },
+    "memory": {
+      "$ref": "#/definitions/Memory"
+    },
+    "models": {
+      "$ref": "#/definitions/ModelsRef"
+    },
+    "pipelines": {
+      "$ref": "#/definitions/Pipelines"
+    },
+    "profile": {
+      "$ref": "#/definitions/ProfileRef"
+    },
+    "project": {
+      "$ref": "#/definitions/Project"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "secrets": {
+      "$ref": "#/definitions/Secrets"
+    },
+    "standards": {
+      "$ref": "#/definitions/StandardsRef"
+    },
+    "teams": {
+      "$ref": "#/definitions/TeamsRef"
+    },
+    "telemetry": {
+      "$ref": "#/definitions/Telemetry"
+    },
+    "usage": {
+      "$ref": "#/definitions/Usage"
+    }
+  },
+  "required": [
+    "schema_version",
+    "project",
+    "profile",
+    "governance",
+    "models",
+    "teams",
+    "usage",
+    "standards",
+    "pipelines",
+    "memory",
+    "human",
+    "harnesses",
+    "secrets",
+    "telemetry"
+  ],
+  "title": "Knobs",
+  "type": "object"
+}

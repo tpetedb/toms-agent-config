@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "Waiver": {
+      "additionalProperties": false,
+      "description": "One gate lifted until a day, with the owner's approval.",
+      "properties": {
+        "approved_by": {
+          "const": "owner",
+          "title": "Approved By",
+          "type": "string"
+        },
+        "expires": {
+          "format": "date",
+          "title": "Expires",
+          "type": "string"
+        },
+        "gate": {
+          "title": "Gate",
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "gate",
+        "reason",
+        "expires",
+        "approved_by"
+      ],
+      "title": "Waiver",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "floor": {
+      "additionalProperties": true,
+      "title": "Floor",
+      "type": "object"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "waivers": {
+      "default": [],
+      "items": {
+        "$ref": "#/definitions/Waiver"
+      },
+      "title": "Waivers",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "floor"
+  ],
+  "title": "FloorFile",
+  "type": "object"
+}

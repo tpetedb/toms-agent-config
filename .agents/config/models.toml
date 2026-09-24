@@ -16,15 +16,17 @@ name = "default"
 [providers.anthropic]
 harness = "claude"                        # the enforced harness this provider runs through: claude | codex
 build = "claude-opus-5-5"                 # the model a builder on this provider's team uses; a reviewer from here uses it too
-# The effort names this provider's client accepts, lowest first; a role's effort must be one of them.
-efforts = ["low", "medium", "high", "xhigh"]
+# The effort names Claude Code accepts for Opus 5.5 and Fable 5.1, lowest first; a
+# role's effort must be one of them. ultracode is a launch setting, not an effort.
+efforts = ["low", "medium", "high", "xhigh", "max"]
 
 # OpenAI's models run through Codex.
 [providers.openai]
 harness = "codex"                         # the enforced harness this provider runs through: claude | codex
-build = "gpt-5.6-sol"                     # the Codex team's build model; a reviewer from here uses it too
-# The model_reasoning_effort names Codex accepts, lowest first.
-efforts = ["minimal", "low", "medium", "high", "xhigh"]
+build = "gpt-6-sol"                       # the Codex team's build model; a reviewer from here uses it too
+# The model_reasoning_effort names Codex documents, lowest first. "ultra" is left
+# out: it delegates to subagents on its own, past the handoff guard.
+efforts = ["low", "medium", "high", "xhigh", "max"]
 
 # ---- roles: one table per role charter under config/roles/. `provider` says
 # which provider seats the role: a provider id, "any" (the team's own provider)
@@ -41,25 +43,25 @@ anthropic = { model = "claude-opus-5-5", effort = "high" }
 [roles.builder]
 provider = "any"                          # a provider id | any | other
 anthropic = { model = "claude-opus-5-5", effort = "high" }    # the Claude team's builder: model and effort
-openai = { model = "gpt-5.6-sol", effort = "high" }           # the Codex team's builder: model and effort
+openai = { model = "gpt-6-sol", effort = "high" }             # the Codex team's builder: model and effort
 
 # A reviewer is always the other provider's build model.
 [roles.reviewer]
 provider = "other"                        # a provider id | any | other
 anthropic = { model = "claude-opus-5-5", effort = "high" }    # reviewing Codex work: model and effort
-openai = { model = "gpt-5.6-sol", effort = "high" }           # reviewing Claude work: model and effort
+openai = { model = "gpt-6-sol", effort = "high" }             # reviewing Claude work: model and effort
 
 # A manager splits a goal into orders inside its team's paths.
 [roles.manager]
 provider = "any"                          # a provider id | any | other
 anthropic = { model = "claude-opus-5-5", effort = "medium" }  # a Claude team manager: model and effort
-openai = { model = "gpt-5.6-sol", effort = "medium" }         # a Codex team manager: model and effort
+openai = { model = "gpt-6-sol", effort = "medium" }           # a Codex team manager: model and effort
 
 # A scout researches and fact-checks, read-only, on a small fast model at low effort.
 [roles.scout]
 provider = "any"                          # a provider id | any | other
 anthropic = { model = "haiku", effort = "low" }               # model is Claude Code's alias for its current small model; effort low
-openai = { model = "gpt-5.6-sol", effort = "low" }            # the Codex scout: model and effort
+openai = { model = "gpt-6-luna", effort = "low" }             # Codex's model for focused, high-volume work; effort low
 
 # ---- directors: one table per board seat named in [governance] directors.
 # Each seat is a separate fresh session; `launch_effort` is what the session is

@@ -40,6 +40,7 @@ from tac.config_schema import (
     Role,
     RuntimeFile,
 )
+from tac.draft07 import draft07
 from tac.runner import ProbesFile
 from tac.standards import FLOOR_FILE, Floor, Registry
 from tac.tomldoc import KeyDoc, document, join
@@ -707,29 +708,57 @@ def literal_choices(model: type[BaseModel], parts: list[str]) -> tuple[str, ...]
     return ()
 
 
+# The model each kind of shipped file is read through, by the name of its JSON
+# Schema draft-07 export in contracts/config/<name>.schema.json.
+CONFIG_SCHEMAS: dict[str, type[BaseModel]] = {
+    "config": Knobs,
+    "profile": Profile,
+    "role": Role,
+    "gate-pack": GatePack,
+    "models": ModelsFile,
+    "teams": TeamsFile,
+    "standards": Registry,
+    "standards-floor": standards.FloorFile,
+    "hooks": HooksFile,
+    "policy": PolicyFile,
+    "mcp": McpFile,
+    "network": NetworkFile,
+    "runtime": RuntimeFile,
+    "github": GitHubFile,
+    "probes": ProbesFile,
+}
+CONTRACTS_DIR = "contracts/config"
+
+
+def schema_name(rel: str) -> str | None:
+    """The name of the schema a shipped file is read through, by its path."""
+    if rel == KNOBS_FILE:
+        return "config"
+    if rel == FLOOR_FILE:
+        return "standards-floor"
+    if rel == TEAMS_FILE:
+        return "teams"
+    folder, _, name = rel.removeprefix(f"{CONFIG_DIR}/").rpartition("/")
+    if folder:
+        return {"profiles": "profile", "roles": "role", "gates": "gate-pack"}.get(
+            folder
+        )
+    stem = name.removesuffix(".toml")
+    if name.endswith(".toml") and stem in CONFIG_SCHEMAS and name in KNOWN_FILES:
+        return stem
+    return None
+
+
 def schema_for(rel: str) -> type[BaseModel] | None:
     """The model a shipped file is read through, by its path from the root."""
-    if rel == KNOBS_FILE:
-        return Knobs
-    if rel == FLOOR_FILE:
-        return standards.FloorFile
-    if rel == TEAMS_FILE:
-        return TeamsFile
-    folder, _, name = rel.removeprefix(f"{CONFIG_DIR}/").rpartition("/")
-    by_folder = {"profiles": Profile, "roles": Role, "gates": GatePack}
-    if folder:
-        return by_folder.get(folder)
-    return {
-        "models.toml": ModelsFile,
-        "standards.toml": Registry,
-        "hooks.toml": HooksFile,
-        "policy.toml": PolicyFile,
-        "mcp.toml": McpFile,
-        "network.toml": NetworkFile,
-        "runtime.toml": RuntimeFile,
-        "github.toml": GitHubFile,
-        "probes.toml": ProbesFile,
-    }.get(name)
+    name = schema_name(rel)
+    return CONFIG_SCHEMAS[name] if name else None
+
+
+def config_json_schemas() -> dict[str, dict[str, Any]]:
+    """Every config file's JSON Schema draft-07, by name. Config schemas are not
+    model-facing, so they keep optional keys and defaults (build condition C4)."""
+    return {name: draft07(model) for name, model in CONFIG_SCHEMAS.items()}
 
 
 def floor_check(root: Path, base: str) -> tuple[list[str], list[str]]:

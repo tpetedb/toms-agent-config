@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "RuntimeEnv": {
+      "additionalProperties": false,
+      "properties": {
+        "claude_subprocess_env_scrub": {
+          "title": "Claude Subprocess Env Scrub",
+          "type": "boolean"
+        },
+        "codex_inherit": {
+          "enum": [
+            "core",
+            "all",
+            "none"
+          ],
+          "title": "Codex Inherit",
+          "type": "string"
+        },
+        "gh_telemetry": {
+          "title": "Gh Telemetry",
+          "type": "boolean"
+        },
+        "pass": {
+          "items": {
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "type": "string"
+          },
+          "title": "Pass",
+          "type": "array"
+        }
+      },
+      "required": [
+        "claude_subprocess_env_scrub",
+        "codex_inherit",
+        "gh_telemetry",
+        "pass"
+      ],
+      "title": "RuntimeEnv",
+      "type": "object"
+    },
+    "RuntimePaths": {
+      "additionalProperties": false,
+      "properties": {
+        "worker_store": {
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "title": "Worker Store",
+          "type": "string"
+        },
+        "worktrees": {
+          "minLength": 1,
+          "title": "Worktrees",
+          "type": "string"
+        }
+      },
+      "required": [
+        "worktrees",
+        "worker_store"
+      ],
+      "title": "RuntimePaths",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "env": {
+      "$ref": "#/definitions/RuntimeEnv"
+    },
+    "paths": {
+      "$ref": "#/definitions/RuntimePaths"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "paths",
+    "env"
+  ],
+  "title": "RuntimeFile",
+  "type": "object"
+}

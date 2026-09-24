@@ -3,18 +3,31 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import re
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
+from typing import Any
 
 import pytest
 from click.testing import CliRunner
+from jsonschema import Draft7Validator
 
 from tac import standards
 from tac.cli import cli
-from tac.config import CONFIG_DIR, floor_check, load_config
+from tac.config import (
+    CONFIG_DIR,
+    CONFIG_SCHEMAS,
+    CONTRACTS_DIR,
+    config_json_schemas,
+    floor_check,
+    load_config,
+    schema_name,
+)
 from tac.doctor import Status, check_agents_config
+from tac.draft07 import DRAFT_07, later_keywords
 from tac.standards import FLOOR_FILE, STANDARDS_FILE, Rule
 from tac.work import KNOBS_FILE, TEAMS_FILE, Bad
 
@@ -499,3 +512,93 @@ def test_a_waiver_for_an_unknown_gate_fails(camp: Path) -> None:
 def test_the_shipped_floor_has_no_waiver_that_could_expire(repo: Path) -> None:
     config = load_config(repo, today=TODAY)
     assert all(w.expires >= TODAY for w in config.floor.waivers)
+
+
+# ---------------------------------------------------------------- JSON Schema draft-07
+
+
+def shipped_tomls(root: Path) -> list[str]:
+    config = (p.relative_to(root).as_posix() for p in (root / CONFIG_DIR).rglob("*"))
+    return sorted([KNOBS_FILE, FLOOR_FILE, *(p for p in config if p.endswith(".toml"))])
+
+
+def as_json(rel: Path) -> Any:
+    # TOML dates reach JSON as ISO 8601 text, the way taplo and CI read them.
+    data = tomllib.loads(rel.read_text(encoding="utf-8"))
+    return json.loads(json.dumps(data, default=lambda d: d.isoformat()))
+
+
+def test_the_committed_config_schemas_match_the_models(repo: Path) -> None:
+    folder = repo / CONTRACTS_DIR
+    expected = {
+        f"{name}.schema.json": json.dumps(body, indent=2, sort_keys=True) + "\n"
+        for name, body in config_json_schemas().items()
+    }
+    committed = {p.name: p.read_text("utf-8") for p in folder.glob("*.schema.json")}
+    assert committed == expected, "run: uv run tac config schema --write"
+
+
+@pytest.mark.parametrize("name", sorted(CONFIG_SCHEMAS))
+def test_each_config_schema_is_draft_07_and_nothing_later(name: str) -> None:
+    schema = config_json_schemas()[name]
+    Draft7Validator.check_schema(schema)
+    assert schema["$schema"] == DRAFT_07
+    assert schema["additionalProperties"] is False
+    assert later_keywords(schema) == []
+
+
+def test_every_shipped_file_passes_its_json_schema(repo: Path) -> None:
+    schemas = config_json_schemas()
+    for rel in shipped_tomls(repo):
+        name = schema_name(rel)
+        assert name is not None, f"{rel} has no schema"
+        errors = [
+            f"{rel}: {'/'.join(map(str, e.absolute_path))}: {e.message}"
+            for e in Draft7Validator(schemas[name]).iter_errors(as_json(repo / rel))
+        ]
+        assert errors == []
+
+
+def test_every_config_schema_is_used_by_a_shipped_file(repo: Path) -> None:
+    used = {schema_name(rel) for rel in shipped_tomls(repo)}
+    assert used == set(CONFIG_SCHEMAS)
+
+
+def test_the_json_schema_refuses_an_unknown_key_and_a_wrong_enum(repo: Path) -> None:
+    knobs = as_json(repo / KNOBS_FILE)
+    assert isinstance(knobs, dict)
+    validator = Draft7Validator(config_json_schemas()["config"])
+    assert list(validator.iter_errors({**knobs, "surprise": 1}))
+    profile = {**knobs["profile"], "active": 3}
+    assert list(validator.iter_errors({**knobs, "profile": profile}))
+
+
+def test_later_keywords_reads_keywords_not_property_names() -> None:
+    schema = {
+        "$defs": {},
+        "properties": {"prefixItems": {"type": "array", "prefixItems": []}},
+        "enum": [{"$defs": 1}],
+    }
+    assert later_keywords(schema) == [
+        "/: $defs",
+        "/properties/prefixItems: prefixItems",
+    ]
+
+
+def test_config_schema_write_replaces_stale_files(tmp_path: Path) -> None:
+    stale = tmp_path / CONTRACTS_DIR / "gone.schema.json"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("{}")
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["config", "schema", "--write", "--root", str(tmp_path)]
+    )
+    assert result.exit_code == 0, result.output
+    assert not stale.exists()
+    written = sorted(p.stem for p in stale.parent.glob("*.schema.json"))
+    assert written == sorted(f"{n}.schema" for n in CONFIG_SCHEMAS)
+    again = runner.invoke(cli, ["config", "schema", "--write", "--root", str(tmp_path)])
+    assert again.exit_code == 0 and again.output == ""
+    one = runner.invoke(cli, ["config", "schema", "role"])
+    assert json.loads(one.output) == config_json_schemas()["role"]
+    assert runner.invoke(cli, ["config", "schema"]).exit_code != 0

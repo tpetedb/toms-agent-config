@@ -1,0 +1,135 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "DenyPaths": {
+      "additionalProperties": false,
+      "properties": {
+        "deny_read": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Deny Read",
+          "type": "array"
+        },
+        "deny_write": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Deny Write",
+          "type": "array"
+        }
+      },
+      "required": [
+        "deny_read",
+        "deny_write"
+      ],
+      "title": "DenyPaths",
+      "type": "object"
+    },
+    "Effects": {
+      "additionalProperties": false,
+      "properties": {
+        "owner_only": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Owner Only",
+          "type": "array"
+        },
+        "runner_only": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Runner Only",
+          "type": "array"
+        }
+      },
+      "required": [
+        "runner_only",
+        "owner_only"
+      ],
+      "title": "Effects",
+      "type": "object"
+    },
+    "HostRefusals": {
+      "additionalProperties": false,
+      "properties": {
+        "refuse_claude_modes": {
+          "items": {
+            "enum": [
+              "default",
+              "acceptEdits",
+              "plan",
+              "bypassPermissions"
+            ],
+            "type": "string"
+          },
+          "title": "Refuse Claude Modes",
+          "type": "array"
+        },
+        "refuse_codex_approval": {
+          "items": {
+            "enum": [
+              "untrusted",
+              "on-failure",
+              "on-request",
+              "never"
+            ],
+            "type": "string"
+          },
+          "title": "Refuse Codex Approval",
+          "type": "array"
+        },
+        "refuse_codex_sandbox": {
+          "items": {
+            "enum": [
+              "read-only",
+              "workspace-write",
+              "danger-full-access"
+            ],
+            "type": "string"
+          },
+          "title": "Refuse Codex Sandbox",
+          "type": "array"
+        },
+        "refuse_unsandboxed_commands": {
+          "title": "Refuse Unsandboxed Commands",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "refuse_claude_modes",
+        "refuse_unsandboxed_commands",
+        "refuse_codex_sandbox",
+        "refuse_codex_approval"
+      ],
+      "title": "HostRefusals",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "effects": {
+      "$ref": "#/definitions/Effects"
+    },
+    "host": {
+      "$ref": "#/definitions/HostRefusals"
+    },
+    "paths": {
+      "$ref": "#/definitions/DenyPaths"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "paths",
+    "effects",
+    "host"
+  ],
+  "title": "PolicyFile",
+  "type": "object"
+}

@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "ProbeSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "expect_exit": {
+          "default": 0,
+          "title": "Expect Exit",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "version",
+            "trust"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "description",
+        "kind"
+      ],
+      "title": "ProbeSpec",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "probes": {
+      "additionalProperties": {
+        "$ref": "#/definitions/ProbeSpec"
+      },
+      "title": "Probes",
+      "type": "object"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "probes"
+  ],
+  "title": "ProbesFile",
+  "type": "object"
+}

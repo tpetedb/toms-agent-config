@@ -1,0 +1,237 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "Repair": {
+      "additionalProperties": false,
+      "description": "One bounded builder turn. `argv` runs without a shell and reads the\nrendered handoff on stdin; `{order}` and `{max_turns}` are the only\nplaceholders, so nothing a model or a check printed reaches a command line.",
+      "properties": {
+        "argv": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Argv",
+          "type": "array"
+        },
+        "max_turns": {
+          "default": 30,
+          "minimum": 1,
+          "title": "Max Turns",
+          "type": "integer"
+        },
+        "timeout_s": {
+          "default": 1800,
+          "minimum": 1,
+          "title": "Timeout S",
+          "type": "integer"
+        }
+      },
+      "title": "Repair",
+      "type": "object"
+    },
+    "TeamConfig": {
+      "additionalProperties": false,
+      "description": "One `[teams.<id>]` table as written in teams.toml.",
+      "properties": {
+        "budget_usd": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Budget Usd"
+        },
+        "expires": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires"
+        },
+        "manager": {
+          "default": "",
+          "title": "Manager",
+          "type": "string"
+        },
+        "max_workers": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Workers"
+        },
+        "models": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Models",
+          "type": "object"
+        },
+        "owns": {
+          "items": {
+            "type": "string"
+          },
+          "minLength": 1,
+          "title": "Owns",
+          "type": "array"
+        },
+        "skills": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Skills",
+          "type": "array"
+        },
+        "tests": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Tests",
+          "type": "array"
+        },
+        "title": {
+          "default": "",
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "owns"
+      ],
+      "title": "TeamConfig",
+      "type": "object"
+    },
+    "WorkConfig": {
+      "additionalProperties": false,
+      "description": "The `[work]` table as written in teams.toml.",
+      "properties": {
+        "anyone": {
+          "default": [
+            "changelog.d/"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Anyone",
+          "type": "array"
+        },
+        "base": {
+          "default": "origin/main",
+          "pattern": "\\S",
+          "title": "Base",
+          "type": "string"
+        },
+        "check_timeout_s": {
+          "default": 1500,
+          "minimum": 1,
+          "title": "Check Timeout S",
+          "type": "integer"
+        },
+        "repair": {
+          "$ref": "#/definitions/Repair",
+          "default": {
+            "argv": [],
+            "max_turns": 30,
+            "timeout_s": 1800
+          }
+        },
+        "review_provider": {
+          "default": "other",
+          "enum": [
+            "other",
+            "any"
+          ],
+          "title": "Review Provider",
+          "type": "string"
+        },
+        "shared": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Shared",
+          "type": "array"
+        },
+        "stop_budget_s": {
+          "default": 1500,
+          "minimum": 1,
+          "title": "Stop Budget S",
+          "type": "integer"
+        },
+        "touched_keep": {
+          "default": 32,
+          "minimum": 1,
+          "title": "Touched Keep",
+          "type": "integer"
+        }
+      },
+      "title": "WorkConfig",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "name": {
+      "default": "default",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "title": "Name",
+      "type": "string"
+    },
+    "schema_version": {
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "teams": {
+      "additionalProperties": {
+        "$ref": "#/definitions/TeamConfig"
+      },
+      "minProperties": 1,
+      "title": "Teams",
+      "type": "object"
+    },
+    "work": {
+      "$ref": "#/definitions/WorkConfig",
+      "default": {
+        "anyone": [
+          "changelog.d/"
+        ],
+        "base": "origin/main",
+        "check_timeout_s": 1500,
+        "repair": {
+          "argv": [],
+          "max_turns": 30,
+          "timeout_s": 1800
+        },
+        "review_provider": "other",
+        "shared": [],
+        "stop_budget_s": 1500,
+        "touched_keep": 32
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "teams"
+  ],
+  "title": "TeamsFile",
+  "type": "object"
+}

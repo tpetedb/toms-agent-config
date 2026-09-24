@@ -1,4 +1,4 @@
-"""`tac config show|check` and `tac explain`: the effective configuration, read-only."""
+"""`tac config show|check|schema` and `tac explain`: the effective configuration."""
 
 from __future__ import annotations
 
@@ -7,7 +7,16 @@ from pathlib import Path
 
 import click
 
-from tac.config import Config, Entry, floor_check, load_config, show_value
+from tac.config import (
+    CONFIG_SCHEMAS,
+    CONTRACTS_DIR,
+    Config,
+    Entry,
+    config_json_schemas,
+    floor_check,
+    load_config,
+    show_value,
+)
 from tac.doctor import find_root
 from tac.work import Bad
 
@@ -73,6 +82,43 @@ def check(root: Path | None, base: str | None) -> None:
         f"config holds: profile {config.profile.name}, kind "
         f"{config.knobs.project.kind}, {len(config.entries)} values"
     )
+
+
+def _schema_text(schema: object) -> str:
+    return json.dumps(schema, indent=2, sort_keys=True) + "\n"
+
+
+@config_group.command("schema")
+@ROOT
+@click.option(
+    "--write",
+    is_flag=True,
+    help=f"Write every schema to {CONTRACTS_DIR}/ and remove any it no longer has.",
+)
+@click.argument("name", required=False, type=click.Choice(sorted(CONFIG_SCHEMAS)))
+def schema(root: Path | None, write: bool, name: str | None) -> None:
+    """Print a config file's JSON Schema draft-07, generated from its model, or
+    write them all to contracts/config/<name>.schema.json."""
+    schemas = config_json_schemas()
+    if not write:
+        if name is None:
+            raise click.UsageError("name a schema, or pass --write")
+        click.echo(_schema_text(schemas[name]), nl=False)
+        return
+    if name is not None:
+        raise click.UsageError("--write writes every schema; drop the name")
+    folder = (root.resolve() if root else find_root(Path.cwd())) / CONTRACTS_DIR
+    folder.mkdir(parents=True, exist_ok=True)
+    wanted = {f"{n}.schema.json": s for n, s in schemas.items()}
+    for stale in sorted(folder.glob("*.schema.json")):
+        if stale.name not in wanted:
+            stale.unlink()
+            click.echo(f"removed {CONTRACTS_DIR}/{stale.name}")
+    for file, body in wanted.items():
+        path, text = folder / file, _schema_text(body)
+        if not path.is_file() or path.read_text(encoding="utf-8") != text:
+            path.write_text(text, encoding="utf-8")
+            click.echo(f"wrote {CONTRACTS_DIR}/{file}")
 
 
 @click.command("explain")
