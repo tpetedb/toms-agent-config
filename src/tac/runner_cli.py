@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import subprocess
 from pathlib import Path
 
 import click
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+import tac
 from tac.receipts import (
     RECEIPTS_GLOB,
     RUNNER_PUB,
@@ -18,6 +21,7 @@ from tac.receipts import (
     load_public_key,
     parse,
     policy_hash,
+    receipt_json_schema,
     resolve,
     trusted_key_from_revision,
     verify,
@@ -29,12 +33,15 @@ from tac.runner import (
     controller_store,
     create_key,
     ensure_store,
+    install_command,
     open_runner,
     pub_file_text,
     receipt_from,
     refuse_agent_parent,
     repo_top,
     request,
+    require_own_venv,
+    runner_venv,
     socket_path,
 )
 
@@ -109,6 +116,24 @@ def runner_init(repo: Path, write_pub: bool) -> None:
         click.echo(text, nl=False)
 
 
+@runner_group.command("install")
+@repo_option
+def runner_install(repo: Path) -> None:
+    """Build the runner's own venv in the controller store; host only."""
+    try:
+        refuse_agent_parent(os.environ)
+        top = repo_top(repo)
+        store = ensure_store(controller_store(top, os.environ))
+        argv, env = install_command(top, store, os.environ)
+    except RunnerError as exc:
+        fail(str(exc))
+        return
+    done = subprocess.run(argv, env=env, check=False)
+    if done.returncode != 0:
+        fail(f"uv sync into {runner_venv(store)} failed")
+    click.echo(f"runner venv: {runner_venv(store)}")
+
+
 @runner_group.command("serve")
 @repo_option
 @click.option(
@@ -121,6 +146,7 @@ def runner_serve(repo: Path, repository: str | None) -> None:
     try:
         refuse_agent_parent(os.environ)
         runner = open_runner(repo, os.environ, repository=repository)
+        require_own_venv(runner.store, Path(tac.__file__))
         server = bind(runner)
     except (RunnerError, ReceiptError) as exc:
         fail(str(exc))
@@ -150,6 +176,12 @@ def runner_status(repo: Path, sock: Path | None) -> None:
 @click.group("receipt")
 def receipt_group() -> None:
     """Ask the runner for a signed receipt, or verify receipts from a trusted key."""
+
+
+@receipt_group.command("schema")
+def receipt_schema() -> None:
+    """Print the JSON Schema of a signed receipt (contracts/receipt.schema.json)."""
+    click.echo(json.dumps(receipt_json_schema(), indent=2, sort_keys=True))
 
 
 @receipt_group.command("client")

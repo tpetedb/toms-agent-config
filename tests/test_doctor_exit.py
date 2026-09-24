@@ -4,18 +4,23 @@ import os
 import stat
 from pathlib import Path
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 from tac.doctor import (
     Check,
     CheckResult,
     Status,
     check_agents_lib_current,
     check_agents_project,
+    check_runner_pub,
     check_tac_import,
     classify_tac_origin,
     exit_code,
     find_root,
     run_checks,
 )
+from tac.receipts import RUNNER_PUB, key_id
+from tac.runner import pub_file_text
 
 
 def passing(_root: Path) -> tuple[Status, str]:
@@ -167,3 +172,28 @@ def test_a_stamp_behind_src_fails_and_names_the_file(tmp_path: Path) -> None:
 
 def test_a_project_without_src_tac_judges_by_its_pinned_stamp(tmp_path: Path) -> None:
     assert check_agents_lib_current(tmp_path)[0] is Status.PASS
+
+
+def test_runner_pub_with_a_key_passes_and_names_it(tmp_path: Path) -> None:
+    key = Ed25519PrivateKey.generate()
+    path = tmp_path / RUNNER_PUB
+    path.parent.mkdir(parents=True)
+    path.write_text(pub_file_text(key), encoding="utf-8")
+    status, detail = check_runner_pub(tmp_path)
+    assert status is Status.PASS
+    assert key_id(key.public_key()) in detail
+
+
+def test_runner_pub_placeholder_fails_and_names_the_owner_step(tmp_path: Path) -> None:
+    path = tmp_path / RUNNER_PUB
+    path.parent.mkdir(parents=True)
+    path.write_text("# Not provisioned yet.\n", encoding="utf-8")
+    status, detail = check_runner_pub(tmp_path)
+    assert status is Status.FAIL
+    assert "just runner-init --write-pub" in detail
+
+
+def test_runner_pub_missing_fails(tmp_path: Path) -> None:
+    status, detail = check_runner_pub(tmp_path)
+    assert status is Status.FAIL
+    assert "missing" in detail

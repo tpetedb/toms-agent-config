@@ -83,6 +83,17 @@ class SignedReceipt(BaseModel):
         return json.dumps(self.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
 
 
+def receipt_json_schema() -> dict[str, JsonValue]:
+    """The signed receipt as JSON Schema draft-07, generated from the models."""
+    schema = SignedReceipt.model_json_schema(ref_template="#/definitions/{model}")
+    definitions = schema.pop("$defs", {})
+    return {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        **schema,
+        "definitions": definitions,
+    }
+
+
 def canonical_bytes(receipt: Receipt) -> bytes:
     body = json.dumps(
         receipt.model_dump(mode="json"),

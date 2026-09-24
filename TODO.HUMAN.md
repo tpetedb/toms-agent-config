@@ -62,6 +62,6 @@ Credential handover convention: every secret goes into `agents.env`, outside the
 - [ ] Run `codex`, then `/hooks`, and approve the run.py entries once.
 - [ ] Open `claude` once in the folder to accept workspace trust.
 - [ ] After Q14: run `tac github apply`, then `tac doctor`.
-- [ ] Provision the runner key: in your own terminal, never an agent session, run `just runner-init --write-pub` and land `.agents/config/runner.pub` through a pull request. Until then every receipt is refused. The key sits in the controller store, mode 0600, until M3 moves it to the keychain and it is rotated.
+- [ ] Provision the runner key: in your own terminal, never an agent session, run `just runner-init --write-pub` and land `.agents/config/runner.pub` through a pull request. Until then every receipt is refused and `tac doctor` fails its `runner-pub` check. The same recipe builds the runner's own venv in the controller store; start it with `just runner`. The key sits in the controller store, mode 0600, until M3 moves it to the keychain and it is rotated.
 - [ ] After bootstrap: run `mise trust` once, then `just doctor` until it is green.
 - [ ] Once pi is enabled (1.1): trust the project in pi once.

@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from tac.receipts import RUNNER_PUB, MissingTrustRoot, key_id, load_public_key
+
 AGENTS = ".agents"
 LIB_SOURCE = "lib/tac"
 # A fixed environment so a shim on the caller's PATH or a PYTHON* variable
@@ -169,6 +171,26 @@ def check_generated_lock(root: Path) -> tuple[Status, str]:
     return Status.FAIL, f"{AGENTS}/generated.lock missing; run tac sync"
 
 
+def check_runner_pub(root: Path) -> tuple[Status, str]:
+    """Receipts are judged against this key; without one every receipt is refused.
+
+    Reads the public key only: the controller store and its private key are the
+    runner's, and a doctor run inside an agent session must never open them.
+    """
+    path = root / RUNNER_PUB
+    if not path.is_file():
+        return Status.FAIL, f"{RUNNER_PUB} missing; every receipt is refused"
+    try:
+        public = load_public_key(path.read_text(encoding="utf-8"))
+    except MissingTrustRoot as exc:
+        return (
+            Status.FAIL,
+            f"{exc}; the owner runs `just runner-init --write-pub` on the host "
+            "and lands it by pull request (TODO.HUMAN.md)",
+        )
+    return Status.PASS, f"{RUNNER_PUB} holds runner key {key_id(public)}"
+
+
 def check_github_ruleset(_root: Path) -> tuple[Status, str]:
     return (
         Status.UNKNOWN,
@@ -185,6 +207,7 @@ CHECKS: tuple[Check, ...] = (
     Check("tac-import", check_tac_import),
     Check("agents-config", check_agents_config),
     Check("generated-lock", check_generated_lock),
+    Check("runner-pub", check_runner_pub),
     Check("github-ruleset", check_github_ruleset),
 )
 

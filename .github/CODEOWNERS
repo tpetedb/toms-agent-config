@@ -12,3 +12,4 @@
 /conftest.py                @tpetedb
 /bootstrap.sh               @tpetedb
 /scripts/private_scan.sh    @tpetedb
+/scripts/ci_verify_receipts.sh @tpetedb

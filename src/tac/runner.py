@@ -6,8 +6,10 @@ repository, and answers on a Unix socket there. It signs only what it observed
 itself: it runs the gate or the probe and records the result, and no request can
 hand it an exit code or a payload to sign (build condition C3).
 
-The signing key is a file in the controller store, mode 0600, until the keychain
-backend of milestone M3 (build condition C6) replaces it.
+It serves only from its own venv in the controller store, built non-editable
+from the stamped package, so it never imports code from a checkout an agent can
+write. The signing key is a file in the controller store, mode 0600, until the
+keychain backend of milestone M3 (build condition C6) replaces it.
 """
 
 from __future__ import annotations
@@ -50,6 +52,8 @@ from tac.receipts import (
 SOCKET_NAME = "runner.sock"
 LOCK_NAME = "runner.lock"
 KEY_NAME = "signing-key.pem"
+VENV_NAME = "venv"
+AGENTS_PROJECT = ".agents"
 PROBES = ".agents/config/probes.toml"
 # AF_UNIX paths are capped at 104 bytes on macOS, 108 on Linux.
 MAX_SOCKET_PATH = 103
@@ -65,6 +69,11 @@ HARNESS_EXECUTABLES = {"claude": "claude", "codex": "codex"}
 # not a boundary: an agent can unset them, which is why the key moves to the
 # keychain in M3.
 AGENT_MARKERS = ("CLAUDECODE", "CODEX_SANDBOX")
+# Clients whose process, anywhere above the runner, means an agent started it.
+# Harder to shed than a variable, still a tripwire: a detached start escapes it.
+AGENT_PROCESSES = ("claude", "codex")
+AGENT_PACKAGES = ("claude-code", "codex")
+MAX_ANCESTORS = 64
 UNIX_PERMS_STORE = 0o700
 UNIX_PERMS_KEY = 0o600
 
@@ -129,12 +138,100 @@ def ensure_store(store: Path) -> Path:
     return store
 
 
-def refuse_agent_parent(environ: Mapping[str, str]) -> None:
+def ancestor_commands(pid: int) -> list[str]:
+    """The command lines of pid and every process above it, nearest first.
+
+    Empty when ps cannot answer: this is a tripwire, not the boundary.
+    """
+    commands: list[str] = []
+    seen: set[int] = set()
+    while pid > 1 and pid not in seen and len(commands) < MAX_ANCESTORS:
+        seen.add(pid)
+        try:
+            done = subprocess.run(
+                ["ps", "-o", "ppid=", "-o", "args=", "-p", str(pid)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            break
+        parts = done.stdout.strip().split(None, 1)
+        if done.returncode != 0 or not parts or not parts[0].isdigit():
+            break
+        commands.append(parts[1] if len(parts) > 1 else "")
+        pid = int(parts[0])
+    return commands
+
+
+def agent_command(commands: list[str]) -> str | None:
+    """The first command line that is an agent client, by executable or package."""
+    for command in commands:
+        for token in command.split()[:2]:
+            path = Path(token)
+            if path.name in AGENT_PROCESSES or any(
+                part in AGENT_PACKAGES for part in path.parts
+            ):
+                return command
+    return None
+
+
+def refuse_agent_parent(
+    environ: Mapping[str, str], ancestors: list[str] | None = None
+) -> None:
     markers = [name for name in AGENT_MARKERS if environ.get(name)]
     if markers:
         raise RunnerError(
             "the runner is a host process and never a child of an agent session "
             f"({', '.join(markers)} is set); start it from the owner's terminal"
+        )
+    chain = ancestor_commands(os.getppid()) if ancestors is None else ancestors
+    found = agent_command(chain)
+    if found is not None:
+        name = Path(found.split()[0]).name if found.split() else "?"
+        raise RunnerError(
+            "the runner is a host process and never a child of an agent session "
+            f"({name} is among its parents); start it from the owner's terminal"
+        )
+
+
+# ---- the runner's own venv
+
+
+def runner_venv(store: Path) -> Path:
+    return store / VENV_NAME
+
+
+def install_command(
+    top: Path, store: Path, environ: Mapping[str, str]
+) -> tuple[list[str], dict[str, str]]:
+    """uv sync of the agent toolchain into the store's venv, non-editable.
+
+    The same lock and the same stamped source as .agents/.venv, installed where
+    no agent can write, so the runner never imports from a worktree.
+    """
+    uv = shutil.which("uv", path=environ.get("PATH", ""))
+    if uv is None:
+        raise RunnerError("uv is not on PATH; run bootstrap.sh")
+    project = top / AGENTS_PROJECT
+    if not (project / "pyproject.toml").is_file():
+        raise RunnerError(f"no {AGENTS_PROJECT}/pyproject.toml in {top}")
+    env = {k: v for k, v in environ.items() if k != "VIRTUAL_ENV"}
+    env["UV_PROJECT_ENVIRONMENT"] = str(runner_venv(store))
+    argv = [uv, "sync", "--frozen", "--no-editable", "--project", str(project)]
+    return argv, env
+
+
+def require_own_venv(store: Path, module_file: Path) -> None:
+    """Serve only when tac was imported from the store's venv site-packages."""
+    venv = runner_venv(store).resolve()
+    resolved = module_file.resolve()
+    if not resolved.is_relative_to(venv) or "site-packages" not in resolved.parts:
+        raise RunnerError(
+            f"the runner imports tac from {resolved.parent}, not from its own "
+            f"venv at {venv}; run `just runner-install`, then start it with "
+            "`just runner`"
         )
 
 

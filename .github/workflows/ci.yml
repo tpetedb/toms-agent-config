@@ -63,9 +63,10 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
           HEAD_REF: ${{ github.head_ref }}
         run: uv run --frozen --no-sync --project .agents tac work ci --base "origin/$BASE_REF" --head "$HEAD_REF"
-      - name: Committed receipts verify against the base revision's runner key
-        # runner.pub is read from the base commit, never from the candidate tree,
-        # so a pull request cannot bring the key its own receipts are judged by.
+      - name: Committed receipts verify with the base revision's verifier and key
+        # The verifier and runner.pub both come from the base commit, never the
+        # candidate tree, so a pull request can bring neither the key nor the
+        # code its own receipts are judged by.
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: uv run --frozen --no-sync --project .agents tac receipt verify-tree --base "origin/$BASE_REF"
+        run: bash scripts/ci_verify_receipts.sh "origin/$BASE_REF" "$GITHUB_REPOSITORY"

@@ -61,6 +61,15 @@ uv sync --frozen
 step "deployed toolchain (.agents/.venv, tac non-editable from .agents/lib/tac)"
 uv sync --frozen --no-editable --project .agents
 
+step "runner venv (in the controller store, tac non-editable, outside the checkout)"
+if [ -n "${CLAUDECODE:-}" ] || [ -n "${CODEX_SANDBOX:-}" ]; then
+  note "skipped: inside an agent session; the owner runs 'just runner-install' on the host"
+elif uv run --frozen --no-sync --project .agents tac runner install; then
+  note "built; start the runner with 'just runner'"
+else
+  note "not built; the message above says why, then run 'just runner-install'"
+fi
+
 step "tac init"
 note "skipped: tac init arrives with tac-core"
 

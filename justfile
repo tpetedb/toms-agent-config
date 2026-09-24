@@ -45,13 +45,18 @@ stamp-lib:
 
 # ---- the runner: host only, from the owner's terminal, never an agent session
 
-# Create the controller store and the signing key; --write-pub writes runner.pub.
+# Create the controller store, the signing key and the runner's venv; --write-pub writes runner.pub.
 runner-init *args:
     {{ tac }} runner init {{ args }}
+    {{ tac }} runner install
 
-# Serve the runner socket in the foreground until interrupted.
+# Rebuild the runner's own venv in the controller store from the stamped package.
+runner-install:
+    {{ tac }} runner install
+
+# Serve the runner socket in the foreground from its own venv, until interrupted.
 runner:
-    {{ tac }} runner serve
+    "$({{ tac }} runner where)/venv/bin/tac" runner serve
 
 # Is the runner up, and with which key.
 runner-status:

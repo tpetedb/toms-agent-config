@@ -27,14 +27,19 @@ from tac.receipts import (
 from tac.runner import (
     Runner,
     RunnerError,
+    agent_command,
+    ancestor_commands,
     bind,
     controller_store,
     create_key,
     ensure_store,
+    install_command,
     load_key,
     open_runner,
     refuse_agent_parent,
     request,
+    require_own_venv,
+    runner_venv,
     socket_path,
     state_home,
     store_slug,
@@ -44,6 +49,13 @@ from tests._gitrepo import REPOSITORY, commit_all, git, make_repo, short_dir, wr
 PYTHON = Path(sys.executable)
 # Keeps an agent session's own markers out of the commands under test.
 NO_AGENT = {"CLAUDECODE": None, "CODEX_SANDBOX": None}
+
+
+@pytest.fixture(autouse=True)
+def no_agent_ancestors(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests may themselves run under an agent client; the ancestry
+    tripwire has its own tests below with the chain passed in."""
+    monkeypatch.setattr("tac.runner.ancestor_commands", lambda _pid: [])
 
 
 @pytest.fixture
@@ -175,6 +187,34 @@ def test_an_agent_parent_is_refused(marker: str) -> None:
     with pytest.raises(RunnerError, match="never a child of an agent session"):
         refuse_agent_parent({marker: "1"})
     refuse_agent_parent({})
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "/opt/homebrew/bin/claude --resume",
+        "claude",
+        "node /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js",
+        "/usr/local/bin/codex exec",
+        "node /usr/local/lib/node_modules/@openai/codex/bin/codex.js",
+    ],
+)
+def test_an_agent_client_among_the_parents_is_refused(command: str) -> None:
+    chain = ["uv run tac runner serve", "just runner", "/bin/zsh -c x", command]
+    with pytest.raises(RunnerError, match="among its parents"):
+        refuse_agent_parent({}, ancestors=chain)
+
+
+def test_an_owner_terminal_chain_is_accepted() -> None:
+    chain = ["uv run tac runner serve", "just runner", "-zsh", "tmux", "login -pf"]
+    assert agent_command(chain) is None
+    refuse_agent_parent({}, ancestors=chain)
+
+
+def test_the_parent_chain_is_read_from_ps() -> None:
+    chain = ancestor_commands(os.getpid())
+    assert chain
+    assert "pytest" in chain[0] or "python" in chain[0]
 
 
 def test_init_refuses_inside_an_agent_session(repo: Path, state: Path) -> None:
@@ -368,3 +408,76 @@ def test_a_new_commit_makes_an_old_probe_receipt_stale(repo: Path, state: Path) 
     now = old.model_copy(update={"revision": revision})
     with pytest.raises(ReceiptError, match="revision"):
         verify(signed, runner.private.public_key(), now)
+
+
+# ---- the runner's own venv
+
+
+def test_install_builds_the_store_venv_non_editable(repo: Path, state: Path) -> None:
+    write(repo, ".agents/pyproject.toml", "[project]\nname = 'x'\n")
+    store = ensure_store(controller_store(repo, env(state)))
+    bin_dir = fake_client(state / "bin", "uv", "exit 0").parent
+    argv, run_env = install_command(
+        repo, store, {"PATH": str(bin_dir), "VIRTUAL_ENV": "/elsewhere"}
+    )
+    assert argv[1:] == [
+        "sync", "--frozen", "--no-editable", "--project", str(repo / ".agents"),
+    ]  # fmt: skip
+    assert run_env["UV_PROJECT_ENVIRONMENT"] == str(runner_venv(store))
+    assert "VIRTUAL_ENV" not in run_env
+    assert not runner_venv(store).is_relative_to(repo)
+
+
+def test_install_without_the_agents_project_is_refused(repo: Path, state: Path) -> None:
+    store = ensure_store(controller_store(repo, env(state)))
+    bin_dir = fake_client(state / "bin", "uv", "exit 0").parent
+    with pytest.raises(RunnerError, match=r"pyproject\.toml"):
+        install_command(repo, store, {"PATH": str(bin_dir)})
+
+
+def test_runner_install_runs_uv_into_the_store(repo: Path, state: Path) -> None:
+    write(repo, ".agents/pyproject.toml", "[project]\nname = 'x'\n")
+    record = state / "uv-called"
+    bin_dir = fake_client(
+        state / "bin", "uv", f'echo "$UV_PROJECT_ENVIRONMENT $*" > {record}'
+    ).parent
+    result = CliRunner().invoke(
+        cli,
+        ["runner", "install", "--repo", str(repo)],
+        env={**env(state), **NO_AGENT, "PATH": f"{bin_dir}:/usr/bin:/bin"},
+    )
+    assert result.exit_code == 0, result.output
+    venv = runner_venv(controller_store(repo, env(state)))
+    assert record.read_text().startswith(f"{venv} sync --frozen --no-editable")
+
+
+def test_install_refuses_inside_an_agent_session(repo: Path, state: Path) -> None:
+    result = CliRunner().invoke(
+        cli,
+        ["runner", "install", "--repo", str(repo)],
+        env={**env(state), "CODEX_SANDBOX": "seatbelt"},
+    )
+    assert result.exit_code == 1
+    assert "never a child of an agent session" in result.output
+
+
+def test_serving_needs_tac_from_the_store_venv(repo: Path, state: Path) -> None:
+    store = provision(repo, state)
+    site = runner_venv(store) / "lib" / "python3.12" / "site-packages" / "tac"
+    require_own_venv(store, site / "__init__.py")
+    with pytest.raises(RunnerError, match="not from its own venv"):
+        require_own_venv(store, repo / "src" / "tac" / "__init__.py")
+    with pytest.raises(RunnerError, match="not from its own venv"):
+        require_own_venv(store, repo / ".agents" / ".venv" / "site-packages" / "x.py")
+
+
+def test_serve_refuses_from_a_checkout_environment(repo: Path, state: Path) -> None:
+    provision(repo, state)
+    result = CliRunner().invoke(
+        cli,
+        ["runner", "serve", "--repo", str(repo)],
+        env={**env(state), **NO_AGENT},
+    )
+    assert result.exit_code == 1
+    assert "not from its own venv" in result.output
+    assert not socket_path(controller_store(repo, env(state))).exists()

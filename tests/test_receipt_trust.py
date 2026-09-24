@@ -20,6 +20,7 @@ from tac.receipts import (
     load_public_key,
     parse,
     policy_hash,
+    receipt_json_schema,
     sign,
     trusted_key_from_revision,
     verify,
@@ -355,3 +356,13 @@ def test_the_committed_runner_pub_is_a_key_or_holds_none() -> None:
         load_public_key(text)
     except MissingTrustRoot as exc:
         assert "holds no public key" in str(exc)
+
+
+def test_the_receipt_contract_matches_the_models() -> None:
+    contract = Path(__file__).resolve().parents[1] / "contracts/receipt.schema.json"
+    committed = json.loads(contract.read_text("utf-8"))
+    assert committed == receipt_json_schema(), "run: tac receipt schema > " + str(
+        contract.relative_to(contract.parents[1])
+    )
+    assert committed["$schema"] == "http://json-schema.org/draft-07/schema#"
+    assert committed["additionalProperties"] is False
