@@ -25,6 +25,10 @@ jobs:
         run: uv sync --frozen
       - name: Build the deployed toolchain from its named source
         run: uv sync --frozen --no-editable --project .agents
+      - name: Workflow lint
+        run: uv run --frozen actionlint
+      - name: Shell lint
+        run: uv run --frozen shellcheck bootstrap.sh scripts/*.sh
       - name: Ruff lint
         run: uv run --frozen ruff check .
       - name: Ruff format

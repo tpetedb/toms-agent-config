@@ -12,13 +12,18 @@ default:
 setup:
     bash bootstrap.sh
 
-# The full gate: lint, format, types, tests, private scan.
-verify:
+# The full gate: lint, format, types, workflow and shell lint, tests, private scan.
+verify: lint-ci
     uv run --frozen ruff check .
     uv run --frozen ruff format --check .
     uv run --frozen basedpyright
     uv run --frozen pytest -q
     bash scripts/private_scan.sh
+
+# Lint the workflows and the shell scripts with the locked actionlint and shellcheck.
+lint-ci:
+    uv run --frozen actionlint
+    uv run --frozen shellcheck bootstrap.sh scripts/*.sh
 
 # Named health checks from the deployed copy; non-zero until all pass.
 doctor *args:

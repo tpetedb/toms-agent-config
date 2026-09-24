@@ -44,8 +44,24 @@ def test_ci_runs_every_gate(repo: Path) -> None:
         "pytest",
         "scripts/private_scan.sh",
         "--no-editable --project .agents",
+        "actionlint",
+        "shellcheck bootstrap.sh scripts/*.sh",
     ):
         assert gate in script, gate
+
+
+def test_verify_runs_the_same_workflow_and_shell_lint_as_ci(repo: Path) -> None:
+    justfile = (repo / "justfile").read_text()
+    assert "verify: lint-ci" in justfile
+    for tool in ("uv run --frozen actionlint", "uv run --frozen shellcheck"):
+        assert tool in justfile, tool
+
+
+def test_mise_pins_each_cli_to_an_exact_version(repo: Path) -> None:
+    tools = tomllib.loads((repo / "mise.toml").read_text())["tools"]
+    assert set(tools) >= {"uv", "just"}
+    for name, version in tools.items():
+        assert re.fullmatch(r"\d+\.\d+\.\d+", version), (name, version)
 
 
 def test_ci_pins_actions_to_a_commit(repo: Path) -> None:

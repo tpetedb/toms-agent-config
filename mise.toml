@@ -1,0 +1,6 @@
+# The CLIs every checkout runs, pinned. Python and the Python tools are pinned by
+# uv (.python-version, uv.lock), so they are not repeated here.
+# mise asks the owner to trust this file once: `mise trust`, then `mise install`.
+[tools]
+uv = "0.12.18"
+just = "1.58.0"
