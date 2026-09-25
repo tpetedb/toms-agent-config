@@ -1,0 +1,39 @@
+{
+  "agent": null,
+  "answers": [
+    {
+      "at": "2026-09-25T00:00:00Z",
+      "basis": "owner-via-chief",
+      "by": "tpetedb",
+      "link": null,
+      "text": "yes, issues, pull requests and branch pushes as the machine account through the runner; merges and releases are the owner's own action, see [docs/adr/0002-owner-decisions-2026-09-25.md](docs/adr/0002-owner-decisions-2026-09-25.md)."
+    }
+  ],
+  "approval": null,
+  "arguments": {},
+  "asked_at": "2026-09-24T00:00:00Z",
+  "blocks": [],
+  "decided_at": "2026-09-25T00:00:00Z",
+  "decided_by": "tpetedb",
+  "details": [],
+  "env_var": null,
+  "expires_at": null,
+  "id": "Q6",
+  "item_version": 1,
+  "kind": "question",
+  "notes": [],
+  "options": [],
+  "pipeline": null,
+  "pull_request": null,
+  "question": "the chief opens issues and pull requests and pushes branches as the machine account, through the runner; merges and releases are the owner's own action (one command or a GitHub review)?",
+  "rank": 20,
+  "recommendation": "yes.",
+  "recommendation_source": null,
+  "revision": null,
+  "stage": null,
+  "status": "answered",
+  "title": "chief authority",
+  "tool": null,
+  "topic": "governance",
+  "waits": "M3"
+}

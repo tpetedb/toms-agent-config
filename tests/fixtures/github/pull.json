@@ -1,0 +1,66 @@
+{
+  "_note": "GitHub's published example for GET /repos/{owner}/{repo}/pulls/{pull_number} (github/rest-api-description at commit c624b95491ca436545fe6439e2a27063919f83d0, MIT), trimmed to the top-level fields and the head and base refs, with placeholder names: the pull request is opened by the machine account tac-bot in the repository example/demo, owned by the user example. No live call recorded it.",
+  "body": {
+    "url": "https://api.github.com/repos/example/demo/pulls/1347",
+    "id": 1,
+    "node_id": "MDExOlB1bGxSZXF1ZXN0MQ==",
+    "html_url": "https://github.com/example/demo/pull/1347",
+    "number": 1347,
+    "state": "open",
+    "locked": true,
+    "title": "Amazing new feature",
+    "user": {
+      "login": "tac-bot",
+      "id": 2,
+      "node_id": "MDQ6VXNlcjE=",
+      "avatar_url": "https://github.com/images/error/tac-bot_happy.gif",
+      "gravatar_id": "",
+      "url": "https://example.invalid/accounts/tac-bot",
+      "html_url": "https://github.com/tac-bot",
+      "type": "User",
+      "site_admin": false
+    },
+    "body": "Please pull these awesome changes in!",
+    "created_at": "2011-01-26T19:01:12Z",
+    "updated_at": "2011-01-26T19:01:12Z",
+    "closed_at": "2011-01-26T19:01:12Z",
+    "merged_at": "2011-01-26T19:01:12Z",
+    "head": {
+      "label": "example:new-topic",
+      "ref": "new-topic",
+      "sha": "6dcb09b5b57875f334f61aebed695e2e4193db5e",
+      "user": {
+        "login": "example",
+        "id": 1,
+        "node_id": "MDQ6VXNlcjE=",
+        "avatar_url": "https://github.com/images/error/example_happy.gif",
+        "gravatar_id": "",
+        "url": "https://example.invalid/accounts/example",
+        "html_url": "https://github.com/example",
+        "type": "User",
+        "site_admin": false
+      }
+    },
+    "base": {
+      "label": "example:main",
+      "ref": "main",
+      "sha": "6dcb09b5b57875f334f61aebed695e2e4193db5e",
+      "user": {
+        "login": "example",
+        "id": 1,
+        "node_id": "MDQ6VXNlcjE=",
+        "avatar_url": "https://github.com/images/error/example_happy.gif",
+        "gravatar_id": "",
+        "url": "https://example.invalid/accounts/example",
+        "html_url": "https://github.com/example",
+        "type": "User",
+        "site_admin": false
+      }
+    },
+    "author_association": "COLLABORATOR",
+    "draft": false,
+    "merged": false,
+    "mergeable": true,
+    "mergeable_state": "clean"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "agent": null,
+  "answers": [
+    {
+      "at": "2026-09-25T00:00:00Z",
+      "basis": "owner-via-chief",
+      "by": "tpetedb",
+      "link": null,
+      "text": "yes, Opus as a director only through a separate fresh session, Fable compiles the tally, a majority of three decides, the dissent is recorded, a safety veto goes to the owner, see [docs/adr/0002-owner-decisions-2026-09-25.md](docs/adr/0002-owner-decisions-2026-09-25.md)."
+    }
+  ],
+  "approval": null,
+  "arguments": {},
+  "asked_at": "2026-09-24T00:00:00Z",
+  "blocks": [],
+  "decided_at": "2026-09-25T00:00:00Z",
+  "decided_by": "tpetedb",
+  "details": [],
+  "env_var": null,
+  "expires_at": null,
+  "id": "Q5",
+  "item_version": 1,
+  "kind": "question",
+  "notes": [],
+  "options": [],
+  "pipeline": null,
+  "pull_request": null,
+  "question": "Opus 5.5 sits as a director only through a separate fresh session, Fable compiles the tally, a majority of three decides, the dissent is recorded, and a safety veto goes to the owner?",
+  "rank": 10,
+  "recommendation": "yes.",
+  "recommendation_source": null,
+  "revision": null,
+  "stage": null,
+  "status": "answered",
+  "title": "the board",
+  "tool": null,
+  "topic": "governance",
+  "waits": "M3"
+}

@@ -4,7 +4,8 @@
 # with absolute trusted executables, a fixed environment and `python -I`, so a
 # module, a PATH shim or a project config an agent wrote changes nothing about
 # what runs (build condition C2). Hooks are reminders and early refusals; CI
-# and the ruleset are the gate. M2 (tac-hooks) renders and probes this file.
+# and the ruleset are the gate. tac sync renders the checks below into
+# .claude/settings.json and .codex/hooks.json, one hook per event and matcher.
 # Unknown keys fail loudly.
 # =============================================================================
 # The layout of this file; tac migrate moves an older one forward.
@@ -23,35 +24,39 @@ timeout_s = 10                            # the hook timeout rendered for the cl
 # ---- checks: one table per guard check. For each:
 #   event: when it fires, PreToolUse | PostToolUse | SessionStart | SubagentStart | Stop;
 #   kind: deny (exit 2 refuses the call) | reminder (exit 0 with a message) | record (exit 0, journals only);
-#   claude, codex: the tool matcher on that client; empty means not wired on that
-#   client in release 1, until M2 proves the client's tool names with a probe.
+#   claude, codex: the tool matcher on that client, by the tool names its hook
+#   docs give; empty means not wired on that client. A record check renders no
+#   hook until the worker store journal exists (M3).
 
 # An edit outside the paths the current order owns.
 [checks.owned-paths]
 event = "PreToolUse"                      # PreToolUse | PostToolUse | SessionStart | SubagentStart | Stop
 kind = "deny"                             # deny | reminder | record
 claude = "Edit|Write|MultiEdit|NotebookEdit"   # Claude's file-editing tools
-codex = ""                                # not wired until M2 probes Codex's edit tool name
+codex = "apply_patch"                     # Codex edits files through apply_patch; the check reads the patch's file headers
 
 # A read of a secret: *.env, secrets folders, keys, cloud credentials.
 [checks.secret-read]
 event = "PreToolUse"                      # PreToolUse | PostToolUse | SessionStart | SubagentStart | Stop
 kind = "deny"                             # deny | reminder | record
 claude = "Read|Grep|Glob"                 # Claude's reading tools
-codex = ""                                # not wired until M2 probes Codex's read tool name
+codex = ""                                # not wired: Codex reads through its shell, which names no path to check
 
 # An edit to a path generated.lock lists: regenerate with tac sync instead.
 [checks.generated-paths]
 event = "PreToolUse"                      # PreToolUse | PostToolUse | SessionStart | SubagentStart | Stop
 kind = "deny"                             # deny | reminder | record
 claude = "Edit|Write|MultiEdit|NotebookEdit"   # Claude's file-editing tools
-codex = ""                                # not wired until M2 probes Codex's edit tool name
+codex = "apply_patch"                     # Codex edits files through apply_patch; the check reads the patch's file headers
 
-# A native subagent spawn without a valid single-use dispatch token (section 5).
+# A native spawn the guard cannot vouch for (section 5): any spawn tool used by a
+# role whose charter says delegates = false, any of them under native_delegation =
+# "off", and a Workflow call whose script a stage of the caller's role does not
+# register with its sha256 in generated.lock. Single-use dispatch tokens join in M3.
 [checks.handoff-guard]
 event = "PreToolUse"                      # PreToolUse | PostToolUse | SessionStart | SubagentStart | Stop
 kind = "deny"                             # deny | reminder | record
-claude = "Agent|Task"                     # the current and former names of Claude's subagent tool
+claude = "Agent|Task|Workflow"            # the subagent tool under its current and former names, and Workflow, which starts a dynamic workflow
 codex = "spawn_agent"                     # Codex's subagent tool
 
 # A subagent start, recorded only: SubagentStart cannot block in either client.
@@ -68,9 +73,14 @@ kind = "reminder"                         # deny | reminder | record
 claude = "*"                              # every stop
 codex = "*"                               # every stop
 
-# ---- git: the prek hooks installed from hooks/git/ (layer 3a), by name, in order.
+# ---- git: the prek hooks hooks/git/prek.toml defines (layer 3a), by id, in the
+# order they run. tac check fails when the two disagree; `just hooks-install`
+# installs them, on the host or by the runner, never in an agent sandbox.
 [git]
-# Before a commit: formatting, lint, the staged check, the secret scan, TOML and Markdown.
-pre_commit = ["ruff-format", "ruff-check", "tac-check-staged", "gitleaks", "taplo", "rumdl"]
-commit_msg = ["tac-check-commit-msg"]     # the message against [commits] in config/standards.toml
+# Before a commit: format and lint, the staged check, TODO.HUMAN.md against its
+# render when the page or .human/ is staged, the private-term scan.
+pre_commit = ["ruff-format", "ruff-check", "tac-check-staged", "human-render-check", "private-scan"]
+# The message against [commits] in config/standards.toml, then the private-term
+# scan of the message, which the commit publishes.
+commit_msg = ["tac-check-commit-msg", "private-scan-message"]
 pre_push = ["fast-tests", "tac-check"]    # the fast tests and the full check before anything leaves the machine

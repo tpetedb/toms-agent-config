@@ -17,8 +17,12 @@ approvals = "external-effects"
 isolation = "native-sandbox"
 # Outbound network for agent commands: allowlist (config/network.toml) | off.
 network = "allowlist"                    # Codex: features.network_proxy = true with a tested proxy, else command networking off; Claude: sandbox.enabled rendered explicitly
-# Native subagent spawns: guarded (they pass the PreToolUse handoff guard with a
-# single-use dispatch token) | off (spawn tools removed; dispatch only through tac run).
+# Native spawns (Claude's Agent, Task and Workflow; Codex's spawn_agent): guarded
+# (they pass the PreToolUse handoff guard: a Workflow only for a registered script,
+# and from M3 each with a single-use dispatch token) | off (spawn tools removed;
+# dispatch only through tac run). tac check refuses off while a role in
+# config/models.toml launches with ultracode, since ultracode starts agents
+# through Workflow.
 # Codex renders off under either until M2 renders its PreToolUse guard and proves it.
 native_delegation = "guarded"            # native spawns pass the PreToolUse handoff guard with a single-use dispatch token (section 5)
 # The review every order gets: independent = how many reviews from a fresh session,

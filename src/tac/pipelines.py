@@ -11,7 +11,8 @@ stage waits for the owner.
 role, skill, contract or template, a template whose header disagrees with the
 stage, a read no upstream stage writes, a cycle, a gate that is a shell string,
 names no recipe or hands it a number of values it does not take, an effect
-policy.toml keeps for the owner. `plan` gives the
+policy.toml keeps for the owner, a Workflow script registered on a role that
+does not delegate or outside .agents/workflows/. `plan` gives the
 stage order without running anything; `tac run` lands with the runner (M3).
 """
 
@@ -27,7 +28,14 @@ from typing import Any
 from pydantic import ValidationError
 
 from tac import handoff
-from tac.config_schema import Gate, Knobs, PipelineFile, PipelineStage, PolicyFile
+from tac.config_schema import (
+    WORKFLOWS_DIR,
+    Gate,
+    Knobs,
+    PipelineFile,
+    PipelineStage,
+    PolicyFile,
+)
 from tac.work import KNOBS_FILE, Bad, validation_error
 
 CONFIG_DIR = ".agents/config"
@@ -55,6 +63,7 @@ ALLOWED: Mapping[str, frozenset[str]] = {
         "max_turns",
         "gates",
         "retry",
+        "workflows",
     },
     "gate": COMMON | {"gates", "retry"},
     "effect": COMMON | {"effects"},
@@ -156,6 +165,9 @@ class Known:
     """What a pipeline may name, read once from the checkout."""
 
     roles: frozenset[str]
+    # The roles whose charter says delegates = true: the only ones a stage may
+    # register a Workflow script for.
+    delegating: frozenset[str]
     skills: frozenset[str]
     recipes: Mapping[str, Recipe]
     runner_only: frozenset[str]
@@ -202,6 +214,7 @@ def known(root: Path, problems: list[str]) -> Known:
         roles=frozenset(p.stem for p in roles_dir.glob("*.toml"))
         if roles_dir.is_dir()
         else frozenset(),
+        delegating=_delegating(roles_dir),
         skills=frozenset(
             p.parent.name for p in skills_dir.glob("*/SKILL.md") if p.is_file()
         )
@@ -211,6 +224,20 @@ def known(root: Path, problems: list[str]) -> Known:
         runner_only=runner_only,
         owner_only=owner_only,
     )
+
+
+def _delegating(roles_dir: Path) -> frozenset[str]:
+    """The charters that set delegates = true; one that cannot be read
+    delegates nothing here, and tac check names it through the config."""
+    found = set()
+    for path in sorted(roles_dir.glob("*.toml")) if roles_dir.is_dir() else []:
+        try:
+            data = tomllib.loads(path.read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError):
+            continue
+        if data.get("delegates") is True:
+            found.add(path.stem)
+    return frozenset(found)
 
 
 # ---------------------------------------------------------------- reading
@@ -455,6 +482,8 @@ def stage_problems(
         problems += _gate_problems(where, gate, known_)
         problems += _script_problems(root, where, gate)
 
+    problems += _workflow_problems(root, where, stage, known_)
+
     for effect in stage.effects:
         if effect in known_.owner_only:
             problems.append(
@@ -472,6 +501,54 @@ def stage_problems(
                 f"{where}: owner action {action!r} is not in {POLICY_FILE} owner_only"
             )
     return problems
+
+
+def _workflow_problems(
+    root: Path, where: str, stage: PipelineStage, known_: Known
+) -> list[str]:
+    """A registered Workflow script belongs to a role that delegates, to the
+    lead seat's design stage when the role is the director's, and exists as a
+    file."""
+    if not stage.workflows:
+        return []
+    problems = []
+    role = stage.role or ""
+    if role not in known_.delegating:
+        problems.append(
+            f"{where}: workflows are registered only for a role that delegates, "
+            f"and {ROLES_DIR}/{role}.toml does not (delegates = false)"
+        )
+    elif role == "director" and (stage.seats != "lead" or stage.id != "design"):
+        problems.append(
+            f"{where}: workflows on a director stage run only in the lead "
+            f"seat's design stage, and this is stage {stage.id} with seats = "
+            f'"{stage.seats}"'
+        )
+    for script in stage.workflows:
+        path = root / script
+        if path.is_symlink() or not path.is_file():
+            problems.append(
+                f"{where}: workflows names {script}, which does not exist as a "
+                f"plain file under {WORKFLOWS_DIR}/"
+            )
+    return problems
+
+
+def registered_workflows(root: Path) -> dict[str, list[tuple[str, str, str]]]:
+    """Every registered Workflow script, by path, with the (pipeline, stage,
+    role) that registers it. A pipeline that cannot be read registers nothing;
+    tac check names why."""
+    found: dict[str, list[tuple[str, str, str]]] = {}
+    for name in pipeline_files(root):
+        try:
+            pipeline = read_pipeline(root, name)
+        except Bad:
+            continue
+        for stage in pipeline.stages:
+            for script in stage.workflows:
+                entry = (pipeline.name, stage.id, stage.role or "")
+                found.setdefault(script, []).append(entry)
+    return found
 
 
 def _template_problems(root: Path, where: str, stage: PipelineStage) -> list[str]:

@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {},
+  "description": "What the checker answers the guard, once per hook event.",
+  "properties": {
+    "check": {
+      "title": "Check",
+      "type": "string"
+    },
+    "module": {
+      "title": "Module",
+      "type": "string"
+    },
+    "reason": {
+      "title": "Reason",
+      "type": "string"
+    },
+    "verdict": {
+      "enum": [
+        "allow",
+        "deny",
+        "remind"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    }
+  },
+  "required": [
+    "verdict",
+    "check",
+    "reason",
+    "module"
+  ],
+  "title": "Verdict",
+  "type": "object"
+}

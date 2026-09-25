@@ -1,0 +1,35 @@
+{
+  "_note": "GitHub's published example for GET /repos/{owner}/{repo}/pulls/{pull_number}/reviews (github/rest-api-description at commit c624b95491ca436545fe6439e2a27063919f83d0, MIT), with placeholder names: the review is by the repository owner example, and its commit_id is the head of pull.json, where the published example names another commit. No live call recorded it.",
+  "body": [
+    {
+      "id": 80,
+      "node_id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3ODA=",
+      "user": {
+        "login": "example",
+        "id": 1,
+        "node_id": "MDQ6VXNlcjE=",
+        "avatar_url": "https://github.com/images/error/example_happy.gif",
+        "gravatar_id": "",
+        "url": "https://example.invalid/accounts/example",
+        "html_url": "https://github.com/example",
+        "type": "User",
+        "site_admin": false
+      },
+      "body": "Here is the body for the review.",
+      "state": "APPROVED",
+      "html_url": "https://github.com/example/demo/pull/1347#pullrequestreview-80",
+      "pull_request_url": "https://api.github.com/repos/example/demo/pulls/1347",
+      "_links": {
+        "html": {
+          "href": "https://github.com/example/demo/pull/1347#pullrequestreview-80"
+        },
+        "pull_request": {
+          "href": "https://api.github.com/repos/example/demo/pulls/1347"
+        }
+      },
+      "submitted_at": "2019-11-17T17:43:43Z",
+      "commit_id": "6dcb09b5b57875f334f61aebed695e2e4193db5e",
+      "author_association": "COLLABORATOR"
+    }
+  ]
+}

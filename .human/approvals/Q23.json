@@ -1,0 +1,33 @@
+{
+  "agent": null,
+  "answers": [],
+  "approval": null,
+  "arguments": {},
+  "asked_at": "2026-09-25T13:29:55Z",
+  "blocks": [
+    "registering the first Workflow script, which runs only once the ruling says where its token comes from"
+  ],
+  "decided_at": null,
+  "decided_by": null,
+  "details": [],
+  "env_var": null,
+  "expires_at": null,
+  "id": "Q23",
+  "item_version": 1,
+  "kind": "question",
+  "notes": [],
+  "options": [],
+  "pipeline": null,
+  "pull_request": null,
+  "question": "the board's ruling on the Workflow tool puts the runner's single-use token (bound to run, stage and script hash), the signed run receipt and the classifier check in M2, but the runner that issues tokens is M3's `tac run`. As built, M2's guard refuses every Workflow call that carries no token, which is every call until M3, so a script registered early cannot run on the registry check alone (docs/DESIGN.md, section 5). Record a board amendment that moves the token, the receipt and the classifier check to M3 with the runner?",
+  "rank": 30,
+  "recommendation": "yes; the token also binds the director's lead seat, which the hook cannot tell from the other seats.",
+  "recommendation_source": null,
+  "revision": null,
+  "stage": null,
+  "status": "pending",
+  "title": "the Workflow ruling's M2 parts",
+  "tool": null,
+  "topic": "governance",
+  "waits": "M3"
+}

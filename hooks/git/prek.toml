@@ -1,0 +1,98 @@
+# =============================================================================
+# hooks/git/prek.toml: the git hooks (layer 3a, design section 9), run by prek
+# (https://prek.j178.dev/configuration/). `just hooks-install` installs them on
+# the host, or the runner does; never an agent sandbox, never by hand.
+# Every hook is a local system command, so nothing is fetched, and each names
+# its one stage. The ids and their order per stage are the lists under [git]
+# in .agents/config/hooks.toml; tac check fails when the two disagree. Local
+# hooks can be skipped with --no-verify; CI and the ruleset are the real gate.
+# =============================================================================
+
+# The git hook types `prek install` sets up: pre-commit | commit-msg | pre-push.
+default_install_hook_types = ["pre-commit", "commit-msg", "pre-push"]
+
+# Hooks defined in this file, with no remote repository to fetch.
+[[repos]]
+repo = "local"                            # local: every entry is a command on this machine
+
+# ---- pre-commit: format, lint, the staged check, the owner's page, the private-term scan.
+
+[[repos.hooks]]
+id = "ruff-format"                        # the id [git] pre_commit names
+name = "ruff format --check"              # what prek prints
+entry = "uv run --frozen --no-sync ruff format --check --force-exclude"   # the candidate's ruff, never synced from a hook
+language = "system"                       # system: run the entry as it is, nothing installed
+types_or = ["python", "pyi"]              # the staged files it is handed
+stages = ["pre-commit"]                   # pre-commit | commit-msg | pre-push
+
+[[repos.hooks]]
+id = "ruff-check"                         # the id [git] pre_commit names
+name = "ruff check"                       # what prek prints
+entry = "uv run --frozen --no-sync ruff check --force-exclude"   # lint the staged Python files
+language = "system"                       # system: run the entry as it is, nothing installed
+types_or = ["python", "pyi"]              # the staged files it is handed
+stages = ["pre-commit"]                   # pre-commit | commit-msg | pre-push
+
+[[repos.hooks]]
+id = "tac-check-staged"                   # the id [git] pre_commit names
+name = "tac check --staged"               # what prek prints
+entry = "uv run --frozen --no-sync --project .agents tac check --staged"   # the deployed checker judges the index (C4)
+language = "system"                       # system: run the entry as it is, nothing installed
+pass_filenames = false                    # it reads the whole index itself
+always_run = true                         # also when no file it cares about is staged
+stages = ["pre-commit"]                   # pre-commit | commit-msg | pre-push
+
+[[repos.hooks]]
+id = "human-render-check"                 # the id [git] pre_commit names
+name = "tac human render --check"         # what prek prints
+entry = "uv run --frozen --no-sync --project .agents tac human render --check"   # TODO.HUMAN.md must be the render of .human/ (design section 7)
+language = "system"                       # system: run the entry as it is, nothing installed
+pass_filenames = false                    # it renders the whole queue itself
+files = '^(TODO\.HUMAN\.md|\.human/)'   # only when the page or its sources are staged
+stages = ["pre-commit"]                   # pre-commit | commit-msg | pre-push
+
+[[repos.hooks]]
+id = "private-scan"                       # the id [git] pre_commit names
+name = "private-term scan"                # what prek prints
+entry = "bash scripts/private_scan.sh"    # refuse private terms in a public repository
+language = "system"                       # system: run the entry as it is, nothing installed
+pass_filenames = false                    # it reads the index, new files and the identity itself
+always_run = true                         # every commit
+stages = ["pre-commit"]                   # pre-commit | commit-msg | pre-push
+
+# ---- commit-msg: the message against [commits] in config/standards.toml, and
+# the private-term scan of the message, which the commit publishes.
+
+[[repos.hooks]]
+id = "tac-check-commit-msg"               # the id [git] commit_msg names
+name = "tac check --commit-msg"           # what prek prints
+entry = "uv run --frozen --no-sync --project .agents tac check --commit-msg"   # git's message file is appended
+language = "system"                       # system: run the entry as it is, nothing installed
+stages = ["commit-msg"]                   # pre-commit | commit-msg | pre-push
+
+[[repos.hooks]]
+id = "private-scan-message"               # the id [git] commit_msg names
+name = "private-term scan of the message" # what prek prints
+entry = "bash scripts/private_scan.sh --message"   # git's message file is appended
+language = "system"                       # system: run the entry as it is, nothing installed
+stages = ["commit-msg"]                   # pre-commit | commit-msg | pre-push
+
+# ---- pre-push: the fast tests and the full check before anything leaves.
+
+[[repos.hooks]]
+id = "fast-tests"                         # the id [git] pre_push names
+name = "fast tests"                       # what prek prints
+entry = "uv run --frozen --no-sync pytest -q -m 'not integration and not slow'"   # the candidate's tests, without the network or the slow runs
+language = "system"                       # system: run the entry as it is, nothing installed
+pass_filenames = false                    # the suite, not the pushed files
+always_run = true                         # every push
+stages = ["pre-push"]                     # pre-commit | commit-msg | pre-push
+
+[[repos.hooks]]
+id = "tac-check"                          # the id [git] pre_push names
+name = "tac check"                        # what prek prints
+entry = "uv run --frozen --no-sync --project .agents tac check"   # the deployed checker on the working tree
+language = "system"                       # system: run the entry as it is, nothing installed
+pass_filenames = false                    # it reads the tree itself
+always_run = true                         # every push
+stages = ["pre-push"]                     # pre-commit | commit-msg | pre-push

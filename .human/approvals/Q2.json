@@ -1,0 +1,39 @@
+{
+  "agent": null,
+  "answers": [
+    {
+      "at": "2026-09-25T00:00:00Z",
+      "basis": "owner-via-chief",
+      "by": "tpetedb",
+      "link": null,
+      "text": "yes, moved aside on the owner's machine to `~/.agents/skills-disabled`; the caveman package stays excluded, see [docs/adr/0002-owner-decisions-2026-09-25.md](docs/adr/0002-owner-decisions-2026-09-25.md)."
+    }
+  ],
+  "approval": null,
+  "arguments": {},
+  "asked_at": "2026-09-24T00:00:00Z",
+  "blocks": [],
+  "decided_at": "2026-09-25T00:00:00Z",
+  "decided_by": "tpetedb",
+  "details": [],
+  "env_var": null,
+  "expires_at": null,
+  "id": "Q2",
+  "item_version": 1,
+  "kind": "question",
+  "notes": [],
+  "options": [],
+  "pipeline": null,
+  "pull_request": null,
+  "question": "skills installed in `~/.agents/skills` load into every Codex session, and into every other harness that reads that folder, next to TAC's own. Move them aside while TAC runs?",
+  "rank": 20,
+  "recommendation": "yes. The excluded caveman package stays excluded and its terse seed is dropped; the board does not reopen either.",
+  "recommendation_source": null,
+  "revision": null,
+  "stage": null,
+  "status": "answered",
+  "title": "user-level third-party skills",
+  "tool": null,
+  "topic": "skills",
+  "waits": "M4"
+}

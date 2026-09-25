@@ -16,11 +16,15 @@ https://developers.openai.com/codex/subagents.
 from __future__ import annotations
 
 import hashlib
+import re
+import shlex
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from tac.config import CONFIG_DIR, Config
+from tac.work import Bad
 
 CONTEXT_DIR = ".agents/context"
 BRIEF_FILE = f"{CONTEXT_DIR}/brief.md"
@@ -50,14 +54,52 @@ CLAUDE_TELEMETRY: dict[str, dict[str, str]] = {
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     },
 }
-# The subagent tool under its current and former names; denied outright when the
-# profile turns native delegation off, so refusal survives a hook failure (C1).
-CLAUDE_SPAWN_TOOLS = ("Agent", "Task")
+# The tools that start agents natively: the subagent tool under its current and
+# former names, and Workflow, which runs a dynamic workflow's script and starts
+# every agent() it calls (https://code.claude.com/docs/en/workflows). Denied
+# outright when the profile turns native delegation off, so refusal survives a
+# hook failure (C1), and listed under disallowedTools in the agent file of a
+# role that does not delegate (https://code.claude.com/docs/en/sub-agents).
+CLAUDE_SPAWN_TOOLS = ("Agent", "Task", "Workflow")
 # Whether the rendered Codex config carries the PreToolUse handoff guard. It does
 # not yet, so a "guarded" profile cannot be honoured there and Codex native
 # delegation renders off in every profile; M2 turns this on once the guard is
 # installed and its failure tests pass (C1).
 CODEX_HANDOFF_GUARD = False
+
+# ---- hook wiring (design section 9, build condition C2)
+
+# The events the guard answers per client, as each client's docs name them:
+# https://code.claude.com/docs/en/hooks and https://developers.openai.com/codex/hooks.
+# hooks/run.py keeps the same table, since it cannot import this package.
+GUARD_EVENTS: dict[str, tuple[str, ...]] = {
+    "claude": ("PreToolUse", "PostToolUse", "Stop", "SubagentStop", "SessionStart"),
+    "codex": ("PreToolUse", "PostToolUse", "Stop", "SessionStart"),
+}
+# An event wired and judged by the checks hooks.toml writes for another: a
+# subagent's stop on Claude is held to what a session's stop is held to.
+CONFIGURED_AS = {"SubagentStop": "Stop"}
+# Events whose matcher filters by tool name; the others take every occurrence.
+TOOL_EVENTS = frozenset({"PreToolUse", "PostToolUse"})
+# What a hook command hands on from the client's environment, and nothing else:
+# the guard's own PASS_ENV, so PYTHON*, UV_*, GIT_* and tokens never reach it.
+HOOK_ENV = ("HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR")
+ENV = "/usr/bin/env"
+# Codex sets no project folder for a hook and starts it in the session's
+# folder, so the root comes from git, run by absolute path in an empty
+# environment (https://developers.openai.com/codex/hooks).
+GIT = "/usr/bin/git"
+# Claude Code names the project root for every hook command.
+CLAUDE_ROOT = "$CLAUDE_PROJECT_DIR"
+# The guard's own deny class: a hook that cannot even start the guard (no git
+# work tree around a Codex session, the stamped guard gone) refuses a tool call
+# there and lets every other event pass, since a stop sent back for a guard
+# that is not there would come back on every stop.
+DENY_CLASS = frozenset({"PreToolUse"})
+# A matcher that is a plain list of tool names, which can be merged with others.
+NAMES = re.compile(r"^[A-Za-z0-9_]+(\|[A-Za-z0-9_]+)*$")
+# The guard's path goes inside double quotes in a shell command.
+SAFE_SCRIPT = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +194,8 @@ def _role(config: Config, root: Path, name: str, found: Seat) -> dict[str, Any]:
         "model": found.model,
         "effort": found.effort,
         "charter_sha256": charter_sha256(root, name),
+        # Empty for a role that delegates; the handoff guard judges its calls.
+        "disallowed_tools": [] if charter.delegates else list(CLAUDE_SPAWN_TOOLS),
     }
 
 
@@ -163,6 +207,45 @@ def roles_for(config: Config, root: Path, harness: str) -> list[dict[str, Any]]:
         if found is not None:
             out.append(_role(config, root, name, found))
     return out
+
+
+# ---------------------------------------------------------------- deny sets
+
+
+def denied_reads(config: Config) -> list[str]:
+    """Every glob no agent reads, in render order: the policy's deny_read, each
+    credential folder, the folder of the secrets env file and the controller
+    store. The one list the rendered Claude rules (the Read denies and
+    sandbox.filesystem.denyRead) and the hook guard's secret-read check both
+    take, so layer 1 and layer 2 refuse the same paths. Never .agents/: a Read
+    deny there would also break the skill links."""
+    env_file_dir = str(Path(config.knobs.secrets.env_file).parent)
+    return list(
+        dict.fromkeys(
+            [
+                *config.policy.paths.deny_read,
+                *(f"{d}/**" for d in CREDENTIAL_DIRS),
+                f"{env_file_dir}/**",
+                f"{CONTROLLER_STORE}/**",
+            ]
+        )
+    )
+
+
+def denied_writes(config: Config, generated: Iterable[str]) -> list[str]:
+    """Every path no agent writes, in render order: the policy's deny_write
+    (the authored tree), each generated path, then the controller store. The
+    rendered sandbox.filesystem.denyWrite and the hook guard's generated-paths
+    check both take it."""
+    return list(
+        dict.fromkeys(
+            [
+                *config.policy.paths.deny_write,
+                *generated,
+                f"{CONTROLLER_STORE}/**",
+            ]
+        )
+    )
 
 
 # ---------------------------------------------------------------- Claude Code
@@ -191,19 +274,13 @@ def _edit_rule(path: str) -> str:
 def claude(config: Config, root: Path, outputs: list[str]) -> dict[str, Any]:
     """The values `.claude/settings.json` and the agent files take."""
     policy, profile, runtime = config.policy, config.profile, config.runtime
-    env_file_dir = str(Path(config.knobs.secrets.env_file).parent)
-    deny_read_globs = [
-        *policy.paths.deny_read,
-        *(f"{d}/**" for d in CREDENTIAL_DIRS),
-        f"{env_file_dir}/**",
-        f"{CONTROLLER_STORE}/**",
-    ]
-    deny_read_globs = list(dict.fromkeys(deny_read_globs))
-    # Write denies: the authored tree and every generated path the lock lists.
-    # Never a Read deny on .agents/: that would also break the skill links.
-    write_paths = list(dict.fromkeys([*policy.paths.deny_write, *outputs]))
+    deny_read_globs = denied_reads(config)
+    write_paths = denied_writes(config, outputs)
     deny_rules = [f"Read({g})" for g in deny_read_globs]
-    deny_rules += [_edit_rule(p) for p in write_paths]
+    # Edit rules anchor at the project root, so they take the paths inside the
+    # checkout; the controller store outside it is held by the sandbox's
+    # denyWrite for commands and by the guard's generated-paths check for edits.
+    deny_rules += [_edit_rule(p) for p in write_paths if not p.startswith("~/")]
     if profile.native_delegation == "off":
         deny_rules += list(CLAUDE_SPAWN_TOOLS)
     env = dict(CLAUDE_TELEMETRY[config.knobs.telemetry.host_tier])
@@ -225,19 +302,112 @@ def claude(config: Config, root: Path, outputs: list[str]) -> dict[str, Any]:
         "fail_if_unavailable": profile.claude.failIfUnavailable,
         "allow_unsandboxed": profile.claude.allowUnsandboxedCommands,
         "deny_read": [_sandbox_path(g) for g in deny_read_globs],
-        "deny_write": list(
-            dict.fromkeys(
-                [
-                    *(_sandbox_path(p) for p in write_paths),
-                    CONTROLLER_STORE,
-                ]
-            )
-        ),
+        "deny_write": [_sandbox_path(p) for p in write_paths],
         "allowed_domains": allowed,
         "env": env,
         "extras": _read(root, CLAUDE_EXTRAS_FILE),
         "roles": roles_for(config, root, "claude"),
+        "hooks": hooks(config, "claude"),
     }
+
+
+# ---------------------------------------------------------------- hooks
+
+
+def hook_command(config: Config, client: str, event: str) -> str:
+    """The shell command a client runs for one event: the stamped guard found by
+    absolute path, then started from an empty environment with a fixed PATH and
+    the pinned interpreter in isolated mode (build condition C2). A guard that
+    cannot be found fails the way the guard itself fails: closed before a tool
+    call, open with a note everywhere else."""
+    guard = config.hooks.guard
+    if not SAFE_SCRIPT.match(guard.script) or ".." in guard.script.split("/"):
+        raise Bad(
+            f"{CONFIG_DIR}/hooks.toml: guard.script {guard.script!r} must be a "
+            "plain path inside the checkout"
+        )
+    path = ":".join(guard.path)
+    env = [ENV, "-i", "PATH=" + shlex.quote(path)]
+    if client == "claude":
+        root = CLAUDE_ROOT
+    else:
+        root = "$(" + " ".join([*env, GIT, "rev-parse", "--show-toplevel"]) + ")"
+    missing = shlex.quote("tac guard: no stamped guard in this checkout; run tac init")
+    code = 2 if event in DENY_CLASS else 0
+    find = (
+        f'g="{root}/{guard.script}" && [ -f "$g" ] '
+        f"|| {{ echo {missing} >&2; exit {code}; }};"
+    )
+    words = [
+        find,
+        *env,
+        *(f'{name}="${name}"' for name in HOOK_ENV),
+        shlex.quote(guard.python),
+        "-I",
+        '"$g"',
+        "--client",
+        client,
+        "--event",
+        event,
+        "--deadline-s",
+        str(guard.deadline_s),
+        "--path",
+        shlex.quote(path),
+    ]
+    return " ".join(words)
+
+
+def _merge(matchers: list[str]) -> list[str]:
+    """One matcher per group: `*` covers everything, plain tool names merge
+    into one alternation, and anything else stays a group of its own."""
+    if "*" in matchers:
+        return ["*"]
+    names: list[str] = []
+    other: list[str] = []
+    for matcher in matchers:
+        if NAMES.match(matcher):
+            names += [n for n in matcher.split("|") if n not in names]
+        elif matcher not in other:
+            other.append(matcher)
+    return (["|".join(names)] if names else []) + other
+
+
+def hooks(config: Config, client: str) -> list[dict[str, Any]]:
+    """Every hook group a client's file takes, from config/hooks.toml: one per
+    event and matcher, each running the guard once. A check with an empty
+    matcher is not wired on that client; a record-only check changes no answer
+    and waits for the worker store journal, so it renders nothing yet."""
+    wanted: dict[str, list[str]] = {}
+    for name, spec in config.hooks.checks.items():
+        matcher = spec.claude if client == "claude" else spec.codex
+        if not matcher or spec.kind == "record":
+            continue
+        events = [spec.event] + [
+            fired
+            for fired, judged in CONFIGURED_AS.items()
+            if judged == spec.event and fired in GUARD_EVENTS[client]
+        ]
+        for event in events:
+            if event not in GUARD_EVENTS[client]:
+                raise Bad(
+                    f"{CONFIG_DIR}/hooks.toml: checks.{name} is wired on {client} "
+                    f"for {event}, which the guard does not answer there"
+                )
+            wanted.setdefault(event, []).append(
+                matcher if event in TOOL_EVENTS else "*"
+            )
+    groups = []
+    for event in GUARD_EVENTS[client]:
+        for matcher in _merge(wanted.get(event, [])):
+            groups.append(
+                {
+                    "event": event,
+                    "matcher": "" if matcher == "*" else matcher,
+                    "command": hook_command(config, client, event),
+                    "timeout": config.hooks.guard.timeout_s,
+                }
+            )
+    return groups
 
 
 # ---------------------------------------------------------------- Codex
@@ -256,6 +426,7 @@ def codex(config: Config, root: Path) -> dict[str, Any]:
         "agents_enabled": profile.native_delegation == "guarded"
         and CODEX_HANDOFF_GUARD,
         "max_threads": config.knobs.teams.max_local_agents,
+        "hooks": hooks(config, "codex"),
         "roles": [
             {**role, "developer_instructions": _developer_instructions(role)}
             for role in roles_for(config, root, "codex")

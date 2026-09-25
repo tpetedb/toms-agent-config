@@ -1,0 +1,19 @@
+{# output: .codex/hooks.json #}
+# Parsed and written as JSON by tac sync. Keys are Codex's own; Codex runs
+# these only in a trusted project, once each hook is approved by its hash:
+# https://developers.openai.com/codex/hooks
+description = {{ note | toml }}
+
+[hooks]
+{% for group in codex.hooks %}
+
+[[hooks.{{ group.event }}]]
+{% if group.matcher %}
+matcher = {{ group.matcher | toml }}
+{% endif %}
+
+[[hooks.{{ group.event }}.hooks]]
+type = "command"
+command = {{ group.command | toml }}
+timeout = {{ group.timeout | toml }}
+{% endfor %}

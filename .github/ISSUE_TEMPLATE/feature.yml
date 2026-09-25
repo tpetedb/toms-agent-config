@@ -1,0 +1,32 @@
+name: Feature
+description: Propose a new capability; once agreed it becomes one or more orders.
+labels: ["type/feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you cannot do today, or what goes wrong, and who it affects.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: The proposal
+      description: What you would like instead, in plain words.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other ways you considered, including an existing tool that already does it.
+  - type: dropdown
+    id: team
+    attributes:
+      label: Team
+      description: The team whose paths it would mostly change, if you know.
+      options:
+        - core
+        - harness
+        - docs

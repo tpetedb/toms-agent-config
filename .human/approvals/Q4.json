@@ -1,0 +1,41 @@
+{
+  "agent": null,
+  "answers": [
+    {
+      "at": "2026-09-25T00:00:00Z",
+      "basis": "owner-via-chief",
+      "by": "tpetedb",
+      "link": null,
+      "text": "\"what and why, one line\", with a subject of at most 72 characters, see [docs/adr/0002-owner-decisions-2026-09-25.md](docs/adr/0002-owner-decisions-2026-09-25.md)."
+    }
+  ],
+  "approval": null,
+  "arguments": {},
+  "asked_at": "2026-09-24T00:00:00Z",
+  "blocks": [],
+  "decided_at": "2026-09-25T00:00:00Z",
+  "decided_by": "tpetedb",
+  "details": [],
+  "env_var": null,
+  "expires_at": null,
+  "id": "Q4",
+  "item_version": 1,
+  "kind": "question",
+  "notes": [
+    "Subject length, part of the same answer: the commit-msg hook (M2) refuses a subject over 72 characters, the `[commits] max_subject` in `.agents/config/standards.toml`, and the floor caps it at 72 (`commit_max_subject`). The hook judges only new commits, so no earlier subject is rewritten; raising the limit means raising both numbers together in one pull request the owner reviews. Waits: `just hooks-install` on this checkout."
+  ],
+  "options": [],
+  "pipeline": null,
+  "pull_request": null,
+  "question": "Conventional Commits, or \"what and why, one line\"?",
+  "rank": 10,
+  "recommendation": "keep \"what and why, one line\"; add a type prefix only if release automation needs it.",
+  "recommendation_source": null,
+  "revision": null,
+  "stage": null,
+  "status": "answered",
+  "title": "commits",
+  "tool": null,
+  "topic": "standards",
+  "waits": "M1 (the registry default)"
+}

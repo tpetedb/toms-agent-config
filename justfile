@@ -33,13 +33,22 @@ doctor *args:
 github-apply *args:
     {{ tac }} github apply {{ args }}
 
+# The labels of .github/labels.yml: --dry-run (default) prints the plan; --apply is the owner's step, on the host.
+github-labels *args:
+    {{ tac }} github labels {{ args }}
+
+# The labels, issue forms and pull request template hold, judged offline.
+github-lint:
+    {{ tac }} github lint
+
 # Render every harness file from .agents/ and templates/adapters/, and write the lock.
 sync *args:
     {{ tac }} sync {{ args }}
 
 # Judge the generated files against a fresh render and the lock: just check --staged
+[positional-arguments]
 check *args:
-    {{ tac }} check {{ args }}
+    {{ tac }} check "$@"
 
 # Every pipeline under .agents/config/pipelines/ is sound; each refusal names its reason.
 pipeline-check *names:
@@ -48,6 +57,20 @@ pipeline-check *names:
 # The order a run takes a pipeline's stages in; nothing runs: just pipeline-plan order
 pipeline-plan name:
     {{ tac }} pipeline plan {{ quote(name) }}
+
+# Host or runner only: install the git hooks of hooks/git/prek.toml into this clone.
+hooks-install:
+    uv run --frozen --no-sync prek install --config hooks/git/prek.toml
+
+# The owner's queue: just human render --check | ask | answer <id> | recap | verify <id>
+[positional-arguments]
+human *args:
+    {{ tac }} human "$@"
+
+# Owner only, host only: sign the decision on an approval item with the runner key.
+[positional-arguments]
+approve *args:
+    {{ tac }} approve "$@"
 
 # Refuse private terms in tracked and new files.
 private-scan:

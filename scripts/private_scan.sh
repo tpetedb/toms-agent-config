@@ -6,7 +6,7 @@
 # uses. CI copies all three from the base revision into one folder and runs them
 # from there (docs/DESIGN.md, section 8).
 #
-# Usage: scripts/private_scan.sh [--range BASE..HEAD] [--branch NAME] [--help]
+# Usage: scripts/private_scan.sh [--range BASE..HEAD | --message FILE] [--branch NAME] [--help]
 # Exit:  0 and no output when clean; 1 with each hit on its own line; 2 on error.
 set -euo pipefail
 
