@@ -9,6 +9,11 @@ runner's single-use token bound to run, stage and script hash; the call is
 recorded before it is allowed. The runner issues tokens from M3, so until then
 every Workflow call is denied; the tests stand a token in for the runner's to
 prove the rest of the path.
+
+From M3 the runner issues those tokens: a session it dispatched (its launcher
+wrote a dispatch record) spends one on every spawn, Agent and Task included,
+bound to the sha256 of the spawn's prompt or the script; a session nobody
+dispatched, the owner's own chat with the chief, keeps Agent and Task.
 """
 
 from __future__ import annotations
@@ -16,6 +21,8 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import threading
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -24,8 +31,17 @@ import pytest
 from tac import hook
 from tac.config import load_config
 from tac.pipelines import check_pipelines
+from tac.runner import (
+    Runner,
+    bind,
+    controller_store,
+    create_key,
+    ensure_store,
+    open_runner,
+)
 from tac.sync import check_tree, read_lock, sync
 from tac.work import Bad
+from tests._gitrepo import short_dir
 from tests._syncproject import copy_project, frontmatter, replace_in, ultracode_off
 
 SCRIPT = ".agents/workflows/specify.js"
@@ -90,12 +106,15 @@ def workflow(root: Path, role: str | None, **tool_input: Any) -> hook.Verdict:
     return hook.evaluate(root, "claude", "PreToolUse", payload)
 
 
-def spawn(root: Path, role: str | None, tool: str = "Agent") -> hook.Verdict:
+def spawn(
+    root: Path, role: str | None, tool: str = "Agent", prompt: str = "look around"
+) -> hook.Verdict:
     payload: dict[str, Any] = {
         "hook_event_name": "PreToolUse",
+        "session_id": "s-1",
         "cwd": str(root),
         "tool_name": tool,
-        "tool_input": {"prompt": "look around", "subagent_type": "scout"},
+        "tool_input": {"prompt": prompt, "subagent_type": "scout"},
     }
     if role is not None:
         payload["agent_type"] = role
@@ -313,10 +332,124 @@ def test_a_call_that_cannot_be_recorded_is_denied(tmp_path: Path) -> None:
     assert "record" in verdict.reason
 
 
-def test_the_chief_s_subagents_still_pass_until_the_tokens_of_m3(
+def test_the_owner_s_chat_with_the_chief_keeps_its_subagents(
     project: Path,
 ) -> None:
+    # No dispatch record: the session is the owner's own, the recorded exemption.
     assert spawn(project, "chief").verdict == "allow"
+
+
+def dispatched(root: Path, token: str, stage: str = "specify") -> None:
+    """The launcher's record for session s-1, as tac run writes it."""
+    folder = root / ".git" / "agents" / "dispatch"
+    folder.mkdir(parents=True, exist_ok=True)
+    record = {
+        "run_id": "r1",
+        "stage": stage,
+        "role": "chief",
+        "token": token,
+        "kind": "agent",
+        "session_id": "s-1",
+    }
+    (folder / "s-1.json").write_text(json.dumps(record), encoding="utf-8")
+
+
+@pytest.fixture
+def runner(project: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Runner]:
+    """A runner serving the project's controller store, which the guard finds
+    through the environment as the checker would."""
+    with short_dir() as state:
+        monkeypatch.setenv("TAC_STATE_HOME", str(state))
+        store = ensure_store(controller_store(project, {"TAC_STATE_HOME": str(state)}))
+        create_key(store)
+        found = open_runner(
+            project, {"TAC_STATE_HOME": str(state)}, repository="example/demo"
+        )
+        server = bind(found)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            yield found
+        finally:
+            server.shutdown()
+            server.server_close()
+
+
+def test_a_dispatched_session_spends_a_token_bound_to_the_prompt(
+    project: Path, runner: Runner
+) -> None:
+    prompt = "Draft the order spec from the request."
+    digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    dispatched(project, runner.issue_token("r1", "specify", digest, "agent"))
+    assert spawn(project, "chief", prompt=prompt).verdict == "allow"
+    # Spent: the same record cannot start a second agent.
+    again = spawn(project, "chief", prompt=prompt)
+    assert (again.verdict, again.check) == ("deny", "handoff-guard")
+    assert "already used" in again.reason
+
+
+@pytest.mark.parametrize("tool", ["Agent", "Task"])
+def test_a_dispatched_session_without_a_matching_token_is_refused(
+    project: Path, runner: Runner, tool: str
+) -> None:
+    digest = hashlib.sha256(b"the rendered prompt").hexdigest()
+    dispatched(project, runner.issue_token("r1", "specify", digest, "agent"))
+    verdict = spawn(project, "chief", tool, prompt="some other prompt")
+    assert (verdict.verdict, verdict.check) == ("deny", "handoff-guard")
+    assert "burned" in verdict.reason
+
+
+def test_a_dispatched_session_whose_runner_is_down_is_refused(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with short_dir() as state:
+        monkeypatch.setenv("TAC_STATE_HOME", str(state))
+        dispatched(project, "a" * 64)
+        verdict = spawn(project, "chief")
+    assert (verdict.verdict, verdict.check) == ("deny", "handoff-guard")
+    assert "did not grant" in verdict.reason
+
+
+def test_a_malformed_dispatch_record_is_refused(project: Path) -> None:
+    folder = project / ".git" / "agents" / "dispatch"
+    folder.mkdir(parents=True)
+    (folder / "s-1.json").write_text('{"token": 1}', encoding="utf-8")
+    verdict = spawn(project, "chief")
+    assert (verdict.verdict, verdict.check) == ("deny", "handoff-guard")
+    assert "shape" in verdict.reason
+
+
+def test_a_session_without_an_id_cannot_spawn(project: Path) -> None:
+    payload = {
+        "hook_event_name": "PreToolUse",
+        "cwd": str(project),
+        "tool_name": "Agent",
+        "agent_type": "chief",
+        "tool_input": {"prompt": "x"},
+    }
+    verdict = hook.evaluate(project, "claude", "PreToolUse", payload)
+    assert (verdict.verdict, verdict.check) == ("deny", "handoff-guard")
+
+
+def test_a_registered_script_with_the_runner_s_token_is_allowed(
+    project: Path, runner: Runner
+) -> None:
+    digest = hashlib.sha256(BODY.encode("utf-8")).hexdigest()
+    token = runner.issue_token("r1", "specify", digest, "workflow")
+    dispatched(project, token)
+    record = project / ".git" / "agents" / "dispatch" / "s-1.json"
+    data = json.loads(record.read_text("utf-8"))
+    record.write_text(json.dumps({**data, "kind": "workflow"}), encoding="utf-8")
+    assert workflow(project, "chief").verdict == "allow"
+    [entry] = journal(project)
+    assert (entry["stage"], entry["sha256"], entry["token"]) == (
+        "specify",
+        digest,
+        token,
+    )
+    # Single use: the second call finds the token spent.
+    again = workflow(project, "chief")
+    assert (again.verdict, again.check) == ("deny", "handoff-guard")
 
 
 @pytest.mark.parametrize("tool", ["Agent", "Task"])
@@ -516,3 +649,67 @@ def test_a_registered_script_lives_under_agents_workflows(
     )
     problems = stage_refusals(project)
     assert problems and all(why in p for p in problems), problems
+
+
+# ---------------------------------------------------------------- records
+
+
+def test_a_subagent_start_is_recorded_in_the_worker_store(project: Path) -> None:
+    payload = {
+        "hook_event_name": "SubagentStart",
+        "session_id": "s-1",
+        "agent_type": "scout",
+        "agent_id": "a-1",
+    }
+    assert hook.check_spawn_record(project, payload, load_config(project)) is None
+    path = project / ".git" / "agents" / "journal" / "spawns.jsonl"
+    [line] = [json.loads(x) for x in path.read_text("utf-8").splitlines()]
+    assert (line["session_id"], line["agent_type"], line["agent_id"]) == (
+        "s-1",
+        "scout",
+        "a-1",
+    )
+
+
+def test_a_workflow_result_is_recorded_for_the_dispatch_receipt(
+    project: Path,
+) -> None:
+    dispatched(project, "b" * 64)
+    payload = {
+        "hook_event_name": "PostToolUse",
+        "session_id": "s-1",
+        "cwd": str(project),
+        "tool_name": "Workflow",
+        "tool_input": {"script": BODY},
+        "tool_response": {"result": "spec"},
+    }
+    assert hook.check_workflow_record(project, payload, load_config(project)) is None
+    path = project / ".git" / "agents" / "journal" / "workflow-results.jsonl"
+    [line] = [json.loads(x) for x in path.read_text("utf-8").splitlines()]
+    assert line["script_sha256"] == hashlib.sha256(BODY.encode()).hexdigest()
+    assert line["token_sha256"] == hashlib.sha256(b"b" * 64).hexdigest()
+    assert len(line["result_sha256"]) == 64
+
+
+def test_a_record_check_never_changes_the_answer(project: Path) -> None:
+    # A record-kind check wired in hooks.toml runs, and the verdict stays allow.
+    hooks = project / ".agents/config/hooks.toml"
+    hooks.write_text(
+        hooks.read_text("utf-8")
+        + '\n[checks.workflow-record]\nevent = "PostToolUse"\nkind = "record"\n'
+        'claude = "Workflow"\ncodex = ""\n',
+        encoding="utf-8",
+    )
+    payload = {
+        "hook_event_name": "PostToolUse",
+        "session_id": "s-1",
+        "cwd": str(project),
+        "tool_name": "Workflow",
+        "tool_input": {"script": BODY},
+        "tool_response": {},
+    }
+    verdict = hook.evaluate(project, "claude", "PostToolUse", payload)
+    assert verdict.verdict == "allow"
+    assert (
+        project / ".git" / "agents" / "journal" / "workflow-results.jsonl"
+    ).is_file()

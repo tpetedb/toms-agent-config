@@ -13,6 +13,7 @@ CI and the ruleset (DESIGN 9).
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import fnmatch
 import hashlib
@@ -38,6 +39,16 @@ from tac.adapters import (
 from tac.config import CONFIG_DIR, Config, load_config, ultracode_seats
 from tac.draft07 import draft07
 from tac.handoff import worker_store
+from tac.runner import (
+    GUARD_TIMEOUT_S,
+    ID_PATTERN,
+    SESSION_PATTERN,
+    TOKEN_PATTERN,
+    RunnerError,
+    controller_store,
+    request,
+    socket_path,
+)
 from tac.sync import LOCK_FILE, generated_paths, read_lock
 
 CONTRACT = "contracts/hook-verdict.schema.json"
@@ -64,9 +75,21 @@ WORKFLOW_TOOL = "Workflow"
 # A Workflow call carries its script inline or names the file it runs; the
 # guard hashes whichever it is given, and refuses a call that carries both.
 SCRIPT_KEYS = ("script", "scriptPath")
-# Where each allowed Workflow call is recorded, inside the worker store, until
-# the runner's journal and signed receipts take over in M3.
+# Where each allowed Workflow call is recorded, inside the worker store; the
+# runner signs what these journals hold into the dispatch receipt.
 WORKFLOW_JOURNAL = "journal/workflows.jsonl"
+WORKFLOW_RESULTS = "journal/workflow-results.jsonl"
+SPAWN_JOURNAL = "journal/spawns.jsonl"
+# The launcher's record of a session it started: the worker store holds the
+# record with the token (agent-writable, so read as data only), the controller
+# store a marker the runner writes, which no agent can write or remove.
+DISPATCH_DIR = "dispatch"
+DISPATCHED_DIR = "dispatched"
+DISPATCH_KEYS = frozenset({"run_id", "stage", "role", "token", "kind", "session_id"})
+
+
+class TokenRefused(Exception):
+    """No runner token vouches for this spawn: the message says why."""
 
 
 class Verdict(BaseModel):
@@ -244,9 +267,10 @@ def check_handoff_guard(
     whose charter does not delegate. A Workflow call is allowed only for a role
     that delegates and launches with ultracode, running a script that a stage of
     that role registers with the hash generated.lock records, with the runner's
-    single-use token for it, and only once the call is recorded; no token exists
-    before M3, so until then every Workflow call is refused. Agent and Task from
-    a delegating role pass until the runner's dispatch tokens (M3, C1)."""
+    single-use token for it, and only once the call is recorded. Agent and Task
+    in a session the runner dispatched need the token bound to the sha256 of the
+    spawn's prompt (C1); a session nobody dispatched, the owner's own chat with
+    the chief, keeps them as the one recorded exemption."""
     tool = str(payload.get("tool_name") or "")
     if tool not in SPAWN_TOOLS:
         return None
@@ -265,8 +289,120 @@ def check_handoff_guard(
             "false; the runner starts every agent this role needs"
         )
     if tool != WORKFLOW_TOOL:
-        return None
+        return _check_spawn(root, payload, config, tool)
     return _check_workflow(root, payload, config, role)
+
+
+def _session(payload: Mapping[str, Any]) -> str:
+    given = payload.get("session_id")
+    if not isinstance(given, str) or not re.match(SESSION_PATTERN, given):
+        raise TokenRefused("the event names no usable session id")
+    return given
+
+
+def _dispatched(root: Path, payload: Mapping[str, Any], config: Config) -> bool:
+    """Whether the runner dispatched this session: its marker in the controller
+    store, or the launcher's record in the worker store. Either one makes the
+    session answer for its spawns with a token."""
+    session = _session(payload)
+    try:
+        store = controller_store(root, os.environ)
+        if (store / DISPATCHED_DIR / session).is_file():
+            return True
+    except RunnerError:
+        pass
+    try:
+        return (worker_store(root, config) / DISPATCH_DIR / f"{session}.json").exists()
+    except work.Bad:
+        return False
+
+
+def _dispatch_record(
+    root: Path, payload: Mapping[str, Any], config: Config
+) -> dict[str, str]:
+    """The launcher's record for this session, read as data: any shape but the
+    one the launcher writes is a refusal."""
+    session = _session(payload)
+    try:
+        path = worker_store(root, config) / DISPATCH_DIR / f"{session}.json"
+    except work.Bad as e:
+        raise TokenRefused(
+            f"no worker store to read a dispatch record from ({e})"
+        ) from None
+    if not path.is_file() or path.is_symlink():
+        raise TokenRefused(
+            "this session has no dispatch record, so it carries no runner token"
+        )
+    try:
+        data = json.loads(path.read_bytes())
+    except (OSError, ValueError) as e:
+        raise TokenRefused(f"the dispatch record cannot be read ({e})") from None
+    if (
+        not isinstance(data, dict)
+        or set(data) != DISPATCH_KEYS
+        or not all(isinstance(data[k], str) for k in DISPATCH_KEYS)
+        or not re.match(TOKEN_PATTERN, data["token"])
+        or not re.match(ID_PATTERN, data["run_id"])
+        or not re.match(ID_PATTERN, data["stage"])
+        or data["session_id"] != session
+    ):
+        raise TokenRefused(
+            "the dispatch record is not in the shape the launcher writes"
+        )
+    return data
+
+
+def _runner_token(
+    root: Path,
+    payload: Mapping[str, Any],
+    config: Config,
+    kind: Literal["workflow", "agent"],
+    digest: str,
+) -> str:
+    """The runner's single-use token for this spawn, bound to the run, the stage
+    and the sha256 of what it runs, once the runner has consumed it; a missing
+    record, a missing token, a runner that does not answer or closes the
+    connection, and any refusal raise TokenRefused."""
+    record = _dispatch_record(root, payload, config)
+    try:
+        sock = socket_path(controller_store(root, os.environ))
+        request(
+            sock,
+            {
+                "op": "token.consume",
+                "token": record["token"],
+                "run_id": record["run_id"],
+                "stage": record["stage"],
+                "sha256": digest,
+                "kind": kind,
+                "session_id": record["session_id"],
+            },
+            timeout=GUARD_TIMEOUT_S,
+        )
+    except RunnerError as e:
+        raise TokenRefused(f"the runner did not grant the token: {e}") from None
+    return record["token"]
+
+
+def _check_spawn(
+    root: Path, payload: Mapping[str, Any], config: Config, tool: str
+) -> str | None:
+    try:
+        if not _dispatched(root, payload, config):
+            # The owner's own chat names no dispatch: the recorded exemption.
+            return None
+        given = payload.get("tool_input")
+        prompt = given.get("prompt") if isinstance(given, Mapping) else None
+        if not isinstance(prompt, str):
+            raise TokenRefused("the call carries no prompt to bind a token to")
+        digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        _runner_token(root, payload, config, "agent", digest)
+    except TokenRefused as e:
+        return (
+            f"{tool} is refused in a session the runner dispatched: {e}; a spawn "
+            "there needs the single-use token bound to its prompt's sha256"
+        )
+    return None
 
 
 def _lexical(raw: str, payload: Mapping[str, Any], root: Path) -> str | None:
@@ -329,15 +465,6 @@ def _script_bytes(root: Path, payload: Mapping[str, Any]) -> tuple[bytes, str] |
         return f"the script {raw} cannot be read ({e.strerror})"
 
 
-def _runner_token(
-    _root: Path, _payload: Mapping[str, Any], _script: str, _digest: str
-) -> str | None:
-    """The runner's single-use token for this call, bound to the run, the stage
-    and the script hash, once consumed; None when the call carries none. The
-    runner issues tokens from M3, so until then no call carries one."""
-    return None
-
-
 def _check_workflow(
     root: Path, payload: Mapping[str, Any], config: Config, role: str
 ) -> str | None:
@@ -382,16 +509,29 @@ def _check_workflow(
             f"and {LOCK_FILE} records its hash (run tac sync after registering)"
         )
     script, pipeline, stage = matches[0]
-    token = _runner_token(root, payload, script, digest)
-    if token is None:
-        # Fail closed until M3: a registered script alone does not run.
+    try:
+        token = _runner_token(root, payload, config, "workflow", digest)
+    except TokenRefused as e:
+        # A registered script alone does not run: the runner's token must too.
         return (
             f"Workflow is refused: {script} is registered for {role}, but the call "
             "carries no single-use runner token bound to its run, stage and "
-            "script hash, and tac run issues those only from M3"
+            f"script hash ({e})"
         )
-    record = {
-        "at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+    # The token was bound to the stage the runner dispatched; the record names it.
+    try:
+        dispatched = _dispatch_record(root, payload, config)["stage"]
+    except TokenRefused:
+        dispatched = stage
+    chosen = [m for m in matches if m[2] == dispatched]
+    if not chosen:
+        return (
+            f"Workflow is refused: the runner dispatched stage {dispatched}, "
+            f"which does not register {script}"
+        )
+    script, pipeline, stage = chosen[0]
+    entry = {
+        "at": _now(),
         "session_id": payload.get("session_id"),
         "role": role,
         "pipeline": pipeline,
@@ -404,17 +544,75 @@ def _check_workflow(
         journal = worker_store(root, config) / WORKFLOW_JOURNAL
         journal.parent.mkdir(parents=True, exist_ok=True)
         with journal.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, sort_keys=True) + "\n")
+            handle.write(json.dumps(entry, sort_keys=True) + "\n")
     except (OSError, work.Bad) as e:
         return f"Workflow is refused: the call cannot be recorded ({e})"
     return None
 
 
-def check_not_yet(
-    _root: Path, _payload: Mapping[str, Any], _config: Config
+def _append(root: Path, config: Config, rel: str, record: Mapping[str, Any]) -> None:
+    """One JSON line in a worker store journal; a record never changes an answer,
+    so a failure to write is dropped here and missing evidence shows downstream."""
+    try:
+        journal = worker_store(root, config) / rel
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        with journal.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, sort_keys=True) + "\n")
+    except (OSError, work.Bad):
+        pass
+
+
+def _now() -> str:
+    return dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+
+
+def check_spawn_record(
+    root: Path, payload: Mapping[str, Any], config: Config
 ) -> str | None:
-    """Wired, but its evidence does not exist yet: a subagent start is only
-    recorded once the worker store journal exists (M3)."""
+    """A subagent start, recorded: SubagentStart cannot block in either client,
+    so it only leaves evidence in journal/spawns.jsonl in the worker store."""
+    _append(
+        root,
+        config,
+        SPAWN_JOURNAL,
+        {
+            "at": _now(),
+            "session_id": payload.get("session_id"),
+            "agent_type": payload.get("agent_type"),
+            "agent_id": payload.get("agent_id"),
+        },
+    )
+    return None
+
+
+def check_workflow_record(
+    root: Path, payload: Mapping[str, Any], config: Config
+) -> str | None:
+    """After a Workflow call: the script hash, the hash of what it returned and
+    the token the guard consumed for it, one line the runner signs into the
+    dispatch receipt of the session's stage."""
+    if payload.get("tool_name") != WORKFLOW_TOOL:
+        return None
+    found = _script_bytes(root, payload)
+    script = hashlib.sha256(found[0]).hexdigest() if isinstance(found, tuple) else None
+    result = json.dumps(payload.get("tool_response"), sort_keys=True, default=str)
+    token = None
+    with contextlib.suppress(TokenRefused):
+        token = _dispatch_record(root, payload, config)["token"]
+    _append(
+        root,
+        config,
+        WORKFLOW_RESULTS,
+        {
+            "at": _now(),
+            "session_id": payload.get("session_id"),
+            "script_sha256": script,
+            "token_sha256": hashlib.sha256(token.encode()).hexdigest()
+            if token
+            else None,
+            "result_sha256": hashlib.sha256(result.encode("utf-8")).hexdigest(),
+        },
+    )
     return None
 
 
@@ -424,7 +622,10 @@ CHECKS: Mapping[str, Check] = {
     "owned-paths": check_owned_paths,
     "order-check": check_order,
     "handoff-guard": check_handoff_guard,
-    "spawn-record": check_not_yet,
+    "spawn-record": check_spawn_record,
+    # Not wired in hooks.toml yet: a PostToolUse record renders once the
+    # configuration names it (a follow-up of M3).
+    "workflow-record": check_workflow_record,
 }
 
 
@@ -461,12 +662,17 @@ def evaluate(
     tool = str(payload.get("tool_name") or "")
     reminders: list[tuple[str, str]] = []
     for name, spec in config.hooks.checks.items():
-        if spec.event != as_configured or spec.kind == "record":
+        if spec.event != as_configured:
             continue
         matcher = spec.claude if client == "claude" else spec.codex
         if not wired(matcher, tool if event in TOOL_EVENTS else "*"):
             continue
         run = CHECKS.get(name)
+        if spec.kind == "record":
+            # Evidence only: a record never changes the answer.
+            if run is not None:
+                run(root, payload, config)
+            continue
         why = (
             run(root, payload, config)
             if run
