@@ -216,6 +216,80 @@ def test_depth_counts_through_array_items_and_additional_properties() -> None:
     assert not [p for p in problems if "nested deeper" in p], problems
 
 
+def _flat(names: list[str]) -> dict:
+    """A strict root whose properties are `names`, each a string."""
+    return {
+        "type": "object",
+        "properties": {n: {"type": "string"} for n in names},
+        "required": names,
+        "additionalProperties": False,
+    }
+
+
+def _sized(problems: list[str], needle: str) -> list[str]:
+    return [p for p in problems if needle in p]
+
+
+def test_more_than_5000_object_properties_are_refused() -> None:
+    # The root's own properties count, and so do a nested object's.
+    at_limit = _flat([f"p{i}" for i in range(4999)])
+    at_limit["properties"]["p0"] = _flat(["q"])
+    assert strict_subset_problems(at_limit) == []
+    over = _flat([f"p{i}" for i in range(5000)])
+    over["properties"]["p0"] = _flat(["q"])
+    problems = strict_subset_problems(over)
+    assert problems == ["/: 5001 object properties, over 5000 in all"], problems
+
+
+def test_names_enum_and_const_values_share_a_120000_character_budget() -> None:
+    # A property name, a definition name, an enum value and a const value all
+    # count: 4 + 6 + 3 + 1 characters beside one long name.
+    def schema(long: int) -> dict:
+        root = _flat(["x" * long, "unit"])
+        root["properties"]["unit"] = {"enum": ["abc"]}
+        root["definitions"] = {"shared": {"type": "string"}}
+        root["properties"]["x" * long] = {"const": "k"}
+        return root
+
+    budget = 120_000 - (4 + 6 + 3 + 1)
+    problems = strict_subset_problems(schema(budget))
+    assert _sized(problems, "characters") == [], problems
+    problems = strict_subset_problems(schema(budget + 1))
+    assert _sized(problems, "characters") == [
+        "/: names, enum and const values hold 120001 characters, over 120000"
+    ], problems
+
+
+def test_more_than_1000_enum_values_in_all_are_refused() -> None:
+    # Counted across every enum, so two enums of 500 are at the limit.
+    def schema(second: int) -> dict:
+        root = _flat(["a", "b"])
+        root["properties"]["a"] = {"enum": [f"a{i}" for i in range(500)]}
+        root["properties"]["b"] = {"enum": [f"b{i}" for i in range(second)]}
+        return root
+
+    assert strict_subset_problems(schema(500)) == []
+    assert strict_subset_problems(schema(501)) == [
+        "/: 1001 enum values, over 1000 in all"
+    ]
+
+
+def test_a_string_enum_over_250_values_holds_at_most_15000_characters() -> None:
+    def enum(count: int, chars: int) -> dict:
+        # `count` distinct values whose lengths sum to `chars`.
+        values = [f"{i:03d}" for i in range(count)]
+        values[0] += "z" * (chars - 3 * count)
+        return _root({"enum": values})
+
+    assert strict_subset_problems(enum(251, 15_000)) == []
+    # At 250 values the rule does not apply, however long they are.
+    assert strict_subset_problems(enum(250, 15_001)) == []
+    assert strict_subset_problems(enum(251, 15_001)) == [
+        "/properties/p: an enum of more than 250 values holds 15001 characters,"
+        " over 15000"
+    ]
+
+
 def test_a_contract_hiding_a_loose_object_under_one_of_fails_the_check(
     tmp_path: Path,
 ) -> None:

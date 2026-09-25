@@ -53,6 +53,11 @@ CLAUDE_TELEMETRY: dict[str, dict[str, str]] = {
 # The subagent tool under its current and former names; denied outright when the
 # profile turns native delegation off, so refusal survives a hook failure (C1).
 CLAUDE_SPAWN_TOOLS = ("Agent", "Task")
+# Whether the rendered Codex config carries the PreToolUse handoff guard. It does
+# not yet, so a "guarded" profile cannot be honoured there and Codex native
+# delegation renders off in every profile; M2 turns this on once the guard is
+# installed and its failure tests pass (C1).
+CODEX_HANDOFF_GUARD = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,7 +223,8 @@ def codex(config: Config, root: Path) -> dict[str, Any]:
         # client receipt proves one, command networking stays off (section 3.2).
         "network_access": False,
         "inherit": config.runtime.env.codex_inherit,
-        "agents_enabled": profile.native_delegation != "off",
+        "agents_enabled": profile.native_delegation == "guarded"
+        and CODEX_HANDOFF_GUARD,
         "max_threads": config.knobs.teams.max_local_agents,
         "roles": [
             {**role, "developer_instructions": _developer_instructions(role)}

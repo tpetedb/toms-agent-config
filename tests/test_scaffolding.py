@@ -48,6 +48,7 @@ def test_ci_runs_every_gate(repo: Path) -> None:
         "actionlint",
         "shellcheck bootstrap.sh scripts/*.sh",
         "scripts/ci_work_from_base.sh",
+        "scripts/ci_config_from_base.sh",
         "scripts/ci_verify_receipts.sh",
     ):
         assert gate in script, gate

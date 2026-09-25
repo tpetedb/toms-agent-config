@@ -68,6 +68,12 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
           HEAD_REF: ${{ github.head_ref }}
         run: bash scripts/ci_work_from_base.sh "origin/$BASE_REF" "$HEAD_REF"
+      - name: The floor only tightens, judged by the base revision's checker
+        # The base's floor and the base's config checker, never the candidate's,
+        # so a pull request cannot loosen the floor and rewrite its judge.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/ci_config_from_base.sh "origin/$BASE_REF"
       - name: Committed receipts verify with the base revision's verifier and key
         # The verifier and runner.pub both come from the base commit, never the
         # candidate tree, so a pull request can bring neither the key nor the

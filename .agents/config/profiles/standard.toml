@@ -19,6 +19,7 @@ isolation = "native-sandbox"
 network = "allowlist"                    # Codex: features.network_proxy = true with a tested proxy, else command networking off; Claude: sandbox.enabled rendered explicitly
 # Native subagent spawns: guarded (they pass the PreToolUse handoff guard with a
 # single-use dispatch token) | off (spawn tools removed; dispatch only through tac run).
+# Codex renders off under either until M2 renders its PreToolUse guard and proves it.
 native_delegation = "guarded"            # native spawns pass the PreToolUse handoff guard with a single-use dispatch token (section 5)
 # The review every order gets: independent = how many reviews from a fresh session,
 # second = "deterministic" (the gate checks after review), cross_provider = the

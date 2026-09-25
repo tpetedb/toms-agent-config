@@ -33,10 +33,11 @@ enabled = false
 # false turns feedback submission off: true | false.
 enabled = false
 
-# Native subagents, guarded by the handoff guard; off when the profile says
-# native_delegation = "off", so dispatch goes only through tac run.
+# Native subagents. Off in every profile until M2 renders the PreToolUse handoff
+# guard here and proves it; then a native_delegation = "guarded" profile turns
+# them on. Off, dispatch goes only through tac run.
 [agents]
-# true keeps spawn_agent and its tools: true | false.
-enabled = true
+# true keeps spawn_agent and its tools, false removes them: true | false.
+enabled = false
 # At most this many spawned threads at once: [teams] max_local_agents.
 max_concurrent_threads_per_session = 4

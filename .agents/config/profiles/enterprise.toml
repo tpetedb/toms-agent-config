@@ -19,6 +19,7 @@ isolation = "container"                  # release 1.1: its own clone inside, re
 network = "allowlist"                    # Codex: features.network_proxy = true with a tested proxy, else command networking off
 # Native subagent spawns: guarded (they pass the PreToolUse handoff guard with a
 # single-use dispatch token) | off (spawn tools removed; dispatch only through tac run).
+# Codex renders off under either until M2 renders its PreToolUse guard and proves it.
 native_delegation = "off"                # spawn tools removed from the rendered config; dispatch only through tac run, so refusal survives a hook failure
 # The review every order gets: independent = how many reviews from a fresh session,
 # second = "deterministic" (the gate checks after review), cross_provider = the

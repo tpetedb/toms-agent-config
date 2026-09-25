@@ -19,6 +19,7 @@ isolation = "disposable-container"       # required; tac refuses yolo on the hos
 network = "allowlist"
 # Native subagent spawns: guarded (they pass the PreToolUse handoff guard with a
 # single-use dispatch token) | off (spawn tools removed; dispatch only through tac run).
+# Codex renders off under either until M2 renders its PreToolUse guard and proves it.
 native_delegation = "guarded"
 # The review every order gets: independent = how many reviews from a fresh session,
 # second = "deterministic" (the gate checks after review), cross_provider = the

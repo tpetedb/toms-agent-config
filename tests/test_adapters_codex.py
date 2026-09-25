@@ -7,6 +7,7 @@ project file may not set) and https://developers.openai.com/codex/subagents
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -84,13 +85,35 @@ def test_commands_get_no_network_and_no_secrets(root: Path) -> None:
     assert env["ignore_default_excludes"] is False
 
 
-def test_native_subagents_follow_the_profile_and_the_budget(root: Path) -> None:
+def test_native_subagents_follow_the_budget(root: Path) -> None:
     agents = toml(root / ".codex/config.toml")["agents"]
-    assert agents["enabled"] is True
     assert (
         agents["max_concurrent_threads_per_session"]
         == load_config(root).knobs.teams.max_local_agents
     )
+
+
+def _codex_guard_rendered(root: Path) -> bool:
+    """A PreToolUse hook in the rendered Codex config, inline or in hooks.json,
+    the two places Codex reads hooks from."""
+    inline = toml(root / ".codex/config.toml").get("hooks", {})
+    hooks_json = root / ".codex/hooks.json"
+    loaded = json.loads(hooks_json.read_text()) if hooks_json.is_file() else {}
+    return bool(inline.get("PreToolUse") or loaded.get("hooks", {}).get("PreToolUse"))
+
+
+@pytest.mark.parametrize("profile", ["enterprise", "standard", "yolo"])
+def test_no_profile_enables_codex_delegation_without_a_rendered_guard(
+    tmp_path: Path, profile: str
+) -> None:
+    # A native spawn with no guard installed would run without an envelope.
+    root = copy_project(tmp_path)
+    replace_in(
+        root / ".agents/config.toml", 'active = "standard"', f'active = "{profile}"'
+    )
+    sync(root)
+    agents = toml(root / ".codex/config.toml")["agents"]
+    assert agents["enabled"] is False or _codex_guard_rendered(root), profile
 
 
 def test_native_delegation_off_removes_the_spawn_tools(tmp_path: Path) -> None:
