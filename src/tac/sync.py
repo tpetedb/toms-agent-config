@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import yaml
 from jinja2 import StrictUndefined, TemplateError
 from jinja2.sandbox import SandboxedEnvironment
 
@@ -416,10 +417,34 @@ def sync(root: Path, *, links: bool = True) -> list[str]:
     return changed
 
 
+def skill_opt_in(skill: Path) -> bool:
+    """Whether the skill's frontmatter carries `metadata.opt_in: true`. Such a
+    skill reaches a session only where a pipeline stage names it, so it is never
+    linked where a client would list it for every session (design section 12).
+    The Agent Skills specification makes metadata values strings, so the string
+    "true" counts as well as the YAML boolean."""
+    text = (skill / "SKILL.md").read_text(encoding="utf-8")
+    if not text.startswith("---\n"):
+        return False
+    head, found, _ = text[4:].partition("\n---")
+    if not found:
+        return False
+    try:
+        data = yaml.safe_load(head)
+    except yaml.YAMLError as e:
+        raise Bad(f"{SKILLS_DIR}/{skill.name}/SKILL.md: frontmatter: {e}") from None
+    metadata = data.get("metadata") if isinstance(data, dict) else None
+    if not isinstance(metadata, dict):
+        return False
+    return metadata.get("opt_in") in (True, "true")
+
+
 def link_skills(root: Path) -> list[str]:
     """`.claude/skills/<n>` for each skill under `.agents/skills/`: a relative
     link where the platform allows one, else a copy. Never committed; a skill
-    folder that is itself a link is refused, so a skill cannot point outside."""
+    folder that is itself a link is refused, so a skill cannot point outside, and
+    so is one without SKILL.md. An opt-in skill is skipped and its old link
+    removed; a folder whose name starts with `_` is generated, not a skill."""
     source = root / SKILLS_DIR
     target = root / CLAUDE_SKILLS_DIR
     if not source.is_dir():
@@ -431,6 +456,12 @@ def link_skills(root: Path) -> list[str]:
             continue
         if skill.is_symlink():
             raise Bad(f"{SKILLS_DIR}/{skill.name}: a skill folder may not be a link")
+        if skill.name.startswith("_"):
+            continue
+        if not (skill / "SKILL.md").is_file():
+            raise Bad(f"{SKILLS_DIR}/{skill.name}: a skill folder with no SKILL.md")
+        if skill_opt_in(skill):
+            continue
         wanted.add(skill.name)
         dest = target / skill.name
         relative = os.path.relpath(skill, target)
