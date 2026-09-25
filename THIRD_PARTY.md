@@ -1,6 +1,6 @@
 # Third-party and carried-over material
 
-What in this repository did not start here, where it came from and under which terms. docs/DESIGN.md section 16 is the full reuse list; a line moves here when its material lands. TAC's own licence is the owner's decision (TODO.HUMAN.md, Q9).
+What in this repository did not start here, where it came from and under which terms. docs/DESIGN.md section 16 is the full reuse list; a line moves here when its material lands. TAC itself is released under the MIT licence in [LICENSE](LICENSE) (Q9, [ADR 0002](docs/adr/0002-owner-decisions-2026-09-25.md)).
 
 ## Third-party
 
