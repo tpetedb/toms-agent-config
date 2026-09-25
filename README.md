@@ -11,3 +11,7 @@ bash bootstrap.sh   # installs uv if absent, builds .venv and .agents/.venv
 just verify         # ruff, basedpyright, pytest, the private scan
 just doctor         # named checks; exits non-zero until every one passes
 ```
+
+## Licence
+
+MIT, see [LICENSE](LICENSE). Material that did not start here, and its terms, is listed in [THIRD_PARTY.md](THIRD_PARTY.md).

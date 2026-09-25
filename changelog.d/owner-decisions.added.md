@@ -1,0 +1,1 @@
+TAC is published under the MIT licence, in `LICENSE`. ADR 0002 records the nineteen decisions the owner delegated on 2026-09-25, from the release 1 scope to the re-cut of the bootstrap history, and `TODO.HUMAN.md` ticks each one; Q14 and the one-time steps on the owner's machine stay open.
