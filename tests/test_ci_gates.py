@@ -29,6 +29,7 @@ GATE_SCRIPTS = frozenset(
 EXPRESSIONS = {
     "${{ github.base_ref }}": "main",
     "${{ github.head_ref }}": "candidate",
+    "${{ github.event.pull_request.head.sha }}": "candidate",
 }
 # A shell running a script from the checkout: `bash scripts/x.sh`, `./scripts/x`.
 FROM_CHECKOUT = re.compile(

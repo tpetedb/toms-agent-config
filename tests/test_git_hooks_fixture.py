@@ -29,6 +29,7 @@ from tac.commits import AGENT_MARKERS, Rules, check_message, cleaned, from_agent
 from tac.githooks import HOOKS_FILE
 from tac.sync import sync
 from tests._syncproject import REPO, copy_project
+from tests.test_private_scan import TERM
 
 # Plain git: the fixture's hooks are the point, so no hooksPath override.
 GIT = shutil.which("git") or "git"
@@ -42,6 +43,8 @@ EXTRA = (
     ".agents/pyproject.toml",
     ".agents/uv.lock",
     "scripts/private_scan.sh",
+    "scripts/private_scan.py",
+    "scripts/private_terms.txt",
     ".gitignore",
     "TODO.HUMAN.md",
     ".human/todo.toml",
@@ -221,7 +224,8 @@ def test_a_clean_change_commits_and_pushes(repo: Repo) -> None:
     assert done.returncode == 0, said(done)
     for hook in ("ruff format --check", "ruff check", "tac check --staged"):
         assert hook in said(done), hook
-    assert "tac check --commit-msg" in said(done)
+    for hook in ("private-term scan", "tac check --commit-msg", "of the message"):
+        assert hook in said(done), hook
     pushed = repo.git("push", "-q", "origin", "main")
     assert pushed.returncode == 0, said(pushed)
     assert "fast tests" in said(pushed)
@@ -246,6 +250,27 @@ def test_an_invalid_commit_message_is_refused(
     done = commit(repo, message)
     assert done.returncode != 0, said(done)
     assert "commit message:" in said(done) and why in said(done)
+    assert repo.head() == before
+
+
+def test_a_private_term_is_refused_in_a_staged_file_and_in_the_message(
+    repo: Repo,
+) -> None:
+    # The pre-commit and commit-msg hooks both run scripts/private_scan.sh with
+    # the term list next to it, so neither the file nor the message is made.
+    before = repo.head()
+    repo.write("notes.md", f"notes on {TERM}\n")
+    repo.git("add", "notes.md")
+    done = commit(repo, GOOD)
+    assert done.returncode != 0
+    assert f"notes.md:1:notes on {TERM}" in said(done)
+    repo.git("rm", "-q", "--cached", "notes.md")
+    (repo.root / "notes.md").unlink()
+    repo.write("app.py", MORE)
+    repo.git("add", "app.py")
+    done = commit(repo, f"Add a farewell taken from {TERM}")
+    assert done.returncode != 0
+    assert f"(message):1:Add a farewell taken from {TERM}" in said(done)
     assert repo.head() == before
 
 

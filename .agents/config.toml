@@ -46,6 +46,7 @@ chief_may = ["open-issue", "comment", "push-branch", "open-pr"]
 [models]
 # config/models.toml: model ids per provider, roles, effort per model. Requested and
 # actual model and effort are both recorded in every receipt.
+# config/models.toml is the one place to set each agent's model, effort and ultracode.
 policy = "default"
 
 # ---- teams: who owns which paths, and the host's agent budget.

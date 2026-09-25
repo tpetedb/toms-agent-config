@@ -292,6 +292,13 @@ class Seat(_Model):
     # Left out for a model that takes no effort parameter, so a receipt never
     # records a requested effort the model could not have honoured.
     effort: Text | None = None
+    # Claude Code's ultracode: a session setting, not an effort, that sends xhigh
+    # to the model and has Claude orchestrate dynamic workflows for every
+    # substantive task. It is set when a session starts (`claude --effort
+    # ultracode`, v2.1.203 or later); an agent file's `effort` cannot say it, and
+    # the persisted `effortLevel` and CLAUDE_CODE_EFFORT_LEVEL do not accept it.
+    # https://code.claude.com/docs/en/model-config#adjust-effort-level
+    ultracode: bool = False
 
 
 class RoleModels(BaseModel):
@@ -304,6 +311,22 @@ class RoleModels(BaseModel):
 
     def seats(self) -> dict[str, Seat]:
         return dict(self.__pydantic_extra__ or {})
+
+
+def _ultracode_seat(where: str, seat: Seat, provider: Provider) -> None:
+    """Ultracode runs only through Claude Code, and only at xhigh: it is
+    unavailable on a model without xhigh or under a cap below it, so any other
+    effort next to it would not be what the session runs at."""
+    if provider.harness != "claude":
+        raise ValueError(
+            f"{where}: ultracode is a Claude Code setting, and this provider runs "
+            f"through {provider.harness}"
+        )
+    if seat.effort != "xhigh":
+        raise ValueError(
+            f'{where}: ultracode = true needs effort = "xhigh", the effort it '
+            f"sends to the model, got {seat.effort!r}"
+        )
 
 
 class Director(_Model):
@@ -343,6 +366,8 @@ class ModelsFile(_Model):
             elif spec.provider not in seats:
                 raise ValueError(f"roles.{role}: no seat on {spec.provider}")
             for pid, seat in seats.items():
+                if seat.ultracode:
+                    _ultracode_seat(f"roles.{role}.{pid}", seat, self.providers[pid])
                 if seat.effort is None:
                     continue
                 if seat.effort not in self.providers[pid].efforts:
@@ -372,7 +397,12 @@ class Role(_Model):
     description: Annotated[str, Field(min_length=1, max_length=1024)]
     identity: Literal["tac-bot", "none"]
     runs: Literal[
-        "host-session", "worktree", "headless", "headless-read-only", "fresh-session"
+        "host-session",
+        "worktree",
+        "headless",
+        "headless-read-only",
+        "fresh-session",
+        "subagent",
     ]
     writes: Annotated[
         tuple[Literal["worktree", "worker-store"], ...], BeforeValidator(as_tuple)

@@ -3,7 +3,7 @@
 # https://developers.openai.com/codex/subagents
 
 # The name Codex spawns this agent by: the charter's name.
-# charter-sha256: 086c4e9e4802c110c6ab6029fc8397b9e767f08f76475ab27c5614c87516eb56
+# charter-sha256: da09016c773e6174bd0ed58798abcb7581567717c3c948b42217b42e23fcf70d
 name = "manager"
 # When to use this agent: the charter's description.
 description = "Splits a goal into work orders inside its team's paths, one builder per order, and signs off cross-team changes."

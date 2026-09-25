@@ -3,7 +3,7 @@
 # https://developers.openai.com/codex/subagents
 
 # The name Codex spawns this agent by: the charter's name.
-# charter-sha256: 395a3149b9fd1386f85f6d32190c0a88cf928f6a01abb87d004dd1b972cb3af5
+# charter-sha256: 84421d08e47e7b5511fb6ff6737a6109aa007bf1f74497aa6d1cf987c43b5203
 name = "scout"
 # When to use this agent: the charter's description.
 description = "Researches and fact-checks with citations, read-only, on a small fast model."

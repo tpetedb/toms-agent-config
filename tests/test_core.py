@@ -16,6 +16,7 @@ from click.testing import CliRunner
 from jsonschema import Draft7Validator
 
 from tac import standards
+from tac.adapters import claude_session
 from tac.cli import cli
 from tac.config import (
     CONFIG_DIR,
@@ -205,6 +206,152 @@ def test_an_effort_the_provider_does_not_accept_fails(camp: Path) -> None:
         'anthropic = { model = "claude-opus-5-5", effort = "ultra" }',
     )
     refused(camp, "roles.manager.anthropic: effort 'ultra'")
+
+
+# ---------------------------------------------------------------- ultracode
+
+CHIEF_SEAT = (
+    'anthropic = { model = "claude-opus-5-5", effort = "xhigh", ultracode = true }'
+)
+CODEX_BUILDER = 'openai = { model = "gpt-6-sol", effort = "high" }'
+MANAGER_SEAT = 'anthropic = { model = "claude-opus-5-5", effort = "medium" }'
+
+
+def test_the_chief_starts_with_ultracode_at_xhigh(repo: Path) -> None:
+    config = load_config(repo, today=TODAY)
+    chief = config.models.roles[config.knobs.governance.chief].seats()["anthropic"]
+    assert (chief.model, chief.effort, chief.ultracode) == (
+        "claude-opus-5-5",
+        "xhigh",
+        True,
+    )
+    # Every other seat keeps its effort and leaves ultracode off.
+    others = [
+        f"{role}.{pid}"
+        for role, spec in config.models.roles.items()
+        for pid, found in spec.seats().items()
+        if found.ultracode and role != "chief"
+    ]
+    assert others == []
+    assert claude_session(config, "chief") == [
+        "claude",
+        "--agent",
+        "chief",
+        "--effort",
+        "ultracode",
+    ]
+
+
+def test_ultracode_is_refused_on_openai(camp: Path) -> None:
+    edit(
+        camp,
+        f"{CONFIG_DIR}/models.toml",
+        CODEX_BUILDER,
+        'openai = { model = "gpt-6-sol", effort = "xhigh", ultracode = true }',
+    )
+    refused(camp, "roles.builder.openai: ultracode is a Claude Code setting")
+
+
+def test_ultracode_needs_effort_xhigh(camp: Path) -> None:
+    rel = f"{CONFIG_DIR}/models.toml"
+    edit(camp, rel, CHIEF_SEAT, CHIEF_SEAT.replace('"xhigh"', '"high"'))
+    refused(camp, 'roles.chief.anthropic: ultracode = true needs effort = "xhigh"')
+
+
+def test_ultracode_is_refused_on_a_subagent_only_role(camp: Path) -> None:
+    edit(
+        camp,
+        f"{CONFIG_DIR}/roles/manager.toml",
+        'runs = "headless"',
+        'runs = "subagent"',
+    )
+    # A subagent-only role loads with an effort alone.
+    load_config(camp, today=TODAY)
+    edit(
+        camp,
+        f"{CONFIG_DIR}/models.toml",
+        MANAGER_SEAT,
+        CHIEF_SEAT,
+    )
+    refused(camp, "roles.manager.anthropic sets ultracode, but roles/manager.toml")
+
+
+def test_without_ultracode_the_chief_starts_at_its_effort(camp: Path) -> None:
+    edit(
+        camp,
+        f"{CONFIG_DIR}/models.toml",
+        CHIEF_SEAT,
+        'anthropic = { model = "claude-opus-5-5", effort = "high" }',
+    )
+    config = load_config(camp, today=TODAY)
+    assert claude_session(config, "chief") == [
+        "claude",
+        "--agent",
+        "chief",
+        "--effort",
+        "high",
+    ]
+    # Only the host session is started by hand; the others have no command here.
+    assert claude_session(config, "builder") is None
+    assert claude_session(config, "director") is None
+
+
+def test_explain_a_role_prints_its_seat_and_launch(repo: Path) -> None:
+    runner = CliRunner()
+    told = runner.invoke(cli, ["explain", "roles.chief", "--root", str(repo)])
+    assert told.exit_code == 0, told.output
+    head = told.output.split("\n\n")[0].splitlines()
+    assert head[0].startswith(
+        "roles.chief on anthropic, through claude  # .agents/config/models.toml:"
+    )
+    assert head[1:5] == [
+        "  model:     claude-opus-5-5",
+        "  effort:    xhigh",
+        "  ultracode: true",
+        "  launch:    claude --agent chief --effort ultracode  (just chief)",
+    ]
+    assert "more tokens and takes longer" in told.output
+    assert 'roles.chief.runs = "host-session"' in told.output
+
+
+def test_launch_command_prints_what_just_chief_runs(camp: Path, repo: Path) -> None:
+    runner = CliRunner()
+    plain = runner.invoke(cli, ["config", "launch-command", "--root", str(repo)])
+    assert plain.exit_code == 0, plain.output
+    assert plain.output == "claude --agent chief --effort ultracode\n"
+    as_json = runner.invoke(
+        cli, ["config", "launch-command", "chief", "--json", "--root", str(repo)]
+    )
+    assert json.loads(as_json.output) == [
+        "claude",
+        "--agent",
+        "chief",
+        "--effort",
+        "ultracode",
+    ]
+    builder = runner.invoke(
+        cli, ["config", "launch-command", "builder", "--root", str(repo)]
+    )
+    assert builder.exit_code == 1
+    assert 'runs = "host-session"' in builder.output
+    # An edit to models.toml is the whole change: the command follows it.
+    edit(
+        camp,
+        f"{CONFIG_DIR}/models.toml",
+        CHIEF_SEAT,
+        'anthropic = { model = "claude-opus-5-5", effort = "max" }',
+    )
+    edited = runner.invoke(cli, ["config", "launch-command", "--root", str(camp)])
+    assert edited.output == "claude --agent chief --effort max\n"
+
+
+def test_just_chief_runs_the_command_tac_reads_from_models_toml(repo: Path) -> None:
+    justfile = (repo / "justfile").read_text()
+    recipe = re.search(r"^chief \*args:\n((?:    .*\n)+)", justfile, re.M)
+    assert recipe is not None
+    assert recipe.group(1) == (
+        '    {{ shell(tac + " config launch-command") }} {{ args }}\n'
+    )
 
 
 def test_a_team_cannot_outgrow_the_host_budget(camp: Path) -> None:

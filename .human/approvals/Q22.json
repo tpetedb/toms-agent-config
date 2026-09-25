@@ -1,0 +1,33 @@
+{
+  "agent": null,
+  "answers": [],
+  "approval": null,
+  "arguments": {},
+  "asked_at": "2026-09-25T00:00:00Z",
+  "blocks": [
+    "dropping the `identity` line from `scripts/private_terms.txt`"
+  ],
+  "decided_at": null,
+  "decided_by": null,
+  "details": [],
+  "env_var": null,
+  "expires_at": null,
+  "id": "Q22",
+  "item_version": 1,
+  "kind": "question",
+  "notes": [],
+  "options": [],
+  "pipeline": null,
+  "pull_request": null,
+  "question": "the owner commits as `tpetedb` with a personal address that is itself on the private-term list, so every commit publishes it. The scan exempts that exact pair in author and committer headers (an `identity` line in `scripts/private_terms.txt`). Keep the exemption, or commit under the GitHub noreply address (`<id>+tpetedb@users.noreply.github.com`, with \"Keep my email addresses private\" on) and drop the exemption?",
+  "rank": 20,
+  "recommendation": "the noreply address for this repository, set in its local git config; the exemption line goes once no open branch holds a commit under the old address, since the range scan reads only the commits a pull request brings.",
+  "recommendation_source": null,
+  "revision": null,
+  "stage": null,
+  "status": "pending",
+  "title": "the commit identity",
+  "tool": null,
+  "topic": "history",
+  "waits": "M2"
+}

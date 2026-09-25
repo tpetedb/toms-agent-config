@@ -1,0 +1,38 @@
+{
+  "agent": null,
+  "answers": [],
+  "approval": null,
+  "arguments": {},
+  "asked_at": "2026-09-25T00:00:00Z",
+  "blocks": [
+    "the private scan of the pull requests from `tac/m0-bootstrap` and `tac/m2-hooks-human`"
+  ],
+  "decided_at": null,
+  "decided_by": null,
+  "details": [
+    "The same list reaches `tac/m2-hooks-human` through its merge `39fab53`, which took `tac/m1-core` in: the range scan of that pull request reports the copy of the older `scripts/private_scan.sh` the merge takes from its second parent, which the base already publishes. A scan could skip a blob that a merge takes unchanged from a parent outside the range, since the base already publishes it; that change would belong on `tac/m1-core`, since CI runs the base revision's scan."
+  ],
+  "env_var": null,
+  "expires_at": null,
+  "id": "Q21",
+  "item_version": 1,
+  "kind": "question",
+  "notes": [],
+  "options": [
+    "(a) rewrite or squash both branches so no commit carries the plain list and force-push them (the owner's own action) before main takes them",
+    "(b) accept the exposure, and add a known-history exception to the scan naming exactly those commits and that one file"
+  ],
+  "pipeline": null,
+  "pull_request": null,
+  "question": "the earlier private scans carried their term list in plain text, and those commits are pushed on `origin/tac/m0-bootstrap` and `tac/m1-core`, so anyone can read the list there today. The range scan reports those commits, so the pull request that brings `tac/m0-bootstrap` into main fails its private scan until this is settled ([docs/DESIGN.md](docs/DESIGN.md), section 8).",
+  "rank": 10,
+  "recommendation": "(b). GitHub keeps every pull request's commits readable under its pull request after a branch is rewritten or deleted (only GitHub support can purge them), so a rewrite hides little of what is already public, and it needs a force-push, which agents never do. The exception names only the commits that carry the plain list (those on `tac/m0-bootstrap` that add or change the older `scripts/private_scan.sh`, and `50bc1ca` and `8f5f2cc` on `tac/m1-core`) and that one path.",
+  "recommendation_source": null,
+  "revision": null,
+  "stage": null,
+  "status": "pending",
+  "title": "the private-term list is public in the history",
+  "tool": null,
+  "topic": "history",
+  "waits": "the pull request from `tac/m0-bootstrap` to main"
+}

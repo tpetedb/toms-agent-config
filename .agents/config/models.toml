@@ -17,7 +17,8 @@ name = "default"
 harness = "claude"                        # the enforced harness this provider runs through: claude | codex
 build = "claude-opus-5-5"                 # the model a builder on this provider's team uses; a reviewer from here uses it too
 # The effort names Claude Code accepts for Opus 5.5 and Fable 5.1, lowest first; a
-# role's effort must be one of them. ultracode is a launch setting, not an effort.
+# role's effort must be one of them. ultracode is a launch setting, not an effort:
+# a seat turns it on with `ultracode = true` next to effort = "xhigh".
 efforts = ["low", "medium", "high", "xhigh", "max"]
 
 # OpenAI's models run through Codex.
@@ -32,13 +33,28 @@ efforts = ["low", "medium", "high", "xhigh", "max"]
 # which provider seats the role: a provider id, "any" (the team's own provider)
 # or "other" (the provider that did not build the work under review). Each
 # per-provider table names the model and the effort on that provider; effort is
-# left out only for a model that takes no effort parameter.
+# left out only for a model that takes no effort parameter. An Anthropic seat may
+# add `ultracode = true` (with effort = "xhigh") when its role is launched as a
+# session of its own; never on openai, and never on a role whose charter says
+# runs = "subagent". This file is the one place for each agent's model, effort and
+# ultracode; `tac explain roles.<role>` prints what a role runs on and how it starts.
 
-# The chief of staff: the owner's single entry point, on Opus 5.5.
+# The chief of staff: the owner's single entry point, on Opus 5.5 with ultracode.
 [roles.chief]
 provider = "anthropic"                    # a provider id | any | other
-# The chief on Anthropic: model is the id the client is launched with, effort one of that provider's efforts.
-anthropic = { model = "claude-opus-5-5", effort = "high" }
+# The chief on Anthropic: model is the id the client is launched with, effort one of
+# that provider's efforts. ultracode = true starts the session with Claude Code's
+# ultracode: it sends xhigh to the model and has Claude plan a dynamic workflow for
+# every substantive task, so each request uses more tokens and takes longer than at
+# a lower effort. It is a launch setting, so `just chief` runs `claude --agent chief
+# --effort ultracode` and the agent file says effort xhigh; it is never written into
+# .claude/settings.json, where it would turn on for every session in the project.
+# To turn it off, delete `ultracode = true` and set the effort you want (with no
+# effort, Opus 5.5 starts at medium unless your own settings save a level);
+# `/effort high` drops one running session back.
+# https://code.claude.com/docs/en/model-config#adjust-effort-level
+# https://code.claude.com/docs/en/workflows#let-claude-decide-with-ultracode
+anthropic = { model = "claude-opus-5-5", effort = "xhigh", ultracode = true }
 
 # A builder runs on its team's provider: Opus 5.5 on the Claude team, the build model on the Codex team.
 [roles.builder]

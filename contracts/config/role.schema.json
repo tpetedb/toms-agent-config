@@ -48,7 +48,8 @@
         "worktree",
         "headless",
         "headless-read-only",
-        "fresh-session"
+        "fresh-session",
+        "subagent"
       ],
       "title": "Runs",
       "type": "string"

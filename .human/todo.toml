@@ -26,6 +26,7 @@ sections = [
   { id = "governance", heading = "Governance" },
   { id = "profiles", heading = "Profiles, billing, secrets, telemetry" },
   { id = "standards", heading = "Standards and memory" },
+  { id = "history", heading = "The public repository's history and identity" },
   { id = "skills", heading = "Skills and third-party material" },
   { id = "approvals", heading = "Approvals waiting on the owner" },
   { id = "escalations", heading = "Handoffs that failed their contract" },

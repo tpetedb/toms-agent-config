@@ -77,5 +77,7 @@ codex = "*"                               # every stop
 # Before a commit: format and lint, the staged check, TODO.HUMAN.md against its
 # render when the page or .human/ is staged, the private-term scan.
 pre_commit = ["ruff-format", "ruff-check", "tac-check-staged", "human-render-check", "private-scan"]
-commit_msg = ["tac-check-commit-msg"]     # the message against [commits] in config/standards.toml
+# The message against [commits] in config/standards.toml, then the private-term
+# scan of the message, which the commit publishes.
+commit_msg = ["tac-check-commit-msg", "private-scan-message"]
 pre_push = ["fast-tests", "tac-check"]    # the fast tests and the full check before anything leaves the machine

@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 
-from tac.adapters import CLAUDE_TELEMETRY, charter_sha256, seat
+from tac.adapters import CLAUDE_TELEMETRY, charter_sha256, claude_session, seat
 from tac.config import load_config
 from tac.sync import render, sync
 from tests._syncproject import copy_project, frontmatter, replace_in, synced
@@ -191,6 +191,31 @@ def test_a_check_moved_off_claude_is_no_longer_wired(tmp_path: Path) -> None:
     assert "Edit" in group["matcher"].split("|")
 
 
+def test_a_subagent_only_role_is_spawned_and_stopped_through_the_guard(
+    tmp_path: Path,
+) -> None:
+    # runs = "subagent": only another session's subagent tool starts the role, so
+    # it has no launch command of its own, and the guard answers its spawn (the
+    # handoff guard on the subagent tool) and its stop (SubagentStop, held to
+    # what a session's Stop is held to), as for every native subagent.
+    copy_project(tmp_path)
+    replace_in(
+        tmp_path / ".agents/config/roles/scout.toml",
+        'runs = "headless-read-only"',
+        'runs = "subagent"',
+    )
+    sync(tmp_path, links=False)
+    config = load_config(tmp_path)
+    assert config.roles["scout"].runs == "subagent"
+    assert claude_session(config, "scout") is None
+    assert frontmatter((tmp_path / ".claude/agents/scout.md").read_text())["name"]
+    hooks = settings(tmp_path)["hooks"]
+    (spawn,) = hooks["PreToolUse"]
+    assert {"Agent", "Task"} <= set(spawn["matcher"].split("|"))
+    (stop,) = hooks["SubagentStop"]
+    assert "--event SubagentStop " in stop["hooks"][0]["command"]
+
+
 def test_claude_md_imports_agents_md(root: Path) -> None:
     lines = (root / "CLAUDE.md").read_text().splitlines()
     assert "@AGENTS.md" in lines
@@ -242,6 +267,19 @@ def test_an_agent_carries_the_models_toml_seat(root: Path) -> None:
         # A seat with no effort renders no effort field, and the other way round.
         pair = (meta["model"], meta.get("effort"))
         assert pair == (seat["model"], seat.get("effort"))
+
+
+def test_ultracode_is_a_launch_flag_never_a_file_setting(root: Path) -> None:
+    # Frontmatter `effort` takes low..max only, so the chief's file says xhigh,
+    # the effort ultracode sends; a project settings key would turn ultracode on
+    # for every session and headless run in the project.
+    meta = frontmatter((root / ".claude/agents/chief.md").read_text())
+    assert meta["effort"] == "xhigh"
+    rendered = (root / ".claude/settings.json").read_text()
+    assert "ultracode" not in rendered
+    assert "effortLevel" not in rendered
+    for path in (root / ".claude/agents").glob("*.md"):
+        assert "ultracode" not in path.read_text(), path.name
 
 
 def test_native_delegation_off_denies_the_spawn_tools(tmp_path: Path) -> None:

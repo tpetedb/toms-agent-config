@@ -16,7 +16,9 @@ identity = "none"
 # Where a session of this role runs: host-session (the owner's interactive session,
 # sandboxed) | worktree (its own worktree under ~/.worktrees) | headless (a sandboxed
 # headless session) | headless-read-only (a headless session that writes nothing but
-# the worker store) | fresh-session (a new session per turn, nothing carried over).
+# the worker store) | fresh-session (a new session per turn, nothing carried over) |
+# subagent (only ever spawned by another session's subagent tool, never launched as
+# a session of its own, so its seats in config/models.toml may not set ultracode).
 runs = "headless"
 # The places the role may write, any of: worktree | worker-store. Never .agents/,
 # the controller store or the keychain.

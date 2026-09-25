@@ -56,16 +56,24 @@ id = "private-scan"                       # the id [git] pre_commit names
 name = "private-term scan"                # what prek prints
 entry = "bash scripts/private_scan.sh"    # refuse private terms in a public repository
 language = "system"                       # system: run the entry as it is, nothing installed
-pass_filenames = false                    # it greps tracked and new files itself
+pass_filenames = false                    # it reads the index, new files and the identity itself
 always_run = true                         # every commit
 stages = ["pre-commit"]                   # pre-commit | commit-msg | pre-push
 
-# ---- commit-msg: the message against [commits] in config/standards.toml.
+# ---- commit-msg: the message against [commits] in config/standards.toml, and
+# the private-term scan of the message, which the commit publishes.
 
 [[repos.hooks]]
 id = "tac-check-commit-msg"               # the id [git] commit_msg names
 name = "tac check --commit-msg"           # what prek prints
 entry = "uv run --frozen --no-sync --project .agents tac check --commit-msg"   # git's message file is appended
+language = "system"                       # system: run the entry as it is, nothing installed
+stages = ["commit-msg"]                   # pre-commit | commit-msg | pre-push
+
+[[repos.hooks]]
+id = "private-scan-message"               # the id [git] commit_msg names
+name = "private-term scan of the message" # what prek prints
+entry = "bash scripts/private_scan.sh --message"   # git's message file is appended
 language = "system"                       # system: run the entry as it is, nothing installed
 stages = ["commit-msg"]                   # pre-commit | commit-msg | pre-push
 

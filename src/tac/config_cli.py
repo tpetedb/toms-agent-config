@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import shlex
 from pathlib import Path
 
 import click
 
+from tac.adapters import claude_session, provider_of
 from tac.config import (
     CONFIG_SCHEMAS,
     CONTRACTS_DIR,
@@ -38,6 +40,34 @@ def _load(root: Path | None) -> Config:
 
 def _line(entry: Entry) -> str:
     return f"{entry.path} = {show_value(entry.value)}"
+
+
+def _seats(config: Config, role: str) -> list[str]:
+    """What a role runs on, seat by seat, from config/models.toml, and for a role
+    the owner starts by hand the exact command that starts it."""
+    spec = config.models.roles.get(role)
+    if spec is None:
+        return []
+    claude = provider_of(config, "claude")
+    argv = claude_session(config, role)
+    lines: list[str] = []
+    for pid, found in spec.seats().items():
+        harness = config.models.providers[pid].harness
+        entry = config.entries[f"models.roles.{role}.{pid}.model"]
+        lines.append(
+            f"roles.{role} on {pid}, through {harness}  # {entry.source}:{entry.line}"
+        )
+        lines.append(f"  model:     {found.model}")
+        effort = found.effort or "none, the model takes no effort parameter"
+        lines.append(f"  effort:    {effort}")
+        if harness == "claude":
+            lines.append(f"  ultracode: {str(found.ultracode).lower()}")
+        if pid == claude and argv is not None:
+            by = "  (just chief)" if role == config.knobs.governance.chief else ""
+            lines.append(f"  launch:    {shlex.join(argv)}{by}")
+        lines += [f"  {text}".rstrip() for text in entry.comment.splitlines()]
+        lines.append("")
+    return lines
 
 
 @click.group("config")
@@ -121,13 +151,35 @@ def schema(root: Path | None, write: bool, name: str | None) -> None:
             click.echo(f"wrote {CONTRACTS_DIR}/{file}")
 
 
+@config_group.command("launch-command")
+@ROOT
+@click.option("--json", "as_json", is_flag=True, help="Print the argv as JSON.")
+@click.argument("role", required=False)
+def launch_command(root: Path | None, as_json: bool, role: str | None) -> None:
+    """Print the command that starts ROLE's own Claude Code session, as
+    config/models.toml seats it; nothing is started. ROLE defaults to the chief
+    [governance] names. `just chief` runs what this prints."""
+    config = _load(root)
+    name = role or config.knobs.governance.chief
+    argv = claude_session(config, name)
+    if argv is None:
+        raise click.ClickException(
+            f"{name!r} is not a role the owner starts as a Claude Code session: "
+            'it needs a charter with runs = "host-session" and a seat on the '
+            "provider that runs through claude"
+        )
+    click.echo(json.dumps(argv) if as_json else shlex.join(argv))
+
+
 @click.command("explain")
 @ROOT
 @click.option("--json", "as_json", is_flag=True, help="Print the entries as JSON.")
 @click.argument("key", required=False)
 def explain(root: Path | None, as_json: bool, key: str | None) -> None:
     """A key's effective value, the file and line it came from, when it applies,
-    and its comment. A table prints every key under it; no key prints them all."""
+    and its comment. A table prints every key under it; no key prints them all.
+    roles.<role> first prints the model, effort and ultracode of each of the
+    role's seats in config/models.toml, and the command that starts it."""
     config = _load(root)
     entries = list(config.entries.values()) if key is None else config.explain(key)
     if not entries:
@@ -137,6 +189,10 @@ def explain(root: Path | None, as_json: bool, key: str | None) -> None:
     if as_json:
         click.echo(json.dumps([e.as_dict() for e in entries], indent=2))
         return
+    role = (key or "").removeprefix("roles.")
+    if key == f"roles.{role}":
+        for text in _seats(config, role):
+            click.echo(text)
     table = config.tables.get(key or "")
     if table is not None and table.comment:
         click.echo(f"[{key}]  # {table.source}:{table.line}")
