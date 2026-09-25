@@ -1,0 +1,461 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "Answer": {
+      "additionalProperties": false,
+      "description": "One answer under an item, oldest first. A record, not consent.",
+      "properties": {
+        "at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+          "title": "At",
+          "type": "string"
+        },
+        "basis": {
+          "enum": [
+            "owner",
+            "owner-via-chief",
+            "github-review",
+            "github-comment",
+            "host-signed"
+          ],
+          "title": "Basis",
+          "type": "string"
+        },
+        "by": {
+          "pattern": "^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$",
+          "title": "By",
+          "type": "string"
+        },
+        "link": {
+          "anyOf": [
+            {
+              "pattern": "^https://github\\.com/\\S+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Link"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "at",
+        "by",
+        "basis",
+        "text"
+      ],
+      "title": "Answer",
+      "type": "object"
+    },
+    "ApprovalRecord": {
+      "additionalProperties": false,
+      "description": "What `tac approve` signs: the decision bound to the item, its action and\narguments, the revision it is for, the repository and an expiry.",
+      "properties": {
+        "action_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Action Sha256",
+          "type": "string"
+        },
+        "approval_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Approval Id",
+          "type": "string"
+        },
+        "decided_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+          "title": "Decided At",
+          "type": "string"
+        },
+        "decided_by": {
+          "pattern": "^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$",
+          "title": "Decided By",
+          "type": "string"
+        },
+        "decision": {
+          "enum": [
+            "approved",
+            "rejected"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "expires_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "item_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+          "title": "Item Id",
+          "type": "string"
+        },
+        "key_id": {
+          "pattern": "^[0-9a-f]{16}$",
+          "title": "Key Id",
+          "type": "string"
+        },
+        "repository": {
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+          "title": "Repository",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revision"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "approval_id",
+        "repository",
+        "item_id",
+        "decision",
+        "action_sha256",
+        "decided_by",
+        "decided_at",
+        "expires_at",
+        "key_id"
+      ],
+      "title": "ApprovalRecord",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "SignedApproval": {
+      "additionalProperties": false,
+      "properties": {
+        "approval": {
+          "$ref": "#/definitions/ApprovalRecord"
+        },
+        "signature": {
+          "title": "Signature",
+          "type": "string"
+        }
+      },
+      "required": [
+        "approval",
+        "signature"
+      ],
+      "title": "SignedApproval",
+      "type": "object"
+    }
+  },
+  "description": "One entry of the owner's queue, and the approval shape of section 7.",
+  "properties": {
+    "agent": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Agent"
+    },
+    "answers": {
+      "default": [],
+      "items": {
+        "$ref": "#/definitions/Answer"
+      },
+      "title": "Answers",
+      "type": "array"
+    },
+    "approval": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/SignedApproval"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "arguments": {
+      "additionalProperties": {
+        "$ref": "#/definitions/JsonValue"
+      },
+      "title": "Arguments",
+      "type": "object"
+    },
+    "asked_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "title": "Asked At",
+      "type": "string"
+    },
+    "blocks": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Blocks",
+      "type": "array"
+    },
+    "decided_at": {
+      "anyOf": [
+        {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Decided At"
+    },
+    "decided_by": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Decided By"
+    },
+    "details": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Details",
+      "type": "array"
+    },
+    "env_var": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Z][A-Z0-9_]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Env Var"
+    },
+    "expires_at": {
+      "anyOf": [
+        {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expires At"
+    },
+    "id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "item_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Item Version",
+      "type": "integer"
+    },
+    "kind": {
+      "enum": [
+        "question",
+        "approval",
+        "step"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "notes": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Notes",
+      "type": "array"
+    },
+    "options": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Options",
+      "type": "array"
+    },
+    "pipeline": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9-]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pipeline"
+    },
+    "pull_request": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pull Request"
+    },
+    "question": {
+      "title": "Question",
+      "type": "string"
+    },
+    "rank": {
+      "minimum": 0,
+      "title": "Rank",
+      "type": "integer"
+    },
+    "recommendation": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Recommendation"
+    },
+    "recommendation_source": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Recommendation Source"
+    },
+    "revision": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Revision"
+    },
+    "stage": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Stage"
+    },
+    "status": {
+      "default": "pending",
+      "enum": [
+        "pending",
+        "answered",
+        "approved",
+        "rejected"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "title": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Title"
+    },
+    "tool": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Tool"
+    },
+    "topic": {
+      "pattern": "^[a-z][a-z0-9-]{0,63}$",
+      "title": "Topic",
+      "type": "string"
+    },
+    "waits": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Waits"
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "topic",
+    "rank",
+    "question",
+    "asked_at"
+  ],
+  "title": "Item",
+  "type": "object"
+}

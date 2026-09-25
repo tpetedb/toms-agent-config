@@ -53,6 +53,14 @@ pipeline-plan name:
 hooks-install:
     uv run --frozen --no-sync prek install --config hooks/git/prek.toml
 
+# The owner's queue: just human render --check | ask | answer <id> | recap | verify <id>
+human *args:
+    {{ tac }} human {{ args }}
+
+# Owner only, host only: sign the decision on an approval item with the runner key.
+approve *args:
+    {{ tac }} approve {{ args }}
+
 # Refuse private terms in tracked and new files.
 private-scan:
     bash scripts/private_scan.sh

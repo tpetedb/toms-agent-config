@@ -1,8 +1,12 @@
 # TODO.HUMAN.md: what only the owner can do
 
-These are the decisions the board cannot take, and the one-time steps only the owner can run. Tick a box or answer on the issue; the chief records the answer under the item with `tac human answer`. Each item carries the board's recommendation and the milestone that waits on it ([docs/DESIGN.md](docs/DESIGN.md), section 18). Until `tac human` exists (milestone M2), this file is kept by hand through pull requests. Compiled 2026-09-24 from docs/DESIGN.md.
+These are the decisions the board cannot take, and the one-time steps only the owner can run. Answer on the issue or tell the chief; the chief records the answer under the item with `tac human answer`. Each item carries the board's recommendation, what it blocks where that is known, and the milestone that waits on it ([docs/DESIGN.md](docs/DESIGN.md), sections 7 and 18).
+
+A ticked box is a hint, never consent. An approval counts only as your own approving review on the pull request, or as a record you sign on the host with `tac approve <id>`; an item that runs out of time is still waiting, since a timeout is never consent.
 
 Credential handover convention: every secret goes into `agents.env`, outside the repository (Q17), under the env var named in the item. Never put a secret in chat or in the repository. Agents never receive what a step does not need; the runtime injects it.
+
+Rendered by `tac human render` from 26 items in `.human/approvals/` and `.human/todo.toml`, 26 open, as of 2026-09-24. Never edit this file by hand: `tac human render --check` fails on any difference.
 
 ## Agent identity (first: milestone M0 cannot pass without it)
 
@@ -62,15 +66,15 @@ Credential handover convention: every secret goes into `agents.env`, outside the
 
 ## One-time steps on the owner's machine
 
-- [ ] Trust the checkout in Codex once (the prompt at the next start, or `tac init --user`).
-- [ ] Run `codex`, then `/hooks`, and approve the run.py entries once.
-- [ ] Open `claude` once in the folder to accept workspace trust.
-- [ ] After Q14: run `tac github apply`, then `tac doctor`.
+- [ ] S1 Trust the checkout in Codex once (the prompt at the next start, or `tac init --user`).
+- [ ] S2 Run `codex`, then `/hooks`, and approve the run.py entries once.
+- [ ] S3 Open `claude` once in the folder to accept workspace trust.
+- [ ] S4 After Q14: run `tac github apply`, then `tac doctor`.
       In your own terminal on the host, logged in to `gh` as yourself (never in an agent session), from the main checkout, with the machine account named in Q14 in place of `tac-bot`:
       `uv run --frozen --no-sync --project .agents tac github apply --dry-run` prints the ruleset without calling GitHub;
       `uv run --frozen --no-sync --project .agents tac github apply --bot tac-bot` checks the account has write and no admin, then creates or updates the ruleset and reads it back by id;
       `uv run --frozen --no-sync --project .agents tac doctor` must then show `github-ruleset` as PASS.
-- [ ] Provision the runner key: in your own terminal, never an agent session, run `just runner-init --write-pub` and land `.agents/config/runner.pub` through a pull request. Until then every receipt is refused and `tac doctor` fails its `runner-pub` check. The same recipe builds the runner's own venv in the controller store; start it with `just runner`. The key sits in the controller store, mode 0600, until M3 moves it to the keychain and it is rotated.
-- [ ] After bootstrap: run `mise trust` once, then `just doctor` until it is green.
-- [ ] Install the git hooks once, in your own terminal in the main checkout: `just hooks-install`. Agents never write the shared `.git/hooks`. From then on every commit there is held to Q4's subject length.
-- [ ] Once pi is enabled (1.1): trust the project in pi once.
+- [ ] S5 Provision the runner key: in your own terminal, never an agent session, run `just runner-init --write-pub` and land `.agents/config/runner.pub` through a pull request. Until then every receipt is refused and `tac doctor` fails its `runner-pub` check. The same recipe builds the runner's own venv in the controller store; start it with `just runner`. The key sits in the controller store, mode 0600, until M3 moves it to the keychain and it is rotated.
+- [ ] S6 After bootstrap: run `mise trust` once, then `just doctor` until it is green.
+- [ ] S7 Install the git hooks once, in your own terminal in the main checkout: `just hooks-install`. Agents never write the shared `.git/hooks`. From then on every commit there is held to Q4's subject length.
+- [ ] S8 Once pi is enabled (1.1): trust the project in pi once.
