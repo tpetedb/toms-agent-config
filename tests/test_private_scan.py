@@ -25,11 +25,16 @@ TERM_LINE = f'  "{TERM}"\n'
 
 
 def scan(root: Path, candidate: str | None = None) -> subprocess.CompletedProcess[str]:
-    """Runs the base's copy from a folder outside the checkout, the way CI runs
-    it from $RUNNER_TEMP, after writing the candidate's copy into the checkout."""
+    """Writes the candidate's copy into the checkout and runs the base's copy."""
     base = SCAN.read_text(encoding="utf-8")
-    gates = write(root.parent / "gates", "private_scan.sh", base)
     write(root, SELF, base if candidate is None else candidate)
+    return run_base(root)
+
+
+def run_base(root: Path) -> subprocess.CompletedProcess[str]:
+    """Runs the base's copy from a folder outside the checkout, the way CI runs
+    it from $RUNNER_TEMP, against whatever the checkout holds."""
+    gates = write(root.parent / "gates", "private_scan.sh", SCAN.read_text("utf-8"))
     return subprocess.run(
         ["bash", str(gates)],
         cwd=root,
@@ -128,3 +133,94 @@ def test_only_the_running_copys_term_lines_are_skipped(repo: Path) -> None:
     assert done.returncode == 1
     assert f"{SELF}:{line}:{added.rstrip()}" in done.stdout
     assert f"{SELF}:{line - 1}:" not in done.stdout
+
+
+def check_out_again(root: Path, *paths: str) -> None:
+    """Writes the files afresh from the index, as a clone in CI does, so the
+    candidate's checkout attributes apply to them."""
+    for path in paths:
+        (root / path).unlink()
+    git(root, "checkout", "--", *paths)
+
+
+@pytest.mark.parametrize(
+    ("encoding", "python_codec"),
+    [("UTF-16", "utf-16"), ("UTF-16LE", "utf-16-le"), ("UTF-16BE", "utf-16-be")],
+)
+def test_a_checkout_encoding_cannot_hide_a_committed_term(
+    repo: Path, encoding: str, python_codec: str
+) -> None:
+    # The blob stays UTF-8, so GitHub shows the term, while the checkout that CI
+    # scans holds UTF-16, which git grep -I skips and no pattern matches.
+    write(repo, ".gitattributes", f"docs/*.md working-tree-encoding={encoding}\n")
+    text = f"notes on {TERM}\nsee {KEY}\n"
+    (repo / "docs").mkdir()
+    (repo / "docs/a.md").write_bytes(text.encode(python_codec))
+    commit_all(repo, "candidate")
+    check_out_again(repo, "docs/a.md")
+    assert git(repo, "show", "HEAD:docs/a.md") == text.strip()
+    assert b"\x00" in (repo / "docs/a.md").read_bytes()
+    done = scan(repo)
+    assert done.returncode == 1, done.stdout
+    assert f"docs/a.md:1:notes on {TERM}" in done.stdout
+    assert f"docs/a.md:2:see {KEY}" in done.stdout
+
+
+def test_a_checkout_encoding_cannot_hide_a_term_in_the_scan_itself(
+    repo: Path,
+) -> None:
+    candidate = SCAN.read_text(encoding="utf-8") + f"# see {TERM}\n"
+    line = candidate.count("\n")
+    write(repo, ".gitattributes", "scripts/*.sh working-tree-encoding=UTF-16\n")
+    (repo / "scripts").mkdir()
+    (repo / SELF).write_bytes(candidate.encode("utf-16"))
+    commit_all(repo, "candidate")
+    check_out_again(repo, SELF)
+    done = run_base(repo)
+    assert done.returncode == 1, done.stdout
+    assert done.stdout.count(f"{SELF}:{line}:# see {TERM}") == 1
+
+
+@pytest.mark.parametrize("bom", ["le", "be"])
+@pytest.mark.parametrize("tracked", [True, False])
+def test_a_utf16_text_file_is_decoded_and_scanned(
+    repo: Path, bom: str, tracked: bool
+) -> None:
+    # A blob that is itself UTF-16 holds NUL bytes, so git grep -I calls it
+    # binary; GitHub still shows it as text. A byte order mark says it is text.
+    text = f"notes on {TERM}\nsee {KEY}\n"
+    data = (
+        b"\xff\xfe" + text.encode("utf-16-le")
+        if bom == "le"
+        else b"\xfe\xff" + text.encode("utf-16-be")
+    )
+    (repo / "docs").mkdir()
+    (repo / "docs/a.md").write_bytes(data)
+    if tracked:
+        commit_all(repo, "candidate")
+    done = scan(repo)
+    assert done.returncode == 1, done.stdout
+    assert f"docs/a.md:1:notes on {TERM}" in done.stdout
+    assert f"docs/a.md:2:see {KEY}" in done.stdout
+
+
+def test_a_committed_term_is_found_once_and_an_unstaged_one_too(repo: Path) -> None:
+    write(repo, "docs/a.md", f"notes on {TERM}\nplain\n")
+    commit_all(repo, "candidate")
+    # Changed after it was staged: the committed line and the new one both count.
+    write(repo, "docs/a.md", f"notes on {TERM}\nsee {KEY}\n")
+    done = scan(repo)
+    assert done.returncode == 1, done.stdout
+    assert done.stdout.count(f"docs/a.md:1:notes on {TERM}") == 1
+    assert f"docs/a.md:2:see {KEY}" in done.stdout
+
+
+def test_a_committed_term_deleted_only_from_the_working_tree_is_found(
+    repo: Path,
+) -> None:
+    write(repo, "docs/a.md", f"notes on {TERM}\n")
+    commit_all(repo, "candidate")
+    write(repo, "docs/a.md", "clean now\n")
+    done = scan(repo)
+    assert done.returncode == 1, done.stdout
+    assert f"docs/a.md:1:notes on {TERM}" in done.stdout
