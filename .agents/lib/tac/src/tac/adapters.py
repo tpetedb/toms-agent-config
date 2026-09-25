@@ -57,10 +57,11 @@ CLAUDE_SPAWN_TOOLS = ("Agent", "Task")
 
 @dataclass(frozen=True, slots=True)
 class Seat:
-    """The model and effort a role runs on in one harness."""
+    """The model and effort a role runs on in one harness; effort is None for a
+    model that takes none."""
 
     model: str
-    effort: str
+    effort: str | None
 
 
 def sha256_bytes(data: bytes) -> str:

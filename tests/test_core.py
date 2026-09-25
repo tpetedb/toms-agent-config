@@ -201,10 +201,10 @@ def test_an_effort_the_provider_does_not_accept_fails(camp: Path) -> None:
     edit(
         camp,
         rel,
-        'model = "haiku", effort = "low"',
-        'model = "haiku", effort = "ultra"',
+        'anthropic = { model = "claude-opus-5-5", effort = "medium" }',
+        'anthropic = { model = "claude-opus-5-5", effort = "ultra" }',
     )
-    refused(camp, "roles.scout.anthropic: effort 'ultra'")
+    refused(camp, "roles.manager.anthropic: effort 'ultra'")
 
 
 def test_a_team_cannot_outgrow_the_host_budget(camp: Path) -> None:

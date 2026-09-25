@@ -11,9 +11,10 @@ schema_version = 1
 [paths]
 # Never read: secrets files, keys, cloud and GitHub credentials. Globs; ~ is the home folder.
 deny_read = ["*.env", "**/secrets/**", "*.pem", "~/.ssh/**", "~/.aws/**", "~/.config/gh/**"]
-# Never written by an agent: the authored tree, its stamped toolchain and venv.
+# Never written by an agent: the authored tree, its stamped toolchain and venv,
+# and all of .codex/, since Codex runs a hooks.json it finds in a trusted project.
 # Hand-maintained files like the justfile stay editable; CODEOWNERS guards them.
-deny_write = [".agents/**"]
+deny_write = [".agents/**", ".codex/**"]
 
 # ---- effects: who performs what leaves the machine.
 [effects]

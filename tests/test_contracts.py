@@ -71,6 +71,134 @@ def test_the_strict_lint_never_reads_a_config_or_envelope_contract() -> None:
     assert check_contracts(REPO) == []
 
 
+# ---------------------------------------------------------------- the subset by keyword
+
+LOOSE = {"type": "object", "properties": {"a": {"type": "string"}}}
+TIGHT = {**LOOSE, "required": ["a"], "additionalProperties": False}
+
+
+def _root(prop: dict) -> dict:
+    """A strict root with one property `p` set to `prop`."""
+    return {
+        "type": "object",
+        "properties": {"p": prop},
+        "required": ["p"],
+        "additionalProperties": False,
+    }
+
+
+# One schema per keyword the subset leaves out, each at depth two, and the
+# message that must name it.
+OUTSIDE = [
+    ("allOf", {"allOf": [{"type": "string"}]}, "/properties/p: allOf"),
+    ("not", {"not": {"type": "string"}}, "/properties/p: not"),
+    ("if", {"if": {"type": "string"}}, "/properties/p: if"),
+    ("then", {"then": {"type": "string"}}, "/properties/p: then"),
+    ("else", {"else": {"type": "string"}}, "/properties/p: else"),
+    (
+        "dependentRequired",
+        {**TIGHT, "dependentRequired": {"a": []}},
+        "/properties/p: dependentRequired",
+    ),
+    (
+        "dependentSchemas",
+        {**TIGHT, "dependentSchemas": {"a": {"type": "object"}}},
+        "/properties/p: dependentSchemas",
+    ),
+    (
+        "dependencies",
+        {**TIGHT, "dependencies": {"a": ["a"]}},
+        "/properties/p: dependencies",
+    ),
+    ("oneOf", {"oneOf": [{"type": "string"}]}, "/properties/p: oneOf"),
+    (
+        "patternProperties",
+        {**TIGHT, "patternProperties": {"^x": {"type": "string"}}},
+        "/properties/p: patternProperties",
+    ),
+    ("const", {"const": "x"}, "/properties/p: const"),
+    ("minLength", {"type": "string", "minLength": 1}, "/properties/p: minLength"),
+]
+
+
+@pytest.mark.parametrize(("keyword", "prop", "named"), OUTSIDE, ids=lambda v: v)
+def test_each_keyword_outside_the_subset_is_named(
+    keyword: str, prop: dict, named: str
+) -> None:
+    problems = strict_subset_problems(_root(prop))
+    assert f"{named} is outside the strict subset" in problems, problems
+    # The same keyword at the root is named too, not only when nested.
+    top = strict_subset_problems({**_root({"type": "string"}), keyword: prop[keyword]})
+    assert f"/: {keyword} is outside the strict subset" in top, top
+
+
+def test_nullable_is_named() -> None:
+    problems = strict_subset_problems(_root({"type": "string", "nullable": True}))
+    assert problems == ['/properties/p: write nullable as ["<type>", "null"]']
+
+
+# A loose object, with no required list and no additionalProperties: false, in
+# every position a subschema can sit. Each must be found and named.
+HIDDEN = [
+    ("oneOf", {"oneOf": [LOOSE, {"type": "string"}]}, "/properties/p/oneOf/0"),
+    ("anyOf", {"anyOf": [LOOSE, {"type": "null"}]}, "/properties/p/anyOf/0"),
+    ("allOf", {"allOf": [LOOSE]}, "/properties/p/allOf/0"),
+    ("tuple items", {"type": "array", "items": [LOOSE]}, "/properties/p/items/0"),
+    ("items", {"type": "array", "items": LOOSE}, "/properties/p/items"),
+    (
+        "additionalProperties",
+        {"type": "object", "properties": {}, "additionalProperties": LOOSE},
+        "/properties/p/additionalProperties",
+    ),
+    (
+        "patternProperties",
+        {**TIGHT, "patternProperties": {"^x": LOOSE}},
+        "/properties/p/patternProperties/^x",
+    ),
+    ("not", {"not": LOOSE}, "/properties/p/not"),
+    ("then", {"then": LOOSE}, "/properties/p/then"),
+    (
+        "definitions",
+        {**TIGHT, "definitions": {"d": LOOSE}},
+        "/properties/p/definitions/d",
+    ),
+]
+
+
+@pytest.mark.parametrize(("where", "prop", "at"), HIDDEN, ids=lambda v: v)
+def test_a_loose_object_is_found_wherever_it_sits(
+    where: str, prop: dict, at: str
+) -> None:
+    problems = strict_subset_problems(_root(prop))
+    assert f"{at}: property a must be required" in problems, problems
+    assert f"{at}: additionalProperties must be false" in problems, problems
+
+
+def test_tuple_items_and_a_root_anyof_are_named() -> None:
+    tuple_items = _root({"type": "array", "items": [{"type": "string"}]})
+    assert strict_subset_problems(tuple_items) == [
+        "/properties/p: items must be one schema, not a tuple"
+    ]
+    root = {**_root({"type": "string"}), "anyOf": [{"type": "object"}]}
+    assert "/: the root may not be anyOf" in strict_subset_problems(root)
+
+
+def test_a_contract_hiding_a_loose_object_under_one_of_fails_the_check(
+    tmp_path: Path,
+) -> None:
+    folder = tmp_path / MODEL_FACING_DIR
+    folder.mkdir(parents=True)
+    signoff = json.loads((REPO / MODEL_FACING_DIR / "signoff.schema.json").read_text())
+    first = next(iter(signoff["properties"]))
+    signoff["properties"][first] = {"oneOf": [LOOSE, {"type": "string"}]}
+    (folder / "signoff.schema.json").write_text(json.dumps(signoff))
+    problems = check_contracts(tmp_path)
+    at = f"{MODEL_FACING_DIR}/signoff.schema.json#/properties/{first}"
+    assert f"{at}: oneOf is outside the strict subset" in problems
+    assert f"{at}/oneOf/0: property a must be required" in problems
+    assert f"{at}/oneOf/0: additionalProperties must be false" in problems
+
+
 def test_a_model_facing_contract_outside_draft_07_is_named(tmp_path: Path) -> None:
     folder = tmp_path / MODEL_FACING_DIR
     folder.mkdir(parents=True)

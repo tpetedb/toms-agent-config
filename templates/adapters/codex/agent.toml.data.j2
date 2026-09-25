@@ -9,7 +9,9 @@ name = {{ role.name | toml }}
 description = {{ role.description | toml }}
 # The model this role runs on under Codex, from config/models.toml.
 model = {{ role.model | toml }}
+{% if role.effort is not none %}
 # low | medium | high | xhigh | max, from config/models.toml.
 model_reasoning_effort = {{ role.effort | toml }}
+{% endif %}
 # The charter's standing brief, what the role may do and what it may never do.
 developer_instructions = {{ role.developer_instructions | toml }}

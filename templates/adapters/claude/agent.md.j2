@@ -5,7 +5,9 @@
 name: {{ role.name | json }}
 description: {{ role.description | json }}
 model: {{ role.model | json }}
+{% if role.effort is not none %}
 effort: {{ role.effort | json }}
+{% endif %}
 ---
 
 {{ role.instructions }}

@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 
-from tac.adapters import CLAUDE_TELEMETRY, charter_sha256
+from tac.adapters import CLAUDE_TELEMETRY, charter_sha256, seat
 from tac.config import load_config
 from tac.sync import render, sync
 from tests._syncproject import copy_project, frontmatter, replace_in, synced
@@ -183,7 +183,13 @@ def test_every_agent_has_the_required_frontmatter(root: Path) -> None:
         assert set(meta) <= AGENT_FIELDS, path.name
         assert meta["name"] == path.stem and ":" not in meta["name"]
         assert meta["description"] == config.roles[path.stem].description
-        assert meta["effort"] in EFFORTS
+        found = seat(config, path.stem, "claude")
+        assert found is not None, path.name
+        if found.effort is None:
+            # A model that takes no effort parameter gets no effort field.
+            assert "effort" not in meta, path.name
+        else:
+            assert meta["effort"] == found.effort and found.effort in EFFORTS
         assert meta["model"].startswith("claude-") or meta["model"] in {
             "sonnet",
             "opus",
@@ -209,7 +215,9 @@ def test_an_agent_carries_the_models_toml_seat(root: Path) -> None:
     for role in ("builder", "chief", "scout"):
         meta = frontmatter((root / f".claude/agents/{role}.md").read_text())
         seat = models["roles"][role]["anthropic"]
-        assert (meta["model"], meta["effort"]) == (seat["model"], seat["effort"])
+        # A seat with no effort renders no effort field, and the other way round.
+        pair = (meta["model"], meta.get("effort"))
+        assert pair == (seat["model"], seat.get("effort"))
 
 
 def test_native_delegation_off_denies_the_spawn_tools(tmp_path: Path) -> None:

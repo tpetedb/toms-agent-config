@@ -4,9 +4,11 @@ A model-facing contract is a handoff payload a model must produce. Codex takes
 it through `--output-schema`, which accepts only the OpenAI strict subset of
 JSON Schema, so a schema outside it fails at the API on the first cross-provider
 review. Every such contract lives under contracts/handoffs/ and is held here to
-that subset: an object root, every property required, `additionalProperties:
-false` on every object, nullable written as `[type, "null"]`, none of the
-composition or conditional keywords, and a depth of at most 10.
+that subset: an object root that is not anyOf, every property required,
+`additionalProperties: false` on every object, nullable written as
+`[type, "null"]`, only the keywords the subset lists, and a depth of at most 10.
+The lint walks every place a subschema can sit, refused keywords included, so a
+loose object hidden under one is named too.
 
 Config and receipt schemas are not model-facing: they keep optional keys and
 defaults, and this lint never reads them.
@@ -26,22 +28,50 @@ from tac.draft07 import DRAFT_07, later_keywords
 
 MODEL_FACING_DIR = "contracts/handoffs"
 MAX_DEPTH = 10
-# Keywords the strict subset refuses, whatever they are nested in.
-REFUSED = frozenset(
+# The keywords the strict subset lists: the types, enum and anyOf, the string,
+# number and array constraints, $defs and $ref, plus annotations and the object
+# keywords. Anything else is refused at any depth, since the API errors on an
+# unsupported keyword rather than ignoring it.
+# https://developers.openai.com/api/docs/guides/structured-outputs#supported-schemas
+SUPPORTED = frozenset(
     {
-        "allOf",
-        "not",
-        "if",
-        "then",
-        "else",
-        "dependentRequired",
-        "dependentSchemas",
-        # draft-07's spelling of the two dependent* keywords.
-        "dependencies",
+        "$schema",
+        "$id",
+        "$ref",
+        "$comment",
+        "title",
+        "description",
+        "type",
+        "enum",
+        "anyOf",
+        "properties",
+        "required",
+        "additionalProperties",
+        "items",
+        "definitions",
+        "$defs",
+        "pattern",
+        "format",
+        "multipleOf",
+        "maximum",
+        "exclusiveMaximum",
+        "minimum",
+        "exclusiveMinimum",
+        "minItems",
+        "maxItems",
     }
 )
-_SUBSCHEMA_LISTS = ("anyOf",)
-_SUBSCHEMA_MAPS = ("properties", "definitions", "$defs")
+# Positions whose value is one subschema, a list of them, or a map of names to
+# them. Each is walked whether the keyword is supported or not.
+_ONE = ("additionalProperties", "additionalItems", "not", "if", "then", "else")
+_ONE += ("contains", "propertyNames")
+_MANY = ("anyOf", "oneOf", "allOf")
+_NAMED = ("properties", "patternProperties", "definitions", "$defs")
+_NAMED += ("dependencies", "dependentSchemas")
+# Positions that hold the value of a property or an array element, so they sit
+# one level deeper; a combinator or a definition does not.
+_DEEPER = frozenset({"properties", "patternProperties", "additionalProperties"})
+_DEEPER |= {"items", "additionalItems", "contains"}
 
 
 def _walk(
@@ -50,16 +80,29 @@ def _walk(
     if not isinstance(schema, dict):
         return
     yield where, depth, schema
-    for key in _SUBSCHEMA_MAPS:
-        for name, sub in (schema.get(key) or {}).items():
+
+    def inner(key: str) -> int:
+        if key in ("definitions", "$defs"):
             # Definitions are reached through $ref; they count from the root.
-            inner = depth if key != "properties" else depth + 1
-            yield from _walk(sub, f"{where}/{key}/{name}", inner)
-    if isinstance(schema.get("items"), dict):
-        yield from _walk(schema["items"], f"{where}/items", depth + 1)
-    for key in _SUBSCHEMA_LISTS:
-        for i, sub in enumerate(schema.get(key) or []):
-            yield from _walk(sub, f"{where}/{key}/{i}", depth)
+            return 1
+        return depth + 1 if key in _DEEPER else depth
+
+    for key in _ONE:
+        yield from _walk(schema.get(key), f"{where}/{key}", inner(key))
+    items = schema.get("items")
+    if isinstance(items, list):
+        for i, sub in enumerate(items):
+            yield from _walk(sub, f"{where}/items/{i}", inner("items"))
+    else:
+        yield from _walk(items, f"{where}/items", inner("items"))
+    for key in _MANY:
+        subs = schema.get(key)
+        for i, sub in enumerate(subs if isinstance(subs, list) else []):
+            yield from _walk(sub, f"{where}/{key}/{i}", inner(key))
+    for key in _NAMED:
+        subs = schema.get(key)
+        for name, sub in (subs if isinstance(subs, dict) else {}).items():
+            yield from _walk(sub, f"{where}/{key}/{name}", inner(key))
 
 
 def _is_object(schema: dict[str, Any]) -> bool:
@@ -72,14 +115,19 @@ def strict_subset_problems(schema: Any) -> list[str]:
     if not isinstance(schema, dict) or schema.get("type") != "object":
         return ["/: the root must be an object schema"]
     problems = []
+    if "anyOf" in schema:
+        problems.append("/: the root may not be anyOf")
     for where, depth, sub in _walk(schema, "", 1):
         at = where or "/"
         if depth > MAX_DEPTH:
             problems.append(f"{at}: nested deeper than {MAX_DEPTH}")
-        for key in sorted(REFUSED & set(sub)):
-            problems.append(f"{at}: {key} is outside the strict subset")
-        if sub.get("nullable") is not None:
-            problems.append(f'{at}: write nullable as ["<type>", "null"]')
+        for key in sorted(set(sub) - SUPPORTED):
+            if key == "nullable":
+                problems.append(f'{at}: write nullable as ["<type>", "null"]')
+            else:
+                problems.append(f"{at}: {key} is outside the strict subset")
+        if isinstance(sub.get("items"), list):
+            problems.append(f"{at}: items must be one schema, not a tuple")
         if _is_object(sub) or "properties" in sub:
             props = set((sub.get("properties") or {}).keys())
             required = set(sub.get("required") or [])

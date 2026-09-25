@@ -289,7 +289,9 @@ class Provider(_Model):
 
 class Seat(_Model):
     model: Text
-    effort: Text
+    # Left out for a model that takes no effort parameter, so a receipt never
+    # records a requested effort the model could not have honoured.
+    effort: Text | None = None
 
 
 class RoleModels(BaseModel):
@@ -341,6 +343,8 @@ class ModelsFile(_Model):
             elif spec.provider not in seats:
                 raise ValueError(f"roles.{role}: no seat on {spec.provider}")
             for pid, seat in seats.items():
+                if seat.effort is None:
+                    continue
                 if seat.effort not in self.providers[pid].efforts:
                     raise ValueError(
                         f"roles.{role}.{pid}: effort {seat.effort!r} is not one of "

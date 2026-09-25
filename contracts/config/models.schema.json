@@ -95,9 +95,17 @@
       "additionalProperties": false,
       "properties": {
         "effort": {
-          "minLength": 1,
-          "title": "Effort",
-          "type": "string"
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effort"
         },
         "model": {
           "minLength": 1,
@@ -106,8 +114,7 @@
         }
       },
       "required": [
-        "model",
-        "effort"
+        "model"
       ],
       "title": "Seat",
       "type": "object"

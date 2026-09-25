@@ -31,7 +31,8 @@ efforts = ["low", "medium", "high", "xhigh", "max"]
 # ---- roles: one table per role charter under config/roles/. `provider` says
 # which provider seats the role: a provider id, "any" (the team's own provider)
 # or "other" (the provider that did not build the work under review). Each
-# per-provider table names the model and the effort on that provider.
+# per-provider table names the model and the effort on that provider; effort is
+# left out only for a model that takes no effort parameter.
 
 # The chief of staff: the owner's single entry point, on Opus 5.5.
 [roles.chief]
@@ -58,9 +59,11 @@ anthropic = { model = "claude-opus-5-5", effort = "medium" }  # a Claude team ma
 openai = { model = "gpt-6-sol", effort = "medium" }           # a Codex team manager: model and effort
 
 # A scout researches and fact-checks, read-only, on a small fast model at low effort.
+# Haiku 4.5 is pinned by its dated id and takes no effort parameter, so its seat
+# has none. Anthropic retires it not sooner than 2026-10-15; move the seat then.
 [roles.scout]
 provider = "any"                          # a provider id | any | other
-anthropic = { model = "haiku", effort = "low" }               # model is Claude Code's alias for its current small model; effort low
+anthropic = { model = "claude-haiku-4-5-20251001" }          # model is the pinned Haiku 4.5 id; no effort, since Haiku 4.5 takes none
 openai = { model = "gpt-6-luna", effort = "low" }             # Codex's model for focused, high-volume work; effort low
 
 # ---- directors: one table per board seat named in [governance] directors.

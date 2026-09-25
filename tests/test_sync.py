@@ -170,6 +170,53 @@ def test_an_unexpected_output_is_caught(tmp_path: Path) -> None:
     )
 
 
+def test_an_unexpected_file_anywhere_under_codex_is_caught(tmp_path: Path) -> None:
+    # Codex runs .codex/hooks.json in a trusted project, so a planted one is red.
+    root = synced(tmp_path)
+    (root / ".codex/hooks.json").write_text("{}\n")
+    (root / ".codex/rules").mkdir()
+    (root / ".codex/rules/extra.rules").write_text("allow\n")
+    problems = check_tree(root)
+    assert ".codex/hooks.json: unexpected; no template renders it" in problems
+    assert ".codex/rules/extra.rules: unexpected; no template renders it" in problems
+
+
+def test_a_hand_edit_with_its_lock_line_rewritten_is_named(tmp_path: Path) -> None:
+    root = synced(tmp_path)
+    claude = root / "CLAUDE.md"
+    edited = claude.read_text() + "\nA line nobody rendered.\n"
+    claude.write_text(edited)
+    lock = root / LOCK_FILE
+    recorded = sync_mod.read_lock(root)
+    assert recorded is not None
+    old = recorded["outputs"]["CLAUDE.md"]
+    new = sync_mod._digest(edited.encode("utf-8"))  # pyright: ignore[reportPrivateUsage]
+    lock.write_text(lock.read_text().replace(old, new))
+    problems = check_tree(root)
+    assert (
+        f"{LOCK_FILE}: the outputs line for CLAUDE.md is not the hash a render "
+        "gives; the lock was edited by hand"
+    ) in problems
+    assert any(
+        p.startswith("CLAUDE.md: edited by hand, with its lock line rewritten")
+        for p in problems
+    ), problems
+    assert not any("out of date" in p for p in problems)
+
+
+def test_a_forged_lock_line_alone_is_named(tmp_path: Path) -> None:
+    root = synced(tmp_path)
+    lock = root / LOCK_FILE
+    recorded = sync_mod.read_lock(root)
+    assert recorded is not None
+    old = recorded["outputs"]["AGENTS.md"]
+    lock.write_text(lock.read_text().replace(old, "0" * 64))
+    assert check_tree(root) == [
+        f"{LOCK_FILE}: the outputs line for AGENTS.md is not the hash a render "
+        "gives; the lock was edited by hand"
+    ]
+
+
 def test_a_hand_edited_lock_is_caught(tmp_path: Path) -> None:
     root = synced(tmp_path)
     lock = root / LOCK_FILE

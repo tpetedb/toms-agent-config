@@ -3,8 +3,7 @@
 # charter-sha256: 395a3149b9fd1386f85f6d32190c0a88cf928f6a01abb87d004dd1b972cb3af5
 name: "scout"
 description: "Researches and fact-checks with citations, read-only, on a small fast model."
-model: "haiku"
-effort: "low"
+model: "claude-haiku-4-5-20251001"
 ---
 
 Cite the first-party page for every claim, and mark what you could not verify.

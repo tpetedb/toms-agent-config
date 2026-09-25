@@ -58,9 +58,10 @@ ALLOWED: dict[str, tuple[str, ...]] = {
     "claude": ("CLAUDE.md", ".claude/settings.json", ".claude/agents/{role}.md"),
     "codex": (".codex/config.toml", ".codex/agents/{role}.toml"),
 }
-# Folders whose every file is generated: a file there that no template renders
-# is an unexpected output.
-OWNED_DIRS = (".claude/agents", ".codex/agents")
+# Folders whose every file is generated: a file there, at any depth, that no
+# template renders is an unexpected output. All of `.codex/` is owned because
+# Codex runs a `.codex/hooks.json` it finds in a trusted project.
+OWNED_DIRS = (".claude/agents", ".codex")
 FIRST_LINE = re.compile(r"^\{#\s*output:\s*(\S+)\s*#\}\s*$")
 ROLE_NAME = re.compile(r"^[a-z][a-z0-9-]*$")
 
@@ -453,16 +454,31 @@ def check_tree(root: Path) -> list[str]:
             problems += _compare_section(
                 section, lock[section], result.lock_data[section]
             )
+    # With every input as recorded, the recorded output hashes must be the ones a
+    # render gives; a line that differs was written by hand, not by a sync.
+    inputs_match = lock is not None and not problems
     recorded = lock["outputs"] if lock else {}
+    fresh = result.lock_data["outputs"]
     for rel, text in result.outputs.items():
         path = root / rel
+        forged = inputs_match and rel in recorded and recorded[rel] != fresh[rel]
+        if forged:
+            problems.append(
+                f"{LOCK_FILE}: the outputs line for {rel} is not the hash a render "
+                "gives; the lock was edited by hand"
+            )
         if not path.is_file():
             problems.append(f"{rel}: missing; run tac sync")
             continue
         on_disk = path.read_bytes()
         if on_disk == text.encode("utf-8"):
             continue
-        if recorded.get(rel) == _digest(on_disk):
+        if recorded.get(rel) == _digest(on_disk) and forged:
+            problems.append(
+                f"{rel}: edited by hand, with its lock line rewritten to match. "
+                f"Edit {result.sources[rel]} or .agents/ and run tac sync"
+            )
+        elif recorded.get(rel) == _digest(on_disk):
             problems.append(f"{rel}: out of date with its inputs; run tac sync")
         else:
             problems.append(
@@ -470,9 +486,10 @@ def check_tree(root: Path) -> list[str]:
                 f"Edit {result.sources[rel]} or .agents/ and run tac sync"
             )
     for folder in OWNED_DIRS:
-        for path in (
-            sorted((root / folder).glob("*")) if (root / folder).is_dir() else []
-        ):
+        base = root / folder
+        for path in sorted(base.rglob("*")) if base.is_dir() else []:
+            if path.is_dir() and not path.is_symlink():
+                continue
             rel = path.relative_to(root).as_posix()
             if rel not in result.outputs:
                 problems.append(f"{rel}: unexpected; no template renders it")

@@ -21,6 +21,7 @@
       "Read(~/.config/toms-agent-config/toms-agent-config/**)",
       "Read(~/.local/state/tac/**)",
       "Edit(/.agents/**)",
+      "Edit(/.codex/**)",
       "Edit(/.claude/agents/builder.md)",
       "Edit(/.claude/agents/chief.md)",
       "Edit(/.claude/agents/director.md)",
@@ -55,6 +56,7 @@
       ],
       "denyWrite": [
         "./.agents",
+        "./.codex",
         "./.claude/agents/builder.md",
         "./.claude/agents/chief.md",
         "./.claude/agents/director.md",

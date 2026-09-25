@@ -179,6 +179,8 @@ Legend: green terminator, blue process, yellow decision, orange input or output,
 
 ### 2.1 The product repository
 
+> Open deviation: M1 generates the root `AGENTS.md` from `.agents/context/brief.md` through `tac sync`, where 2.1 and 2.2 below call it hand-written. Q20 in TODO.HUMAN.md puts the choice to the owner; this section changes to match the answer.
+
 ```text
 toms-agent-config/
   src/tac/                       # the CLI and runner: config, sync, check, doctor, explain, run, handoff, memory, human, work, launch, github
