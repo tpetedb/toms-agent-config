@@ -3,6 +3,7 @@ name: work-order
 description: How work is done in a repository that uses TAC when more than one agent works at once. A task is a work order under work/orders/ with the files it may touch and acceptance criteria that are commands; a builder builds it, a different agent on the other provider reviews it, managers agree what crosses teams. Use when building, reviewing, planning, repairing or landing an order, or when asked how the teams work together.
 metadata:
   source: https://github.com/tpetedb/vibe-map/blob/main/.agents/skills/work-order/SKILL.md
+  author: the owner
   licence: MIT, the owner's own work
   changes: generalised from vibe-map's tools/work.py to tac work and .agents/config/teams.toml
 ---
