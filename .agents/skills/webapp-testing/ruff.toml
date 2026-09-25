@@ -1,0 +1,4 @@
+# The scripts and examples are vendored verbatim from anthropics/skills
+# (THIRD_PARTY.md), so this repository's lint and format rules skip them.
+extend = "../../../pyproject.toml"
+extend-exclude = ["scripts", "examples"]
