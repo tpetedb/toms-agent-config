@@ -109,6 +109,36 @@ runner-status:
 receipt-client harness probe *args:
     {{ tac }} receipt client --harness {{ quote(harness) }} --probe {{ quote(probe) }} {{ args }}
 
+# Run a pipeline for an order as the runner: just run order <id>, --resume <run>, --dry-run
+run pipeline order *args:
+    {{ tac }} run {{ quote(pipeline) }} --order {{ quote(order) }} {{ args }}
+
+# Start a role's session the way the runner does: just launch claude --role chief --print
+launch harness *args:
+    {{ tac }} launch {{ quote(harness) }} {{ args }}
+
+# Perform the effects the worker inbox asks for, re-checked: just inbox-watch --once
+inbox-watch *args:
+    {{ tac }} inbox watch {{ args }}
+
+# Each provider's usage reading: ok, slow, stop or unavailable; exits 3 while spawning pauses.
+usage *args:
+    {{ tac }} usage {{ args }}
+
+# Host only: move the file key into the login keychain and store the tac-bot token.
+runner-keychain:
+    {{ tac }} runner keychain import
+
+# Acceptance 6: the launch and guard-failure tests with no skip, then both clients' commands.
+adapter-proof:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out="$(PY_COLORS=0 uv run --frozen pytest -q -rs tests/test_launch.py tests/test_guard_failure.py 2>&1)" || { echo "$out"; exit 1; }
+    echo "$out"
+    if echo "$out" | tail -n 1 | grep -Eq '[0-9]+ skipped'; then echo "adapter-proof: a test skipped" >&2; exit 1; fi
+    uv run --frozen tac launch claude --role builder --print
+    uv run --frozen tac launch codex --role builder --print
+
 # Every effective configuration value and the file it came from.
 config-show:
     {{ tac }} config show

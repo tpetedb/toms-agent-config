@@ -267,7 +267,8 @@ def _stage_harness(
     spec = ctx.config.models.roles.get(stage.role or "")
     provider = spec.provider if spec is not None else "any"
     if stage.provider == "other" or provider == "other":
-        return other
+        # The profile decides whether a review comes from the other provider.
+        return other if ctx.config.profile.review.cross_provider else team
     found = ctx.config.models.providers.get(provider)
     if found is not None:
         return found.harness
