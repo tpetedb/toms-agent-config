@@ -33,6 +33,14 @@ doctor *args:
 github-apply *args:
     {{ tac }} github apply {{ args }}
 
+# The labels of .github/labels.yml: --dry-run (default) prints the plan; --apply is the owner's step, on the host.
+github-labels *args:
+    {{ tac }} github labels {{ args }}
+
+# The labels, issue forms and pull request template hold, judged offline.
+github-lint:
+    {{ tac }} github lint
+
 # Render every harness file from .agents/ and templates/adapters/, and write the lock.
 sync *args:
     {{ tac }} sync {{ args }}
@@ -48,6 +56,18 @@ pipeline-check *names:
 # The order a run takes a pipeline's stages in; nothing runs: just pipeline-plan order
 pipeline-plan name:
     {{ tac }} pipeline plan {{ quote(name) }}
+
+# Host or runner only: install the git hooks of hooks/git/prek.toml into this clone.
+hooks-install:
+    uv run --frozen --no-sync prek install --config hooks/git/prek.toml
+
+# The owner's queue: just human render --check | ask | answer <id> | recap | verify <id>
+human *args:
+    {{ tac }} human {{ args }}
+
+# Owner only, host only: sign the decision on an approval item with the runner key.
+approve *args:
+    {{ tac }} approve {{ args }}
 
 # Refuse private terms in tracked and new files.
 private-scan:

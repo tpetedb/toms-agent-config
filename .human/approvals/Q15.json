@@ -1,0 +1,39 @@
+{
+  "agent": null,
+  "answers": [
+    {
+      "at": "2026-09-25T00:00:00Z",
+      "basis": "owner-via-chief",
+      "by": "tpetedb",
+      "link": null,
+      "text": "the partial tier on the owner's Mac, which keeps Remote Control and auto mode; the full kill set in containers and CI, see [docs/adr/0002-owner-decisions-2026-09-25.md](docs/adr/0002-owner-decisions-2026-09-25.md)."
+    }
+  ],
+  "approval": null,
+  "arguments": {},
+  "asked_at": "2026-09-24T00:00:00Z",
+  "blocks": [],
+  "decided_at": "2026-09-25T00:00:00Z",
+  "decided_by": "tpetedb",
+  "details": [],
+  "env_var": null,
+  "expires_at": null,
+  "id": "Q15",
+  "item_version": 1,
+  "kind": "question",
+  "notes": [],
+  "options": [],
+  "pipeline": null,
+  "pull_request": null,
+  "question": "the partial tier that keeps Remote Control and auto mode, or the full kill set?",
+  "rank": 40,
+  "recommendation": "the partial tier on the host, the full set in containers and CI.",
+  "recommendation_source": null,
+  "revision": null,
+  "stage": null,
+  "status": "answered",
+  "title": "telemetry on the owner's machine",
+  "tool": null,
+  "topic": "profiles",
+  "waits": "M0 (`tac init --user`)"
+}

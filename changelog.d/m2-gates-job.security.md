@@ -1,0 +1,1 @@
+The generated-files gate judged by the base revision's checker moves into the gates job and takes the base commit from the event payload; the Python 3.9 install and the GitHub forms lint stay in the verify job, since they run the candidate's code.

@@ -27,6 +27,12 @@ writes = ["worktree", "worker-store"]
 may = ["edit the order's owned paths", "run tac check and the order's criteria", "write proposals and journals to the worker store"]
 # What the role may never do, whatever the prompt says.
 may_not = ["push", "touch .agents/", "write approvals or receipts", "edit another order's files", "commit on Codex"]
+# Whether a session of this role may start subagents (Agent, Task) and Claude
+# Code workflows (Workflow) natively: true (each call passes the handoff guard,
+# and a workflow only runs a script a stage of this role registers) | false
+# (its agent file disallows the three tools and the guard refuses them). Never
+# true for builder, manager, reviewer or scout; true for a role with ultracode.
+delegates = false                         # the runner starts one builder per order
 # The standing brief rendered into the agent file, after the common AGENTS.md.
 instructions = """
 Work only inside the paths your order owns. Done means `just work-check <id>`

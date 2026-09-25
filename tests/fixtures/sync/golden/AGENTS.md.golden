@@ -52,5 +52,6 @@ Instructions for any coding agent working in this repository (format: [agents.md
 - `.codex/agents/reviewer.toml`
 - `.codex/agents/scout.toml`
 - `.codex/config.toml`
+- `.codex/hooks.json`
 - `AGENTS.md`
 - `CLAUDE.md`

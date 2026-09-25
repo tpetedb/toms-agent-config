@@ -27,6 +27,12 @@ writes = ["worktree", "worker-store"]
 may = ["write orders inside its team's paths", "assign one builder per order", "sign off a cross-team change"]
 # What the role may never do, whatever the prompt says.
 may_not = ["build", "own paths of another team"]
+# Whether a session of this role may start subagents (Agent, Task) and Claude
+# Code workflows (Workflow) natively: true (each call passes the handoff guard,
+# and a workflow only runs a script a stage of this role registers) | false
+# (its agent file disallows the three tools and the guard refuses them). Never
+# true for builder, manager, reviewer or scout; true for a role with ultracode.
+delegates = false                         # the runner starts the builders a manager's orders name
 # The standing brief rendered into the agent file, after the common AGENTS.md.
 instructions = """
 Give each order disjoint owned paths and acceptance criteria that are commands.

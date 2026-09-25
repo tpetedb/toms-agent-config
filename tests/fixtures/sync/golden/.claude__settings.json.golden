@@ -35,6 +35,7 @@
       "Edit(/.codex/agents/reviewer.toml)",
       "Edit(/.codex/agents/scout.toml)",
       "Edit(/.codex/config.toml)",
+      "Edit(/.codex/hooks.json)",
       "Edit(/AGENTS.md)",
       "Edit(/CLAUDE.md)"
     ]
@@ -70,6 +71,7 @@
         "./.codex/agents/reviewer.toml",
         "./.codex/agents/scout.toml",
         "./.codex/config.toml",
+        "./.codex/hooks.json",
         "./AGENTS.md",
         "./CLAUDE.md",
         "~/.local/state/tac"
@@ -87,5 +89,40 @@
       ]
     }
   },
-  "hooks": {}
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Read|Grep|Glob|Agent|Task|Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "g=\"$CLAUDE_PROJECT_DIR/.agents/hooks/run.py\" && [ -f \"$g\" ] || { echo 'tac guard: no stamped guard in this checkout; run tac init' >&2; exit 2; }; /usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME=\"$HOME\" USER=\"$USER\" LOGNAME=\"$LOGNAME\" LANG=\"$LANG\" LC_ALL=\"$LC_ALL\" LC_CTYPE=\"$LC_CTYPE\" TMPDIR=\"$TMPDIR\" /usr/bin/python3 -I \"$g\" --client claude --event PreToolUse --deadline-s 8 --path /usr/bin:/bin:/usr/sbin:/sbin",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "g=\"$CLAUDE_PROJECT_DIR/.agents/hooks/run.py\" && [ -f \"$g\" ] || { echo 'tac guard: no stamped guard in this checkout; run tac init' >&2; exit 0; }; /usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME=\"$HOME\" USER=\"$USER\" LOGNAME=\"$LOGNAME\" LANG=\"$LANG\" LC_ALL=\"$LC_ALL\" LC_CTYPE=\"$LC_CTYPE\" TMPDIR=\"$TMPDIR\" /usr/bin/python3 -I \"$g\" --client claude --event Stop --deadline-s 8 --path /usr/bin:/bin:/usr/sbin:/sbin",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "g=\"$CLAUDE_PROJECT_DIR/.agents/hooks/run.py\" && [ -f \"$g\" ] || { echo 'tac guard: no stamped guard in this checkout; run tac init' >&2; exit 0; }; /usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME=\"$HOME\" USER=\"$USER\" LOGNAME=\"$LOGNAME\" LANG=\"$LANG\" LC_ALL=\"$LC_ALL\" LC_CTYPE=\"$LC_CTYPE\" TMPDIR=\"$TMPDIR\" /usr/bin/python3 -I \"$g\" --client claude --event SubagentStop --deadline-s 8 --path /usr/bin:/bin:/usr/sbin:/sbin",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
 }

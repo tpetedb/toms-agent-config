@@ -30,7 +30,7 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from jinja2 import StrictUndefined, Template, TemplateError, nodes
 from jinja2.sandbox import SandboxedEnvironment
@@ -42,6 +42,9 @@ from tac.contracts import MODEL_FACING_DIR
 from tac.draft07 import draft07
 from tac.receipts import ID_PATTERN, ORDER_PATTERN
 from tac.work import Bad
+
+if TYPE_CHECKING:
+    from tac.config import Config
 
 TEMPLATE_ROOT = "templates"
 # The folders a handoff template may come from; a path anywhere else is refused.
@@ -782,22 +785,26 @@ def validate(
 # ---------------------------------------------------------------- store
 
 
-def worker_runs(root: Path) -> Path:
-    """Where envelopes live: runs/ in the worker store (design section 2.1)."""
+def worker_store(root: Path, config: Config | None = None) -> Path:
+    """The worker store's folder, outside the repository (design section 2.1)."""
     from tac.config import load_config
     from tac.runner import RunnerError, git_common_dir
 
-    config = load_config(root)
+    config = config or load_config(root)
     store = config.knobs.memory.runtime_store
     try:
-        base = (
+        return (
             git_common_dir(root) / config.runtime.paths.worker_store
             if store == "git-common-dir"
             else Path(store)
         )
     except RunnerError as e:
         raise Bad(str(e)) from None
-    return base / "runs"
+
+
+def worker_runs(root: Path) -> Path:
+    """Where envelopes live: runs/ in the worker store (design section 2.1)."""
+    return worker_store(root) / "runs"
 
 
 def next_envelope_path(runs: Path, run_id: str, stage: str) -> Path:

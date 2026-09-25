@@ -8,7 +8,13 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from tests._gitrepo import REPO, commit_all, copy_toolchain, git, make_repo, write
+
+# Slow: each case builds a base and a candidate repository and runs the CI
+# script over both, so the pre-push fast set leaves it to the full suite.
+pytestmark = pytest.mark.slow
 
 SCRIPT = REPO / "scripts" / "ci_work_from_base.sh"
 TEAMS = (".agents/config/teams.toml",)

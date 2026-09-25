@@ -1,0 +1,39 @@
+{
+  "agent": null,
+  "answers": [
+    {
+      "at": "2026-09-25T00:00:00Z",
+      "basis": "owner-via-chief",
+      "by": "tpetedb",
+      "link": null,
+      "text": "allowed only as patterns re-implemented from scratch in this repository (the `TODO.HUMAN.md` format, a gate runner for `just`, an em-dash check), each with an authorship line; no code is copied from the private repository, see [docs/adr/0002-owner-decisions-2026-09-25.md](docs/adr/0002-owner-decisions-2026-09-25.md)."
+    }
+  ],
+  "approval": null,
+  "arguments": {},
+  "asked_at": "2026-09-24T00:00:00Z",
+  "blocks": [],
+  "decided_at": "2026-09-25T00:00:00Z",
+  "decided_by": "tpetedb",
+  "details": [],
+  "env_var": null,
+  "expires_at": null,
+  "id": "Q19",
+  "item_version": 1,
+  "kind": "question",
+  "notes": [],
+  "options": [],
+  "pipeline": null,
+  "pull_request": null,
+  "question": "may patterns and code from a private repository (a TODO.HUMAN.md format, a gate runner for `just`, an em-dash check) be redistributed here? That needs permission from the owner of that repository, not only a licence line.",
+  "rank": 30,
+  "recommendation": "yes, with an authorship line.",
+  "recommendation_source": null,
+  "revision": null,
+  "stage": null,
+  "status": "answered",
+  "title": "patterns from a private repository",
+  "tool": null,
+  "topic": "skills",
+  "waits": "M1 and M2"
+}

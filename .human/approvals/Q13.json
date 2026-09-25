@@ -1,0 +1,39 @@
+{
+  "agent": null,
+  "answers": [
+    {
+      "at": "2026-09-25T00:00:00Z",
+      "basis": "owner-via-chief",
+      "by": "tpetedb",
+      "link": null,
+      "text": "postponed to 1.1; the Apache-2.0 v3 line comes in as an opt-in extra if data work needs it sooner, see [docs/adr/0002-owner-decisions-2026-09-25.md](docs/adr/0002-owner-decisions-2026-09-25.md)."
+    }
+  ],
+  "approval": null,
+  "arguments": {},
+  "asked_at": "2026-09-24T00:00:00Z",
+  "blocks": [],
+  "decided_at": "2026-09-25T00:00:00Z",
+  "decided_by": "tpetedb",
+  "details": [],
+  "env_var": null,
+  "expires_at": null,
+  "id": "Q13",
+  "item_version": 1,
+  "kind": "question",
+  "notes": [],
+  "options": [],
+  "pipeline": null,
+  "pull_request": null,
+  "question": "an optional extra pinned to the Apache-2.0 v3 line (3.5.6, SodaCL), the v4 line under the Elastic License 2.0, or postponed to 1.1?",
+  "rank": 40,
+  "recommendation": "postpone to 1.1, and pin v3 as an opt-in extra if data work needs it sooner.",
+  "recommendation_source": null,
+  "revision": null,
+  "stage": null,
+  "status": "answered",
+  "title": "Soda",
+  "tool": null,
+  "topic": "standards",
+  "waits": "M8"
+}

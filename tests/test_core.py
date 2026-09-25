@@ -31,6 +31,7 @@ from tac.doctor import Status, check_agents_config
 from tac.draft07 import DRAFT_07, later_keywords
 from tac.standards import FLOOR_FILE, STANDARDS_FILE, Rule
 from tac.work import KNOBS_FILE, TEAMS_FILE, Bad
+from tests._syncproject import ultracode_off
 
 TODAY = dt.date(2026, 9, 24)
 GIT = (
@@ -411,6 +412,9 @@ def test_the_active_packs_recipes_exist(repo: Path) -> None:
 
 
 def test_the_active_profile_is_merged_under_profile(camp: Path) -> None:
+    # Enterprise turns native delegation off, which ultracode's Workflow calls
+    # cannot run under, so the project takes ultracode off first.
+    ultracode_off(camp)
     edit(camp, KNOBS_FILE, 'active = "standard"', 'active = "enterprise"')
     config = load_config(camp, today=TODAY)
     [entry] = config.explain("profile.native_delegation")

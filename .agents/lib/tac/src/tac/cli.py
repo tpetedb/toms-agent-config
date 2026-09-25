@@ -12,6 +12,8 @@ from tac.config_cli import config_group, explain
 from tac.doctor import CHECKS, exit_code, find_root, render_text, run_checks
 from tac.github_cli import github_group
 from tac.handoff_cli import handoff_group
+from tac.hook_cli import hook_group
+from tac.human_cli import approve_command, human_group, recap_command
 from tac.pipeline_cli import pipeline_group
 from tac.runner_cli import receipt_group, runner_group
 from tac.sync_cli import check_command, sync_command
@@ -59,6 +61,10 @@ cli.add_command(sync_command)
 cli.add_command(check_command)
 cli.add_command(handoff_group)
 cli.add_command(pipeline_group)
+cli.add_command(hook_group)
+cli.add_command(human_group)
+cli.add_command(approve_command)
+cli.add_command(recap_command)
 
 
 def main() -> None:

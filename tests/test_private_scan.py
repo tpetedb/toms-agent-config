@@ -308,6 +308,25 @@ def test_a_term_in_a_commit_message_is_found(repo: Path, base: str) -> None:
     assert_found(run_range(repo, base), f"{sha[:12]} (message):3:Taken from {TERM}.")
 
 
+def test_a_term_in_a_message_file_is_found_before_the_commit(
+    repo: Path, base: str
+) -> None:
+    # The commit-msg hook hands the scan git's message file by a path relative to
+    # where it runs, before git cleans it: a `#` line survives `git commit -m`.
+    write(repo, "sub/msg.txt", f"Add notes\n\n# from {TERM}\n")
+    done = run_scan(repo / "sub", "--message", "msg.txt")
+    assert_found(done, f"(message):3:# from {TERM}")
+    assert "msg.txt" not in done.stdout and "(branch name)" not in done.stdout
+    # Git drops the scissors line and all below it, where `commit -v` shows the diff.
+    scissors = "# " + "-" * 24 + " >8 " + "-" * 24
+    write(repo, "msg.txt", f"Add notes\n{scissors}\n-see {KEY}\n")
+    done = run_scan(repo, "--message", "msg.txt")
+    assert (done.returncode, done.stdout, done.stderr) == (0, "", "")
+    assert run_scan(repo, "--message", "gone.txt").returncode == 2
+    both = run_scan(repo, "--message", "msg.txt", "--range", f"{base}..HEAD")
+    assert both.returncode == 2 and "separate modes" in both.stderr
+
+
 @pytest.mark.parametrize("role", ["AUTHOR", "COMMITTER"])
 def test_a_term_in_a_commit_identity_is_found(
     repo: Path, base: str, role: str, monkeypatch: pytest.MonkeyPatch

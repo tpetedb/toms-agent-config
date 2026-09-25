@@ -1,6 +1,8 @@
 # Written by `tac sync`, never by hand: the sha256 of every input, template,
-# the policy, the floor and every generated output. `tac check` fails when a
-# generated file or an input no longer matches what is recorded here.
+# the policy, the floor, the hook guard, every registered Workflow script and
+# every generated output. `tac check` fails when a generated file or an input
+# no longer matches what is recorded here, the guard refuses to run when a
+# file beside it does not, and a Workflow call runs only a script listed here.
 
 schema_version = 1
 
@@ -13,9 +15,9 @@ schema_version = 1
 ".agents/config/gates/mixed.toml" = "3e47ab91cd931efb3c064ae760a3ca4de464385c17b90014fb6e299dca67e13b"
 ".agents/config/gates/tool.toml" = "305e8c0042992f981315efa1883a3f3838d3b9be1590692f6ff975c8df7516fc"
 ".agents/config/github.toml" = "4e91f0edf1d595a0cd4b7d466be72aa5eabd43a73b9be3b69b576bac102c3d6d"
-".agents/config/hooks.toml" = "abc908730fc0d6eb7f67d8d124d6362938e068ac9fcd44ad2620d2ae3c723f77"
+".agents/config/hooks.toml" = "2f85f790cc9414d54fc3fb7ef3e63488e48d4fb4bd9015572c27395338408085"
 ".agents/config/mcp.toml" = "a5ebdd9c08e6a5175d1e1a900118afac635b5e54f92a1b8989272ace9619479e"
-".agents/config/models.toml" = "9be872fc433b997848588791aef18c824acc26fc842f33426ef2ae30695e6653"
+".agents/config/models.toml" = "3c67467b3ef3a4a5a18e44085349b04d6820a179b9c7c6f5152539121c84ff62"
 ".agents/config/network.toml" = "74b9a81741b4ef613a2297625d817d1c85a36864734fe987cb20b0629d7b9bd9"
 ".agents/config/pipelines/board.toml" = "1204ac9c21eb18d102a3e0baf6975f1829fa67242d9512f34565c90b23dfd9ff"
 ".agents/config/pipelines/order.toml" = "dee066f8954e9091bf4e92b6f7d5326d619d62f746e7818734766cc4ac13740b"
@@ -23,28 +25,29 @@ schema_version = 1
 ".agents/config/pipelines/retro.toml" = "1d5b8b602f80d56b4af355b4fba4198f24f2465dd15e0d6f367f522e1be35c6c"
 ".agents/config/pipelines/review.toml" = "4fd733f3d97ab40a5ff7a23f575fffb5ea30ee84284e658569635abd3ea368d3"
 ".agents/config/probes.toml" = "08d6b27d80f0c36cbb9843cfc6e4bb6e5213f8cdd09ec533898c237c927a9c43"
-".agents/config/profiles/enterprise.toml" = "d9a57ab39d31158653e085cf506abd3b545c7ebf6700b37572f09f5ac2ba378f"
-".agents/config/profiles/standard.toml" = "2c9fc582c68abc3bceddba180860143b2361810a029429fe92ce9f3deaf2b0a7"
-".agents/config/profiles/yolo.toml" = "0a440c8fd5e12b582d3f5824f55d6962937d8e01bfe42d74dc28a79d7ca1601a"
+".agents/config/profiles/enterprise.toml" = "6ca2018240ef9ff217a97794e0753998d0709de675b49745e85b2a13b157d8ba"
+".agents/config/profiles/standard.toml" = "9fc28839070a004d6982497f1ce9bbaf6155f89cfa864fbead806d1f006236cb"
+".agents/config/profiles/yolo.toml" = "894e50099628a456849d3e6b6fe06c6d513fb13d039483cbded20991adf3a575"
 ".agents/config/receipts.toml" = "050a2e56e4ba695c689aa3956e2094d0cd19c90320eb937397cb03d317e0324a"
-".agents/config/roles/builder.toml" = "bc4809b882a3d5431d1e8649b5f31ccb4dd966ad83c8e6929f2bd00136f9e1ed"
-".agents/config/roles/chief.toml" = "fe8b9c3b8142d94d33ea7abf19916628fbb6d63927e06e2be4862d1b2f7cae9f"
-".agents/config/roles/director.toml" = "98ea21f9dd24be79da6776aba7c034702dc3c764a5dd234060519852ab8dbc81"
-".agents/config/roles/manager.toml" = "da09016c773e6174bd0ed58798abcb7581567717c3c948b42217b42e23fcf70d"
-".agents/config/roles/reviewer.toml" = "feb251b0abdf46776bda578da3d0bba3afbe9462515750aca8d3180469a4ad20"
-".agents/config/roles/scout.toml" = "84421d08e47e7b5511fb6ff6737a6109aa007bf1f74497aa6d1cf987c43b5203"
+".agents/config/roles/builder.toml" = "bb3e5d190c10e0c396b018be3026939fc86d45dcf4aa30859ea251551805c6bb"
+".agents/config/roles/chief.toml" = "2dcd24761e6745a495cc4c4ebbb6007b093b22711821383a75745aa624c83558"
+".agents/config/roles/director.toml" = "14368b67728ebc163e2724f8b3a9fb59d31fc2d518e4351dfebbaaff76d748e5"
+".agents/config/roles/manager.toml" = "88d44fd2e502b684b0a547059fc712e17b81c94b75230087a2dbb890585baef9"
+".agents/config/roles/reviewer.toml" = "36d3ea200cec9db3aba988286a749094f51dc10e30aebd0369ef5253ea268ced"
+".agents/config/roles/scout.toml" = "9bdaf08792159950ce3c4907770ff1852c05c15e400a0c9d66b7056e770b614b"
 ".agents/config/runtime.toml" = "42f91290afea8a3c6c450bdb288f5a7ba17543a1c0a26421ea6282baa5441821"
 ".agents/config/standards.toml" = "15ff1110450c1eddf42030ed0dccbfa8006b7bd5f79ce847115bb00a2b15990b"
-".agents/config/teams.toml" = "84a4f9a42bf9ec9e4e0ffb17d36d9273b013a1dc98852826ae5705de317fbffe"
+".agents/config/teams.toml" = "ba0cb4c331ba1b46121a1be7963ddc6ef40d3b3002f798f95f16134db1a7fed6"
 ".agents/context/brief.md" = "a528bc9c81526f63124a818202fd1ffa4b6f4a6c5421f0d2d786da3bfe96bc16"
 ".agents/context/claude.md" = "cff1c2de685136f7e1a078c1287cb2438537ea3618832f9825e7944d02b300c5"
 
 [templates]
 "templates/adapters/claude/CLAUDE.md.j2" = "95d3ac1569e5ba812abe91e3f95fd77328fae97bfeab7d6563aa4c7d99db2750"
-"templates/adapters/claude/agent.md.j2" = "c21a03e0ac76409c03a0db7822be737a627ae98854707e60cf94020599667a63"
-"templates/adapters/claude/settings.json.data.j2" = "ddaaee2b06fb13a11c7e9fa15ab7a4bd6bdb8619ad558293b7b43369f8416150"
+"templates/adapters/claude/agent.md.j2" = "4cf733738ac2be9b23f4b7c84ac976fa59002f7ac7f511ee096eb8757edc3180"
+"templates/adapters/claude/settings.json.data.j2" = "2f05dfb000a22463ff45b41e8a289c5c874b4cebe877ef39c19da0846da09d44"
 "templates/adapters/codex/agent.toml.data.j2" = "9e8371ffb57e264263d528b4ad994d97efa2f5969977bcef0511626e89373a76"
 "templates/adapters/codex/config.toml.data.j2" = "c29d6a2046ede3c9732cea69b326c43bd3c7d715fd5355ee23a8bb98aff031fb"
+"templates/adapters/codex/hooks.json.data.j2" = "ff0e97ef758e36fbcc771347cace527411f78eb6ad64723307f00c543d59dbba"
 "templates/adapters/common/AGENTS.md.j2" = "679f40c71c3d93914ab3385a975ff8dbe3e6924c5d027be2624ca4a5e6448188"
 
 [policy]
@@ -53,19 +56,27 @@ schema_version = 1
 [floor]
 ".agents/standards.floor.toml" = "8dd34fed96143523901f0f7bdfb05bb7ba25e260a5a480e1de19f17271f8b089"
 
+[hooks]
+".agents/hooks/run.py" = "0f2056af525c3bbeb16a11fdfc158dcf39802f223cad84f6a15081eaf3a84c18"
+"hooks/git/prek.toml" = "54f5d7efcbbd102271e50f26b44c39b4db355c8c4f90e0ab18cce864512f8440"
+"hooks/run.py" = "0f2056af525c3bbeb16a11fdfc158dcf39802f223cad84f6a15081eaf3a84c18"
+
+[workflows]
+
 [outputs]
-".claude/agents/builder.md" = "09488745c857f6f52c1d4942ca12358030ac0f6362f44c5a77087479cd1752af"
-".claude/agents/chief.md" = "a72191c433602acf1b903ee14e92a9045a0bcff07121a0b51d1ce92be9f0cf0b"
-".claude/agents/director.md" = "2fdbb402604d095d65e6c8e2c381184a653e8805aef548a7f08ee2b45ca0a0a7"
-".claude/agents/manager.md" = "eaa0d4c94b4a417b276265f4a6c0eaf1221e5bb32cb12a40369119a2c022fbc6"
-".claude/agents/reviewer.md" = "85760fd9ea8c186db257ec99fc15266a9e2ccff776f90f72d23adf1f922bd398"
-".claude/agents/scout.md" = "83e974d5aed2b5fe54bfbe874af59aac57c067d911020b20c2ceabb8901eba5e"
-".claude/settings.json" = "87a5dc23893a332be7cd54e67dad2f94feaf953b5848363004121578365f8aae"
-".codex/agents/builder.toml" = "d73dd0d1313c37471c6dd448a1c63e8c98bbbd6568e9bea1305bf2688210b472"
-".codex/agents/director.toml" = "b8a2ac75dafe7586d7e302f6077b30b7e24790b0d5241fb0e4f0430084ee955f"
-".codex/agents/manager.toml" = "f112c76dbc4d9cfd4ebb3155725b8c2370ae2d0c088bc9e7a7ea15e640519825"
-".codex/agents/reviewer.toml" = "4d0b3c5872445b6f09818dfc3f28d70b14c81dfeaee47b7291e06e43bf946af6"
-".codex/agents/scout.toml" = "09eea6c00b75143575b46275bdf8ebdd799b5163d8f09030a9e8f8a083aec580"
+".claude/agents/builder.md" = "6115d35ddb041584af2a3a342cbc8ea1f2d9761428ff5cb318d252da07fae209"
+".claude/agents/chief.md" = "ba3a34dbb8ddee208ad8fddb42bcda8cb12093153b07055bb32563774ed07200"
+".claude/agents/director.md" = "4b7f3e8fc8197be6e63c51ab2713701d1fccdb176bec563624aa1538bdbcbc9f"
+".claude/agents/manager.md" = "d14916a01182cae69f41e4a23ed5d65a8a24f7afc910f0dba9b3d1ea552e7e0d"
+".claude/agents/reviewer.md" = "3124dc8067b1e4b3aad602969c3a3c5e24d1c02af1ce28d3df6493b5b381ba10"
+".claude/agents/scout.md" = "d6afa9ede76e7e65ad09eb1b0e715f14e085ff1d8eb35b85abaa4617c453f1b4"
+".claude/settings.json" = "b3bea33fff8c8a818b539a65a7f1677ea2695f6b1a110d8bd2b7a78fafc2c4a7"
+".codex/agents/builder.toml" = "76486e219557b99c4a8bbc3a08af2165c95922eb08bc7e85166babbebc519f18"
+".codex/agents/director.toml" = "08fff22dd72e8fded0a6249394b249ac7ddd75cb16d5c8877e7865b9532b7b4f"
+".codex/agents/manager.toml" = "23ee2adf572ad35bfe276bfbf71e51b752c6b0de938abc2d085fef8eea24a6b8"
+".codex/agents/reviewer.toml" = "9f00bcd2cd62ea5050aa4b79a09449ca220bf98fb55a21fc4262fe914a4b1d66"
+".codex/agents/scout.toml" = "8cf7e2318b1d7dc130da9761eefc6b509db5222dbe561905b5e79dcb7ebc51c4"
 ".codex/config.toml" = "08d6949183a79a87fb560211b477ff8a82299a22572a5a2965f991dc192edead"
-"AGENTS.md" = "a0d5af53a90589de85355e3ebe595db188f06d1f3cd1fafee8dbdc58473567e5"
+".codex/hooks.json" = "b059f1cddd1ef5f98225f781f4c49fb5f5e0638ebb2caff9499644056c05fdd9"
+"AGENTS.md" = "1bad134989cb0be6d4094302922a549850847abc5d8dda0ef383a5383d58632f"
 "CLAUDE.md" = "69da52717ebfacfe3b2fa33afba1fc5e132c0a859fc72d198804f6c3ec021c7c"

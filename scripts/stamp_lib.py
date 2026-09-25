@@ -1,9 +1,11 @@
-"""Stamp src/tac into .agents/lib/tac, the named source .agents/.venv installs.
+"""Stamp src/tac into .agents/lib/tac, the named source .agents/.venv installs,
+and hooks/run.py into .agents/hooks/run.py, the guard every rendered hook runs.
 
 A stand-in for `tac stamp` until that command exists: it writes a minimal
 package project (name, version, dependencies, entry point) and a copy of the
 package, so the deployed checker never imports from the source tree. Run it on
-the host, then `uv sync --frozen --no-editable --project .agents`.
+the host, then `uv sync --frozen --no-editable --project .agents`, and `tac
+sync` so the lock records the stamped guard.
 """
 
 from __future__ import annotations
@@ -68,12 +70,21 @@ def stamp(root: Path) -> Path:
     return target
 
 
+def stamp_guard(root: Path) -> Path:
+    """Only the guard itself: hooks/git/ is installed by prek from the source."""
+    target = root / ".agents" / "hooks" / "run.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(root / "hooks" / "run.py", target)
+    return target
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args(argv)
-    target = stamp(args.root.resolve())
-    print(f"stamped {target.relative_to(args.root.resolve())}")
+    root = args.root.resolve()
+    for target in (stamp(root), stamp_guard(root)):
+        print(f"stamped {target.relative_to(root)}")
     return 0
 
 

@@ -8,7 +8,7 @@ read. Every blob, text or binary, is read as UTF-8 with replacement and as UTF-1
 and UTF-32 in both byte orders at every alignment; none is skipped. A Git LFS
 pointer is refused, found the way git-lfs finds one.
 
-Two modes:
+Three modes:
   (default)            the index, plus new and changed files in the working tree,
                        the author and committer identity git would record, and
                        the current branch name: what the next commit holds.
@@ -16,6 +16,8 @@ Two modes:
                        the whole tree at HEAD, every commit object whole (author,
                        committer, other headers and message) and the branch
                        name: everything a pull request publishes.
+  --message FILE       the message a commit-msg hook is handed, before git makes
+                       the commit that publishes it.
 
 The term list is scripts/private_terms.txt next to this file (in CI, the base
 revision's copy). Each line of it is blank or one entry: a kind, one space, and
@@ -88,6 +90,8 @@ ENTRY = re.compile(r"(text|regex|identity) ((?:[0-9a-f]{2})+)")
 ENTRY_BYTES = re.compile(rb"(?:text|regex|identity) (?:[0-9a-f]{2})+")
 # The commit headers that carry an identity, `Name <email> time zone`.
 IDENTITY_HEADERS = ("author", "committer")
+# Git's scissors line: git drops it and everything below it from the message.
+SCISSORS = b"# ------------------------ >8 ------------------------"
 
 
 NOT_AN_ENTRY = (
@@ -476,6 +480,23 @@ def scan_range(scan: Scan, spec: str) -> None:
         scan.entry(entry, f"{head[:12]}:{entry.path}")
 
 
+def scan_message(scan: Scan, path: Path) -> None:
+    """A commit message as the commit-msg hook gets it, before git cleans it.
+    Comment lines are read too, since `git commit -m` keeps them; only what
+    follows the scissors line is left out, since git drops it in every mode that
+    writes that line."""
+    try:
+        data = path.read_bytes()
+    except OSError as err:
+        raise ScanError(f"cannot read the message {path}: {err}") from err
+    kept = []
+    for line in data.split(b"\n"):
+        if line.rstrip(b"\r") == SCISSORS:
+            break
+        kept.append(line)
+    scan.hits += content_hits("(message)", b"\n".join(kept), scan.terms)
+
+
 def arguments(argv: list[str]) -> argparse.Namespace:
     # argparse, not click: CI runs this with the system python3, no packages.
     parser = argparse.ArgumentParser(
@@ -490,6 +511,12 @@ def arguments(argv: list[str]) -> argparse.Namespace:
         "--range",
         metavar="BASE..HEAD",
         help="scan every commit of the range, its messages and the tip's tree",
+    )
+    parser.add_argument(
+        "--message",
+        type=Path,
+        metavar="FILE",
+        help="scan only this commit message file, as the commit-msg hook hands it",
     )
     parser.add_argument(
         "--branch",
@@ -529,16 +556,24 @@ def main(argv: list[str]) -> int:
             for kind, term in parse_terms(args.terms):
                 print(f"{kind}\t{term}")
             return 0
+        if args.message and args.range:
+            raise ScanError("--message and --range are separate modes")
         terms = load_terms(args.terms)
+        # Resolved before the scan moves to the top of the work tree, since git
+        # hands the hook a path relative to where it runs.
+        message = args.message.resolve() if args.message else None
         os.chdir(git("rev-parse", "--show-toplevel").decode().strip())
         blobs = Blobs()
         try:
             scan = Scan(terms, blobs)
-            if args.range:
+            if message:
+                scan_message(scan, message)
+            elif args.range:
                 scan_range(scan, args.range)
             else:
                 scan_index(scan)
-            scan.branch(args.branch or current_branch())
+            if not message or args.branch:
+                scan.branch(args.branch or current_branch())
         finally:
             blobs.close()
     except ScanError as err:

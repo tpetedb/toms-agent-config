@@ -1,0 +1,34 @@
+# .human/todo.toml: the fixed text of TODO.HUMAN.md and its sections, in order.
+# `tac human render` writes the page from this file and the items in
+# .human/approvals/<id>.json; `tac human render --check` fails on any difference,
+# so the page is changed here or through `tac human ask` and `tac human answer`,
+# never by hand. Every text value is one line of Markdown with no em dash.
+
+# The format of this file; 1 is the only version.
+schema_version = 1
+
+# The page's first line, without the leading "# ".
+title = "TODO.HUMAN.md: what only the owner can do"
+
+# The paragraphs under the title, in order; the provenance line follows them.
+intro = [
+  "These are the decisions the board cannot take, and the one-time steps only the owner can run. Answer on the issue or tell the chief; the chief records the answer under the item with `tac human answer`. Each item carries the board's recommendation, what it blocks where that is known, and the milestone that waits on it ([docs/DESIGN.md](docs/DESIGN.md), sections 7 and 18). The owner-delegated answers of 2026-09-25 are recorded from [docs/adr/0002-owner-decisions-2026-09-25.md](docs/adr/0002-owner-decisions-2026-09-25.md).",
+  "A ticked box is a hint, never consent. An approval counts only as your own approving review on the pull request, or as a record you sign on the host with `tac approve <id>`; an item that runs out of time is still waiting, since a timeout is never consent.",
+  "Credential handover convention: every secret goes into `agents.env`, outside the repository (Q17), under the env var named in the item. Never put a secret in chat or in the repository. Agents never receive what a step does not need; the runtime injects it.",
+]
+
+# The ## sections in page order, each { id, heading }: id is what an item's
+# "topic" names (lowercase letters, digits and hyphens), heading is the text after
+# "## ". A section with no items is left off the page.
+sections = [
+  { id = "identity", heading = "Agent identity (first: milestone M0 cannot pass without it)" },
+  { id = "scope", heading = "Scope and providers" },
+  { id = "governance", heading = "Governance" },
+  { id = "profiles", heading = "Profiles, billing, secrets, telemetry" },
+  { id = "standards", heading = "Standards and memory" },
+  { id = "history", heading = "The public repository's history and identity" },
+  { id = "skills", heading = "Skills and third-party material" },
+  { id = "approvals", heading = "Approvals waiting on the owner" },
+  { id = "escalations", heading = "Handoffs that failed their contract" },
+  { id = "steps", heading = "One-time steps on the owner's machine" },
+]

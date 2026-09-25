@@ -27,6 +27,12 @@ writes = ["worker-store"]
 may = ["write a position", "critique the other positions once", "raise a safety veto"]
 # What the role may never do, whatever the prompt says.
 may_not = ["routine work", "build", "tally a proposal it made", "fall back to another model"]
+# Whether a session of this role may start subagents (Agent, Task) and Claude
+# Code workflows (Workflow) natively: true (each call passes the handoff guard,
+# and a workflow only runs a script a stage of this role registers) | false
+# (its agent file disallows the three tools and the guard refuses them). Never
+# true for builder, manager, reviewer or scout; true for a role with ultracode.
+delegates = true                          # the lead seat's design stage runs registered workflows under ultracode
 # The standing brief rendered into the agent file, after the common AGENTS.md.
 instructions = """
 Write your position before reading anyone else's, then one critique round.

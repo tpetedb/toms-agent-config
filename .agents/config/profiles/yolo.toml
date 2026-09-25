@@ -17,8 +17,12 @@ approvals = "none"                       # no prompts inside the container; exte
 isolation = "disposable-container"       # required; tac refuses yolo on the host
 # Outbound network for agent commands: allowlist (config/network.toml) | off.
 network = "allowlist"
-# Native subagent spawns: guarded (they pass the PreToolUse handoff guard with a
-# single-use dispatch token) | off (spawn tools removed; dispatch only through tac run).
+# Native spawns (Claude's Agent, Task and Workflow; Codex's spawn_agent): guarded
+# (they pass the PreToolUse handoff guard: a Workflow only for a registered script,
+# and from M3 each with a single-use dispatch token) | off (spawn tools removed;
+# dispatch only through tac run). tac check refuses off while a role in
+# config/models.toml launches with ultracode, since ultracode starts agents
+# through Workflow.
 # Codex renders off under either until M2 renders its PreToolUse guard and proves it.
 native_delegation = "guarded"
 # The review every order gets: independent = how many reviews from a fresh session,

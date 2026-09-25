@@ -1,0 +1,44 @@
+{
+  "agent": null,
+  "answers": [
+    {
+      "at": "2026-09-25T00:00:00Z",
+      "basis": "owner-via-chief",
+      "by": "tpetedb",
+      "link": null,
+      "text": "re-cut instead of an exception: `main` starts from the single squashed commit on `bootstrap/2026-09-25`, which holds no plain-text term list; pull requests #1, #2 and #4 close as superseded, and their branches are deleted once no open pull request depends on them; GitHub keeps closed pull requests' commits readable, which the owner accepts as low sensitivity; no scan exception is added, see [docs/adr/0002-owner-decisions-2026-09-25.md](docs/adr/0002-owner-decisions-2026-09-25.md)."
+    }
+  ],
+  "approval": null,
+  "arguments": {},
+  "asked_at": "2026-09-25T00:00:00Z",
+  "blocks": [],
+  "decided_at": "2026-09-25T00:00:00Z",
+  "decided_by": "tpetedb",
+  "details": [
+    "The same list reached `tac/m2-hooks-human` through its merge `39fab53`, which took `tac/m1-core` in. Under the re-cut, M2 lands on `main` as one commit on top of the bootstrap, so the range scan of its pull request reads none of that history."
+  ],
+  "env_var": null,
+  "expires_at": null,
+  "id": "Q21",
+  "item_version": 1,
+  "kind": "question",
+  "notes": [],
+  "options": [
+    "(a) rewrite or squash both branches so no commit carries the plain list and force-push them (the owner's own action) before main takes them",
+    "(b) accept the exposure, and add a known-history exception to the scan naming exactly those commits and that one file"
+  ],
+  "pipeline": null,
+  "pull_request": null,
+  "question": "the earlier private scans carried their term list in plain text, and those commits are pushed on `origin/tac/m0-bootstrap` and `tac/m1-core`, so anyone can read the list there today. The range scan reports those commits, so the pull request that brings `tac/m0-bootstrap` into main fails its private scan until this is settled ([docs/DESIGN.md](docs/DESIGN.md), section 8).",
+  "rank": 10,
+  "recommendation": "(b). GitHub keeps every pull request's commits readable under its pull request after a branch is rewritten or deleted (only GitHub support can purge them), so a rewrite hides little of what is already public, and it needs a force-push, which agents never do. The exception names only the commits that carry the plain list (those on `tac/m0-bootstrap` that add or change the older `scripts/private_scan.sh`, and `50bc1ca` and `8f5f2cc` on `tac/m1-core`) and that one path.",
+  "recommendation_source": null,
+  "revision": null,
+  "stage": null,
+  "status": "answered",
+  "title": "the private-term list is public in the history",
+  "tool": null,
+  "topic": "history",
+  "waits": "the pull request from `tac/m0-bootstrap` to main"
+}

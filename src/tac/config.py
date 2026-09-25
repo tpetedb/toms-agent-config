@@ -420,6 +420,9 @@ def load_config(
     problems += _cross_checks(
         root, knobs, profiles, models, roles, teams, texts, registry, gates, policy
     )
+    problems += _delegation_checks(
+        profile, f"{CONFIG_DIR}/profiles/{active}.toml", models, roles
+    )
     problems += standards.waiver_problems(floor, FLOOR_FILE, today)
     applied = standards.apply_floor(registry.model_dump(by_alias=True), floor, reg_rel)
 
@@ -537,6 +540,62 @@ def _apply_standards(
         )
         notes.append(f"{path} = {show_value(value)}: the floor wins over {was}")
     return notes
+
+
+# The roles the board ruled may never start subagents or workflows natively:
+# the runner starts each of them, one per order, stage or question.
+NEVER_DELEGATE = ("builder", "manager", "reviewer", "scout")
+# The --effort value that starts a Claude Code session with ultracode.
+ULTRACODE = "ultracode"
+
+
+def ultracode_seats(models: ModelsFile) -> dict[str, list[str]]:
+    """Every role launched with ultracode, with the models.toml keys that say
+    so: a role's seat with ultracode = true, or a director seat launched with
+    launch_effort = "ultracode"."""
+    found: dict[str, list[str]] = {}
+    for name, spec in models.roles.items():
+        for pid, seat in sorted(spec.seats().items()):
+            if seat.ultracode:
+                found.setdefault(name, []).append(f"roles.{name}.{pid}")
+    for seat, director in sorted(models.directors.items()):
+        if director.launch_effort == ULTRACODE:
+            found.setdefault("director", []).append(f"directors.{seat}")
+    return found
+
+
+def _delegation_checks(
+    profile: Profile, profile_rel: str, models: ModelsFile, roles: Mapping[str, Role]
+) -> list[str]:
+    """Ultracode plans dynamic workflows, so a role launched with it delegates
+    and the active profile guards delegation instead of switching it off; the
+    worker roles never delegate (design sections 4 and 5)."""
+    problems: list[str] = []
+    for name in NEVER_DELEGATE:
+        charter = roles.get(name)
+        if charter is not None and charter.delegates:
+            problems.append(
+                f"{CONFIG_DIR}/roles/{name}.toml: delegates = true is refused; "
+                "builders, reviewers, managers and scouts never start subagents "
+                "or workflows, the runner starts them"
+            )
+    for name, where in sorted(ultracode_seats(models).items()):
+        keys = ", ".join(where)
+        charter = roles.get(name)
+        if charter is not None and not charter.delegates:
+            problems.append(
+                f"{CONFIG_DIR}/models.toml starts {name} with ultracode ({keys}), "
+                f"but roles/{name}.toml says delegates = false, so the handoff "
+                "guard would refuse every workflow ultracode plans"
+            )
+        if profile.native_delegation == "off":
+            problems.append(
+                f'{profile_rel}: native_delegation = "off", but {CONFIG_DIR}/'
+                f"models.toml starts {name} with ultracode ({keys}), which "
+                'starts agents through Workflow; set native_delegation = "guarded" '
+                "or take ultracode off"
+            )
+    return problems
 
 
 def _cross_checks(

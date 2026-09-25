@@ -8,6 +8,9 @@ model: {{ role.model | json }}
 {% if role.effort is not none %}
 effort: {{ role.effort | json }}
 {% endif %}
+{% if role.disallowed_tools %}
+disallowedTools: {{ role.disallowed_tools | join(", ") | json }}
+{% endif %}
 ---
 
 {{ role.instructions }}

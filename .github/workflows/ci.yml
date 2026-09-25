@@ -42,6 +42,10 @@ jobs:
         run: uv run --frozen ruff format --check .
       - name: Types
         run: uv run --frozen basedpyright
+      - name: Python 3.9 for the guard's tests
+        # The source guard must run under the 3.9 macOS ships as /usr/bin/python3;
+        # test_guard_py39.py finds this one and never installs during the tests.
+        run: uv python install 3.9
       - name: Tests
         # Linux has no Seatbelt, so the gate and probe confinement tests skip
         # here; a macOS host run is their evidence (docs/evidence/m0-host-run.md).
@@ -50,6 +54,8 @@ jobs:
         run: uv run --frozen --no-sync --project .agents tac check
       - name: Pipelines are sound, judged by the deployed checker
         run: uv run --frozen --no-sync --project .agents tac pipeline check
+      - name: Labels, issue forms and the pull request template hold
+        run: uv run --frozen --no-sync --project .agents tac github lint
 
   # No step here runs the candidate's code: no uv sync of its project, no test,
   # no script from its checkout. tests/test_ci_gates.py holds every step to that.
@@ -84,7 +90,8 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GATES: >-
             private_scan.sh private_scan.py private_terms.txt
-            ci_work_from_base.sh ci_config_from_base.sh ci_verify_receipts.sh
+            ci_work_from_base.sh ci_config_from_base.sh ci_check_from_base.sh
+            ci_verify_receipts.sh
         run: |
           git rev-parse --verify --quiet "$BASE_SHA^{commit}" >/dev/null || {
             echo "::error::the base commit ${BASE_SHA:0:12} of the event is not in this clone"
@@ -132,6 +139,12 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: bash "$RUNNER_TEMP/gates/ci_config_from_base.sh" "$BASE_SHA"
+      - name: Generated files match a fresh render, judged by the base revision's checker
+        # The verify job asked the candidate's own checker; this one is built
+        # from the base commit, so a pull request cannot change how it is judged.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash "$RUNNER_TEMP/gates/ci_check_from_base.sh" "$BASE_SHA"
       - name: Committed receipts verify with the base revision's verifier and key
         # The verifier and runner.pub both come from the base commit, never the
         # candidate tree, so a pull request can bring neither the key nor the

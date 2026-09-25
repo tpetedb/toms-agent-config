@@ -1,0 +1,75 @@
+name: Question for the owner
+description: Something only the owner can answer or do; mirrors one TODO.HUMAN.md item.
+title: "Q: "
+labels: ["type/human"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The item itself lives in `.human/approvals/<id>.json` and is written with `tac human ask`; `TODO.HUMAN.md` is rendered from it. This issue is where the owner answers. A ticked box or a comment by an agent is never consent, and an approval is only ever the owner's own review on a pull request or a record signed on the host with `tac approve`, so this form asks questions and steps, never approvals.
+  - type: input
+    id: item-id
+    attributes:
+      label: Item id
+      description: The id `tac human ask` gave it, a Q for a question or an S for a step.
+      placeholder: Q21
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - question
+        - step
+    validations:
+      required: true
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Section of TODO.HUMAN.md
+      description: The section ids of .human/todo.toml.
+      options:
+        - identity
+        - scope
+        - governance
+        - profiles
+        - standards
+        - history
+        - skills
+        - steps
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: The question or the exact action
+      description: What the owner answers or runs, in one or two sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options
+      description: One per line; leave empty for a step.
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: Recommendation
+      description: The board's recommendation, or say whose it is when it is not the board's.
+    validations:
+      required: true
+  - type: input
+    id: env-var
+    attributes:
+      label: Secret variable
+      description: When a secret is involved, the agents.env variable name it goes under. Never the value.
+      placeholder: TAC_BOT_TOKEN
+  - type: input
+    id: waits
+    attributes:
+      label: What waits on it
+      description: The milestone or the orders that cannot go on without the answer.
+      placeholder: M3
+    validations:
+      required: true

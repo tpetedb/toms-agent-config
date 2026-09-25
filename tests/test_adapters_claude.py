@@ -15,10 +15,16 @@ from typing import Any
 
 import pytest
 
-from tac.adapters import CLAUDE_TELEMETRY, charter_sha256, seat
+from tac.adapters import CLAUDE_TELEMETRY, charter_sha256, claude_session, seat
 from tac.config import load_config
 from tac.sync import render, sync
-from tests._syncproject import copy_project, frontmatter, replace_in, synced
+from tests._syncproject import (
+    copy_project,
+    frontmatter,
+    replace_in,
+    synced,
+    ultracode_off,
+)
 
 SCHEMA_URL = "https://json.schemastore.org/claude-code-settings.json"
 # The settings keys this adapter writes, each documented in the settings reference.
@@ -163,8 +169,57 @@ def test_the_network_allowlist_comes_from_network_toml(root: Path) -> None:
     assert allowed == list(load_config(root).network.egress.allow)
 
 
-def test_hooks_are_an_empty_table_until_m2(root: Path) -> None:
-    assert settings(root)["hooks"] == {}
+def test_every_hook_runs_the_stamped_guard_isolated(root: Path) -> None:
+    hooks = settings(root)["hooks"]
+    assert set(hooks) == {"PreToolUse", "Stop", "SubagentStop"}
+    for event, groups in hooks.items():
+        for group in groups:
+            (hook,) = group["hooks"]
+            assert set(hook) == {"type", "command", "timeout"}
+            command = hook["command"]
+            # An empty environment, the pinned interpreter isolated, the stamped
+            # guard by the project root Claude Code hands every hook (C2).
+            assert command.startswith('g="$CLAUDE_PROJECT_DIR/.agents/hooks/run.py" ')
+            assert "; /usr/bin/env -i PATH=/usr/bin:/bin:" in command
+            assert ' /usr/bin/python3 -I "$g" ' in command
+            assert f"--client claude --event {event} " in command
+            assert "hooks/run.py" not in command.replace(".agents/hooks/run.py", "")
+            assert hook["timeout"] == load_config(root).hooks.guard.timeout_s
+
+
+def test_a_check_moved_off_claude_is_no_longer_wired(tmp_path: Path) -> None:
+    copy_project(tmp_path)
+    hooks = tmp_path / ".agents/config/hooks.toml"
+    replace_in(hooks, 'claude = "Read|Grep|Glob"', 'claude = ""')
+    sync(tmp_path, links=False)
+    (group,) = settings(tmp_path)["hooks"]["PreToolUse"]
+    assert "Read" not in group["matcher"].split("|")
+    assert "Edit" in group["matcher"].split("|")
+
+
+def test_a_subagent_only_role_is_spawned_and_stopped_through_the_guard(
+    tmp_path: Path,
+) -> None:
+    # runs = "subagent": only another session's subagent tool starts the role, so
+    # it has no launch command of its own, and the guard answers its spawn (the
+    # handoff guard on the subagent tool) and its stop (SubagentStop, held to
+    # what a session's Stop is held to), as for every native subagent.
+    copy_project(tmp_path)
+    replace_in(
+        tmp_path / ".agents/config/roles/scout.toml",
+        'runs = "headless-read-only"',
+        'runs = "subagent"',
+    )
+    sync(tmp_path, links=False)
+    config = load_config(tmp_path)
+    assert config.roles["scout"].runs == "subagent"
+    assert claude_session(config, "scout") is None
+    assert frontmatter((tmp_path / ".claude/agents/scout.md").read_text())["name"]
+    hooks = settings(tmp_path)["hooks"]
+    (spawn,) = hooks["PreToolUse"]
+    assert {"Agent", "Task"} <= set(spawn["matcher"].split("|"))
+    (stop,) = hooks["SubagentStop"]
+    assert "--event SubagentStop " in stop["hooks"][0]["command"]
 
 
 def test_claude_md_imports_agents_md(root: Path) -> None:
@@ -235,6 +290,7 @@ def test_ultracode_is_a_launch_flag_never_a_file_setting(root: Path) -> None:
 
 def test_native_delegation_off_denies_the_spawn_tools(tmp_path: Path) -> None:
     root = copy_project(tmp_path)
+    ultracode_off(root)
     replace_in(
         root / ".agents/config/profiles/standard.toml",
         'native_delegation = "guarded"',
@@ -242,7 +298,7 @@ def test_native_delegation_off_denies_the_spawn_tools(tmp_path: Path) -> None:
     )
     sync(root)
     deny = settings(root)["permissions"]["deny"]
-    assert "Agent" in deny and "Task" in deny
+    assert {"Agent", "Task", "Workflow"} <= set(deny)
 
 
 def test_the_full_telemetry_tier_adds_the_kill_switches(tmp_path: Path) -> None:

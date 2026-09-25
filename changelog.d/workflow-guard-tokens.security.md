@@ -1,0 +1,1 @@
+The Workflow guard reads `scriptPath` as spelled, with no link followed, and refuses a path through a symlinked folder, a symlink to the file, a path that climbs with `..`, and every call without the runner's single-use token, which arrives in M3; a director stage registers a script only as the lead seat's `design` stage.

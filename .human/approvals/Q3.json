@@ -1,0 +1,39 @@
+{
+  "agent": null,
+  "answers": [
+    {
+      "at": "2026-09-25T00:00:00Z",
+      "basis": "owner-via-chief",
+      "by": "tpetedb",
+      "link": null,
+      "text": "unattended only inside a disposable container with an egress allowlist, see [docs/adr/0002-owner-decisions-2026-09-25.md](docs/adr/0002-owner-decisions-2026-09-25.md)."
+    }
+  ],
+  "approval": null,
+  "arguments": {},
+  "asked_at": "2026-09-24T00:00:00Z",
+  "blocks": [],
+  "decided_at": "2026-09-25T00:00:00Z",
+  "decided_by": "tpetedb",
+  "details": [],
+  "env_var": null,
+  "expires_at": null,
+  "id": "Q3",
+  "item_version": 1,
+  "kind": "question",
+  "notes": [],
+  "options": [],
+  "pipeline": null,
+  "pull_request": null,
+  "question": "unattended inside a disposable container with an egress allowlist, or unrestricted host access?",
+  "rank": 10,
+  "recommendation": "the container.",
+  "recommendation_source": null,
+  "revision": null,
+  "stage": null,
+  "status": "answered",
+  "title": "yolo (governs 1.1)",
+  "tool": null,
+  "topic": "profiles",
+  "waits": "M6"
+}
