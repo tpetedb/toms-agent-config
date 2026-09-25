@@ -402,6 +402,16 @@ def test_only_a_listed_identity_is_exempt(
     assert_found(run_scan(repo, terms=terms), "(author):1:Owner <owner@work")
 
 
+def test_the_shipped_list_exempts_no_identity() -> None:
+    # This repository commits under the GitHub noreply address (Q22, ADR 0002),
+    # so no commit identity is exempt and one under a listed address is refused.
+    # Only the kinds are read: a term itself must never reach a test's output.
+    lines = (REPO / TERMS_PATH).read_text(encoding="utf-8").splitlines()
+    kinds = {line.split(" ", 1)[0] for line in lines if line}
+    assert "identity" not in kinds
+    assert kinds <= {"text", "regex"}
+
+
 def test_a_term_in_the_branch_name_is_found(repo: Path, base: str) -> None:
     git(repo, "checkout", "-q", "-b", f"feat/{TERM}")
     assert_found(run_scan(repo), f"(branch name):1:feat/{TERM}")

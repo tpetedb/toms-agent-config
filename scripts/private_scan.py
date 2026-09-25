@@ -37,11 +37,15 @@ so any other line fails the list, and in a tree the scan reads the list at
 reports each line there that is neither blank nor an entry.
 
 The list covers local home and workspace paths, the owner's business name,
-personal mail addresses and the owner's commit identity (Q22 in TODO.HUMAN.md
-asks whether it moves to the GitHub noreply address), business services and
-clients, private tools and repositories, machine names and private paths,
-subscription details, private watch tools, and the citation keys of the private
-design notes. A change to it needs the owner's review: CODEOWNERS names it.
+personal mail addresses, business services and clients, private tools and
+repositories, machine names and private paths, subscription details, private
+watch tools, and the citation keys of the private design notes. It holds no
+identity entry: the owner decided on 2026-09-25 (Q22, ADR 0002) that this
+repository commits under the GitHub noreply address, and the exemption for the
+old address went once no open branch held a commit under it, so such a commit is
+now refused like any other hit. The kind stays for an adopter whose own commit
+identity carries a listed term. A change to the list needs the owner's review:
+CODEOWNERS names it.
 
 Add a term:     bash scripts/private_scan.sh --encode text 'the term'
 Read the list:  bash scripts/private_scan.sh --show-terms

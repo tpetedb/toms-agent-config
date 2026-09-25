@@ -439,7 +439,7 @@ types = ["added", "changed", "deprecated", "removed", "fixed", "security"]
 tool = "towncrier"
 
 [commits]
-convention = "what-and-why"              # or "conventional-1.0.0"; open decision Q4
+convention = "what-and-why"              # or "conventional-1.0.0"; decided Q4, ADR 0002
 max_subject = 72
 trailers_required = ["Co-Authored-By"]   # when an agent commits
 
@@ -469,7 +469,7 @@ lint = "required"
 secrets = "gitleaks"
 dependencies = "pip-audit"
 licences = "allowlist"                   # a test over the resolved lock
-data = "soda-v3-optional"                # only when project.kind includes data-pipeline; open decision Q13
+data = "soda-v3-optional"                # only when project.kind includes data-pipeline; decided Q13, ADR 0002: 1.1 opt-in
 ```
 
 `tac check` reads this registry and runs one checker per line: the version is bumped when the changelog has fragments, a fragment is present for a code change, the commit convention holds, dates in file names and frontmatter are ISO 8601, a rendered diagram exists per pipeline and lifecycle, ruff and basedpyright pass, gitleaks and pip-audit pass, the licence allowlist holds, and the Soda scan passes where data changes and the extra is enabled.
@@ -720,6 +720,8 @@ flowchart TD
 
 Legend: green terminator, blue process, yellow decision, orange input or output, dim red data store.
 
+**As built in M3.** `src/tac/memory.py`, `src/tac/session.py` and `src/tac/secrets_scan.py` hold the bus. The live journal is `<worker store>/memory/records.jsonl` and `events.jsonl`, with `quarantine.jsonl` beside them (the worker store is `memory.runtime_store`, the git common dir's `agents/` by default); every write appends one fsynced JSON line under an exclusive lock and takes the last `sequence` plus one, a torn line is copied to quarantine by the next writer, an unknown `schema_version` is refused (`MIGRATIONS` is the hook for later versions), and provider, harness, model, effort and role come only from the launch record the launcher writes. The promoted store is `.agents/memory/records/<id>.json` (the colons of the id written as underscores, so every filesystem can check it out), `.agents/memory/events/<UTC date>.jsonl` and `.agents/memory/_index/{by-topic,by-order,by-status}.json` with its `README.md`; `status` (confirmed, unconfirmed, conflict, superseded) and `confidence` are derived from the events at read time, as of a given moment, and never stored. In M3 `basis` recompute accepts three kinds of evidence: `receipt:<path>`, a gate or probe receipt that passed, verified with the runner key at `HEAD` and bound to the record's repository, run or order and a revision `HEAD` contains (test-receipt); `review:<order>`, the order's own record passing the gate `tac work review` runs (reviewed); and `approval:<id>`, a host-signed approval of an item whose arguments name the record (owner). Without one the basis is single-source or inferred and promotion is refused with the rule named; `tac memory promote` also refuses inside an agent session, a record marked secret, a status other than confirmed and a secret-like line in any field of the record or of the events it carries (the same scan runs over every field on add, on every event and in lint), writes files only, and rebuilds the index. The selector is version 1 (`SELECTOR_VERSION`), reads the promoted store only, keeps the records of this repository (the origin remote's, or `tac select --repository`; with neither it refuses rather than select unfiltered), and treats a record whose topics include `policy` as mandatory. `contracts/memory-record.schema.json` is exported from the model in the strict subset and `contracts/session-event.schema.json` as a config-style schema, both by `tac memory schema --write`. Left for later: the index hash in `generated.lock`, a `sync.py` change that can land only after the checker that reads it is stamped (until then `tac memory lint` fails on an index that differs from a fresh build); the template wiring of the `Selection` into `tac handoff render`, so its ids, hashes and selector version enter the envelope; the ingestion of stage envelopes as digest records and the extraction of lessons and decisions at LANDED and DECISION events, which need `tac run`; the record contract's place in `tac check`'s contract lint, which reads `contracts/handoffs/` only (`tests/test_memory.py` holds it to the strict subset meanwhile); and decay and fold (release 1.1).
+
 ## 7. The human loop
 
 `.human/approvals/*.json` is the single source of truth. `TODO.HUMAN.md` is rendered from it with `tac human render` and reaches main through a `tac-bot` pull request that the owner approves, like every other change, because the owner is the sole code owner and bypass is off for the owner too.
@@ -926,7 +928,7 @@ Legend: green terminator, blue process, yellow decision, dim red data store; dot
 
 **Secrets.** Agents never receive secrets they do not need. The launcher sets `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`; Claude gets `sandbox.credentials` or `denyRead` on the secrets directory, `~/.ssh`, `~/.aws` and `~/.config/gh`; Codex gets `shell_environment_policy.inherit = "core"` with `ignore_default_excludes = false`; the bot token reaches only the runner's `gh`, through a credential helper; `tac doctor` proves each deny with a live read.
 
-**`agents.env`.** A common and sensible deny rule blocks `*.env` for every agent, and TAC keeps it. So the real `agents.env` does not live in the repository by default: its path is `[secrets] env_file`, the launcher, compose or CI secrets inject it per step, and agents never read it (Q17 asks whether the owner prefers the repository root, gitignored). The repository ships `agents.env.example` with names and comments only, and every non-secret runtime setting lives in `config/runtime.toml`. Nothing is renamed to dodge the deny.
+**`agents.env`.** A common and sensible deny rule blocks `*.env` for every agent, and TAC keeps it. So the real `agents.env` does not live in the repository by default: its path is `[secrets] env_file`, the launcher, compose or CI secrets inject it per step, and agents never read it (Q17 decided outside the repository, ADR 0002). The repository ships `agents.env.example` with names and comments only, and every non-secret runtime setting lives in `config/runtime.toml`. Nothing is renamed to dodge the deny.
 
 **`.agents/.venv`** (build condition C4). The agent toolchain has its own project, `.agents/pyproject.toml` and `.agents/uv.lock`, never mixed with the project's own environment. The venv is built only by bootstrap, the runner or CI, with `uv sync --frozen --no-editable --project .agents`. `tac` comes from a named path source declared in `[tool.uv.sources]`: `.agents/lib/tac/`, the package copy that `tac stamp` writes from the pinned release (in this repository, from `src/`). `--no-editable` matters: by default `uv sync` installs the project, and any workspace member, in editable mode, which would let the checker import straight from a source tree instead of site-packages. `tac doctor` verifies that the imported `tac` resolves to site-packages and not to `src/tac/`. Every in-session call is `uv run --frozen --no-sync --project .agents tac ...`; workers never sync. Python, the external tools, image digests and the lock are frozen in `mise.toml`, `uv.lock` and `generated.lock`. Under Codex the venv is read-only because `.agents` is read-only inside writable roots ([sandbox](https://developers.openai.com/codex/sandbox)), and under Claude by the `denyWrite` rule, so a worker-writable environment never supplies the checker's interpreter.
 
@@ -1123,16 +1125,16 @@ Pinned in `.agents/pyproject.toml` and `mise.toml` (the CLIs); licence and telem
 | sqlfluff | SQL lint where a project has SQL | MIT | none documented; egress-tested | 1 |
 | [mise](https://mise.jdx.dev/) | pins the CLIs (needs `mise trust` once) | MIT | none documented; egress-tested | 1 |
 | [copier](https://copier.readthedocs.io/en/stable/) | stamping and updates (`--trust` for tasks) | MIT | none documented; egress-tested | 1 |
-| commitizen | only if Conventional Commits are chosen (Q4) | MIT | none documented; egress-tested | if Q4 |
+| commitizen | not used: Q4 chose what-and-why, ADR 0002 | MIT | none documented; egress-tested | no |
 | hypothesis | property tests for the selector and the config merger | MPL-2.0 | none documented; egress-tested | 1.1 |
 | ipykernel, nbstripout | notebooks where a project has them; outputs stripped at commit | BSD-3-Clause, MIT | none documented; egress-tested | 1.1 |
 | vale | prose style, optional | MIT | none documented; egress-tested | 1.1 |
-| soda-core v3 | data-quality gate, SodaCL YAML, local DuckDB connector, no Soda Cloud | Apache-2.0 ([v3.5.6 licence](https://github.com/sodadata/soda-core/blob/v3.5.6/LICENSE)) | `send_anonymous_usage_stats: false` in the selected configuration, which is searched in the home directory before the project; proven by an offline passing and failing scan without Cloud credentials | optional extra `tac[data]`, per Q13 |
+| soda-core v3 | data-quality gate, SodaCL YAML, local DuckDB connector, no Soda Cloud | Apache-2.0 ([v3.5.6 licence](https://github.com/sodadata/soda-core/blob/v3.5.6/LICENSE)) | `send_anonymous_usage_stats: false` in the selected configuration, which is searched in the home directory before the project; proven by an offline passing and failing scan without Cloud credentials | optional extra `tac[data]`, 1.1 opt-in per Q13, ADR 0002 |
 | great_expectations | reference only, not shipped | Apache-2.0 | usage statistics on by default | no |
 
 Soda: the supported line is soda-core v3 (3.5.6). The current v4 line is under the Elastic License 2.0 with telemetry reported on by default (its opt-out variable is not independently verified) and is not used. Soda is an optional extra, enabled only when `project.kind` includes data-pipeline, so the MIT core never depends on it. `gh` ships with `GH_TELEMETRY=false`.
 
-Why prek over pre-commit and lefthook: it reads the standard `.pre-commit-config.yaml`, needs no Python and integrates with uv. Why towncrier over git-cliff: fragments are the changelog model in use, and towncrier is the fragment tool; git-cliff derives the changelog from commits, and the commit convention is still open (Q4).
+Why prek over pre-commit and lefthook: it reads the standard `.pre-commit-config.yaml`, needs no Python and integrates with uv. Why towncrier over git-cliff: fragments are the changelog model in use, and towncrier is the fragment tool; git-cliff derives the changelog from commits, and Q4 decided the commit convention as what and why, not Conventional Commits (ADR 0002).
 
 ## 16. Reuse list with licences
 
@@ -1143,12 +1145,12 @@ Why prek over pre-commit and lefthook: it reads the standard `.pre-commit-config
 | `tools/board.py`, the memory schema, their tests | [vibe-map PR #192](https://github.com/tpetedb/vibe-map/pull/192) | MIT (owner) | ported as `tac room` and `tac memory` |
 | `harness.py`, templates, profiles, the lock | [vibe-map PR #197](https://github.com/tpetedb/vibe-map/pull/197) | MIT (owner) | ported as `tac sync`, `check`, `doctor`, `explain` |
 | strict and sandboxed Jinja rendering, a staleness hook, a per-task model router, a status log, comment-keeping TOML edits | the owner's documentation pipeline that renders Jinja scaffolds and validates them (private) | the owner's; code moves in under MIT with an authorship line | taken |
-| the `TODO.HUMAN.md` format, one charter with thin adapters pinned by a test, a gate runner for `just`, an em-dash check, tighten-only overrides | a private platform repository | needs redistribution permission from that repository's owner, not only a licence line (Q19) | taken once Q19 allows |
+| the `TODO.HUMAN.md` format, one charter with thin adapters pinned by a test, a gate runner for `just`, an em-dash check, tighten-only overrides | a private platform repository | nothing is redistributed: no code is copied from it (Q19) | re-implemented from scratch here as patterns, each with an authorship line, per Q19, ADR 0002 |
 | commented TOML style, symlink sync, the hook `.test.sh` pattern, several skills | the owner's private dotfiles toolbox | the owner's | taken |
 | a versioned JSONL bus and an IDE registry | the owner's private workspace orchestrator | the owner's | adapted |
 | session-bus design | [earendil-works/pi](https://github.com/earendil-works/pi) | MIT | credited, re-implemented |
 | diagnostic record and handoff receipt shapes | archify | MIT | shapes adopted, code not vendored |
-| ponytail, trimmed | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) | MIT | opt-in skill with its notice, pending Q1 |
+| ponytail, trimmed | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) | MIT | vendored, trimmed, as an opt-in skill for builders, its notice in `THIRD_PARTY.md` when it lands; decided per Q1, ADR 0002 |
 | `AGENTS.md` format | [agents.md](https://agents.md/) | MIT | followed |
 | Agent Skills specification | [agentskills.io](https://agentskills.io/specification) | specification | followed; skill bodies not vendored |
 | issue forms, label-sync, github-script, release-drafter | GitHub, [EndBug/label-sync](https://github.com/EndBug/label-sync), actions/github-script, [release-drafter](https://github.com/release-drafter/release-drafter) | first-party, MIT, MIT, ISC | taken |

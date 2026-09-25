@@ -16,6 +16,8 @@ from __future__ import annotations
 import datetime as dt
 import difflib
 import json
+import os
+import stat
 import tomllib
 import types
 import typing
@@ -78,6 +80,14 @@ KNOWN_FILES = frozenset(
     }
 )
 KNOWN_DIRS = frozenset({"profiles", "roles", "gates", "pipelines"})
+# The files a container runtime writes at the root of every container it starts,
+# with the runtime each names. Only root can create a file there, so an agent on
+# the host cannot forge one; an environment variable any process can set is
+# never evidence of a container.
+CONTAINER_MARKERS: tuple[tuple[str, str], ...] = (
+    ("/.dockerenv", "Docker"),
+    ("/run/.containerenv", "podman"),
+)
 
 
 # ---------------------------------------------------------------- the effective tree
@@ -221,6 +231,8 @@ class Config:
     entries: Mapping[str, Entry]
     tables: Mapping[str, Entry]
     notes: tuple[str, ...] = ()
+    # The marker that proves this process runs in a container, or None on the host.
+    container: str | None = None
 
     def explain(self, key: str) -> list[Entry]:
         """The entry for `key`, or every entry under it when it names a table."""
@@ -304,14 +316,47 @@ def _unknown_files(root: Path) -> list[str]:
     return problems
 
 
+def container_evidence(
+    markers: tuple[tuple[str, str], ...] = CONTAINER_MARKERS,
+) -> str | None:
+    """The marker that proves this process runs inside a container, or None.
+
+    A marker counts only as a regular file owned by root, read without following
+    a link, so a file or link the running user made proves nothing.
+    """
+    for path, runtime in markers:
+        try:
+            found = os.lstat(path)
+        except OSError:
+            continue
+        if stat.S_ISREG(found.st_mode) and found.st_uid == 0:
+            return f"{path} ({runtime})"
+    return None
+
+
+class _Unset:
+    """No container evidence was passed: `load_config` looks for it itself."""
+
+
+_UNSET = _Unset()
+
+
 def load_config(
-    root: Path, *, today: dt.date | None = None, floor_text: str | None = None
+    root: Path,
+    *,
+    today: dt.date | None = None,
+    floor_text: str | None = None,
+    container: str | _Unset | None = _UNSET,
 ) -> Config:
     """Read, check and merge every configuration file; one Bad names every problem.
 
     `floor_text` replaces the floor file, so CI can apply the base revision's floor.
+    `container` is the evidence of a container, None for the host; left out, it
+    is what `container_evidence` finds, so a test injects it and never creates a
+    marker.
     """
     today = today or standards.utc_today()
+    evidence = container_evidence() if isinstance(container, _Unset) else container
     problems = _unknown_files(root)
     tree = _Tree()
     texts: dict[str, str] = {}
@@ -418,7 +463,18 @@ def load_config(
     profile = profiles[active]
 
     problems += _cross_checks(
-        root, knobs, profiles, models, roles, teams, texts, registry, gates, policy
+        root,
+        knobs,
+        profiles,
+        models,
+        roles,
+        teams,
+        texts,
+        registry,
+        gates,
+        policy,
+        mcp,
+        evidence,
     )
     problems += _delegation_checks(
         profile, f"{CONFIG_DIR}/profiles/{active}.toml", models, roles
@@ -502,6 +558,7 @@ def load_config(
         entries=tree.entries,
         tables=tree.tables,
         notes=tuple(notes),
+        container=evidence,
     )
 
 
@@ -609,8 +666,13 @@ def _cross_checks(
     registry: Registry,
     gates: Mapping[str, GatePack],
     policy: PolicyFile,
+    mcp: McpFile,
+    container: str | None,
 ) -> list[str]:
-    """What the files say about each other; each problem names both sides."""
+    """What the files say about each other; each problem names both sides.
+
+    `container` is the evidence that this process runs in a container, or None.
+    """
     problems: list[str] = []
     knob = KNOBS_FILE
     if models.name != knobs.models.policy:
@@ -731,6 +793,37 @@ def _cross_checks(
             problems.append(
                 f"{rel}: {item} is refused on the host (isolation = native-sandbox); "
                 "config/policy.toml [host]"
+            )
+
+    # A container profile turns the client's own sandbox off and may bypass
+    # permissions, since the container is the isolation; on the host nothing
+    # would stand in its place. So it is refused as the active profile unless a
+    # root-owned marker proves a container, while every profile file is still
+    # checked as a file above.
+    active = profiles.get(knobs.profile.active)
+    if active is not None and not active.on_host and container is None:
+        markers = " or ".join(f"{p} ({r})" for p, r in CONTAINER_MARKERS)
+        problems.append(
+            f"{CONFIG_DIR}/profiles/{knobs.profile.active}.toml: isolation = "
+            f'"{active.isolation}" is refused as the active profile ([profile] '
+            f"active in {knob}) outside a container: no root-owned {markers} "
+            "exists, and an environment variable is never evidence"
+        )
+
+    # MCP: every profile may become active, so each one agrees with mcp.toml.
+    servers = ", ".join(sorted(mcp.servers))
+    for name, profile in profiles.items():
+        rel = f"{CONFIG_DIR}/profiles/{name}.toml"
+        if profile.mcp_servers == "none" and mcp.servers:
+            problems.append(
+                f'{rel}: mcp_servers = "none", but {CONFIG_DIR}/mcp.toml lists '
+                f"{servers}: under this profile they would never load"
+            )
+        if profile.mcp_servers == "from-conf" and not mcp.strict:
+            problems.append(
+                f'{rel}: mcp_servers = "from-conf", but {CONFIG_DIR}/mcp.toml says '
+                "strict = false: a headless stage would load the owner's own "
+                "user-level servers next to the listed ones"
             )
 
     # The chief never holds an action the owner keeps for themselves.

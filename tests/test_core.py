@@ -23,6 +23,7 @@ from tac.config import (
     CONFIG_SCHEMAS,
     CONTRACTS_DIR,
     config_json_schemas,
+    container_evidence,
     floor_check,
     load_config,
     schema_name,
@@ -377,6 +378,136 @@ def test_a_host_profile_may_not_bypass_permissions(camp: Path) -> None:
     refused(camp, "refused on the host", "bypassPermissions", "danger-full-access")
 
 
+# ---------------------------------------------------------------- container profiles
+
+# What a test passes as the evidence of a container: the marker files are
+# root-owned, so no test creates them, and every test injects the answer.
+IN_A_CONTAINER = "/.dockerenv (Docker)"
+
+
+@pytest.mark.parametrize(
+    ("active", "isolation"),
+    [("yolo", "disposable-container"), ("enterprise", "container")],
+)
+def test_a_container_profile_is_refused_as_active_outside_a_container(
+    camp: Path, active: str, isolation: str
+) -> None:
+    ultracode_off(camp)
+    edit(camp, KNOBS_FILE, 'active = "standard"', f'active = "{active}"')
+    with pytest.raises(Bad) as caught:
+        load_config(camp, today=TODAY, container=None)
+    message = str(caught.value)
+    for needle in (
+        f"{CONFIG_DIR}/profiles/{active}.toml",
+        f'isolation = "{isolation}"',
+        "/.dockerenv",
+        "/run/.containerenv",
+        "never evidence",
+    ):
+        assert needle in message, message
+
+
+@pytest.mark.parametrize("active", ["yolo", "enterprise"])
+def test_a_container_profile_loads_inside_a_container(camp: Path, active: str) -> None:
+    ultracode_off(camp)
+    edit(camp, KNOBS_FILE, 'active = "standard"', f'active = "{active}"')
+    config = load_config(camp, today=TODAY, container=IN_A_CONTAINER)
+    assert config.profile.name == active
+    assert config.container == IN_A_CONTAINER
+
+
+def test_every_profile_file_stays_valid_while_the_host_one_is_active(
+    camp: Path,
+) -> None:
+    # The refusal is about the active profile only: yolo.toml and enterprise.toml
+    # are still read and checked as files on the host.
+    config = load_config(camp, today=TODAY, container=None)
+    assert config.profile.name == "standard"
+    assert {"yolo", "enterprise"} <= set(config.profiles)
+    rel = f"{CONFIG_DIR}/profiles/yolo.toml"
+    edit(camp, rel, 'network = "allowlist"', 'network = "open"')
+    with pytest.raises(Bad, match=re.escape("profiles/yolo.toml")):
+        load_config(camp, today=TODAY, container=None)
+
+
+def test_an_environment_variable_is_never_container_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Any process can set a variable, so setting one must change nothing; the
+    # answer is compared with itself, so the test holds inside a container too.
+    before = container_evidence()
+    for name, value in (
+        ("TAC_CONTAINER", "1"),
+        ("container", "podman"),
+        ("CI", "true"),
+        ("REMOTE_CONTAINERS", "true"),
+    ):
+        monkeypatch.setenv(name, value)
+    assert container_evidence() == before
+
+
+def test_only_a_root_owned_regular_file_is_container_evidence(tmp_path: Path) -> None:
+    mine = tmp_path / "dockerenv"
+    mine.write_text("")
+    linked = tmp_path / "linked"
+    linked.symlink_to("/etc/hosts")
+    # A file the running user made, a link to a root-owned file and a root-owned
+    # folder are not evidence; a root-owned regular file stands in for a marker.
+    assert container_evidence(((str(mine), "Docker"),)) is None
+    assert container_evidence(((str(linked), "Docker"),)) is None
+    assert container_evidence((("/usr", "Docker"),)) is None
+    assert container_evidence((("/no/such/marker", "Docker"),)) is None
+    assert container_evidence((("/etc/hosts", "Docker"),)) == "/etc/hosts (Docker)"
+
+
+def test_config_check_refuses_yolo_on_the_host(
+    camp: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ultracode_off(camp)
+    edit(camp, KNOBS_FILE, 'active = "standard"', 'active = "yolo"')
+    monkeypatch.setattr("tac.config.container_evidence", lambda *_: None)
+    done = CliRunner().invoke(cli, ["config", "check", "--root", str(camp)])
+    assert done.exit_code == 1
+    assert "profiles/yolo.toml" in done.output and "/.dockerenv" in done.output
+
+
+# ---------------------------------------------------------------- mcp
+
+
+def test_the_shipped_profiles_agree_with_mcp_toml(repo: Path) -> None:
+    config = load_config(repo, today=TODAY)
+    assert config.mcp.strict and not config.mcp.servers
+    assert config.profiles["standard"].mcp_servers == "from-conf"
+    assert config.profiles["enterprise"].mcp_servers == "none"
+
+
+NO_SERVERS = "servers = {}"
+ONE_SERVER = 'servers = { docs = { command = "/usr/bin/true" } }'
+
+
+def test_a_profile_with_no_servers_refuses_a_listed_server(camp: Path) -> None:
+    # Checked for every profile, since any one of them may become active.
+    edit(camp, f"{CONFIG_DIR}/mcp.toml", NO_SERVERS, ONE_SERVER)
+    refused(
+        camp,
+        f'{CONFIG_DIR}/profiles/enterprise.toml: mcp_servers = "none"',
+        f"{CONFIG_DIR}/mcp.toml lists docs",
+        "never load",
+    )
+
+
+def test_from_conf_needs_a_strict_mcp_toml(camp: Path) -> None:
+    edit(camp, f"{CONFIG_DIR}/mcp.toml", "strict = true", "strict = false")
+    message = refused(
+        camp,
+        f'{CONFIG_DIR}/profiles/standard.toml: mcp_servers = "from-conf"',
+        f"{CONFIG_DIR}/mcp.toml says strict = false",
+        "user-level servers",
+    )
+    assert "profiles/yolo.toml" in message
+    assert "profiles/enterprise.toml" not in message
+
+
 def test_no_prompts_needs_a_disposable_container(camp: Path) -> None:
     rel = f"{CONFIG_DIR}/profiles/standard.toml"
     edit(camp, rel, 'approvals = "external-effects"', 'approvals = "none"')
@@ -416,7 +547,7 @@ def test_the_active_profile_is_merged_under_profile(camp: Path) -> None:
     # cannot run under, so the project takes ultracode off first.
     ultracode_off(camp)
     edit(camp, KNOBS_FILE, 'active = "standard"', 'active = "enterprise"')
-    config = load_config(camp, today=TODAY)
+    config = load_config(camp, today=TODAY, container=IN_A_CONTAINER)
     [entry] = config.explain("profile.native_delegation")
     assert entry.value == "off"
     assert entry.source == f"{CONFIG_DIR}/profiles/enterprise.toml"
