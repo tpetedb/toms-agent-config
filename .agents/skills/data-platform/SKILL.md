@@ -97,7 +97,8 @@ import pyspark.sql.functions as F
 from dataplatform.gold.gold_task import GoldTask
 
 DESTINATION_TABLE = "client"
-DESTINATION_SCHEMA = "dim"          # ref | dim | fact | agg
+DESTINATION_SCHEMA = "dim"  # ref | dim | fact | agg
+
 
 # fmt: off
 def etl(spark: SparkSession, read_from: str, env: str) -> DataFrame:
@@ -116,6 +117,7 @@ def etl(spark: SparkSession, read_from: str, env: str) -> DataFrame:
         ))
     return df
 # fmt: on
+
 
 def main() -> None:
     gold_task = GoldTask()
@@ -157,8 +159,10 @@ extending the library `Task` base:
 # src/silver/main.py
 from silver.silver import SilverClientProcessor
 
+
 def main() -> None:
     SilverClientProcessor().launch()
+
 
 if __name__ == "__main__":
     main()
@@ -169,17 +173,18 @@ from pyspark.sql import DataFrame, SparkSession
 from dataplatform.core.task import Task
 from dataplatform.utils.metadata_utils import add_metadata_columns
 
+
 class SilverClientProcessor(Task):
     def __init__(self, spark: SparkSession | None = None):
-        super().__init__(spark=spark)                      # gives self.spark, self.logger, self.env, args
+        super().__init__(spark=spark)  # gives self.spark, self.logger, self.env, args
         self.source_table_fqn = f"{self.env}_app.bronze.client"
         self.target_table_fqn = f"{self.env}_app.silver.client"
 
     def _transform_data(self, df: DataFrame) -> DataFrame:
-        df = df.dropDuplicates()                           # silver = dedup + schema-enforce
+        df = df.dropDuplicates()  # silver = dedup + schema-enforce
         return add_metadata_columns(df, run_datetime=self.task_info.task_start_datetime)
 
-    def launch(self) -> None:                              # the one abstract method
+    def launch(self) -> None:  # the one abstract method
         self.logger.info("Silver client → %s", self.target_table_fqn)
         df = self.spark.read.table(self.source_table_fqn)
         self._transform_data(df).writeTo(self.target_table_fqn).createOrReplace()
