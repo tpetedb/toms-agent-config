@@ -937,8 +937,11 @@ tests = [
 
 [[entries]]
 condition = "bypass.policy-tamper-commit"
+why = "the policy schema refuses dropping .agents/** from deny_write, synced or not; an unsynced loosening of deny_read is caught by the stale lock, a synced one commits and is reviewed at layer 3b (CODEOWNERS on .agents/); a floor pin for deny_read is follow-up config"
 tests = [
   "tests/test_bypass.py::test_a_policy_tamper_written_through_a_shell_is_refused_at_commit",
+  "tests/test_bypass.py::test_an_unsynced_loosening_of_deny_read_is_caught_by_the_lock",
+  "tests/test_bypass.py::test_a_resynced_loosening_of_deny_read_is_left_to_codeowners",
   "tests/test_git_hooks_fixture.py::test_a_staged_hand_edit_of_a_generated_file_is_refused",
 ]
 

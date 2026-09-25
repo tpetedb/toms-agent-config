@@ -18,6 +18,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -40,6 +41,7 @@ from tac.runner import (
     open_runner,
 )
 from tac.sync import sync
+from tac.work import Bad
 from tests._gitrepo import GIT, ORIGIN, git, short_dir
 from tests._guard import Fixture, emitted, event, real_checkout, run_guard
 from tests._syncproject import copy_project, replace_in
@@ -218,21 +220,48 @@ def check_staged(root: Path) -> subprocess.CompletedProcess[str]:
 def test_a_policy_tamper_written_through_a_shell_is_refused_at_commit(
     committed: Path,
 ) -> None:
-    """A worker's shell writes past the guard; the commit is refused whether the
-    tamper drops the policy's own protection or only loosens what it denies."""
+    """A worker's shell drops the policy's own protection, `.agents/**` from
+    deny_write; the policy schema refuses it at commit, and a re-sync cannot
+    launder it, since sync loads the same policy and refuses it too."""
     policy = committed / ".agents/config/policy.toml"
-    original = policy.read_text("utf-8")
     replace_in(
         policy, 'deny_write = [".agents/**", ".codex/**"]', 'deny_write = [".codex/**"]'
     )
     done = check_staged(committed)
     assert done.returncode == 1
     assert "deny_write must keep .agents/**" in done.stdout + done.stderr
-    policy.write_text(original, encoding="utf-8")
-    replace_in(policy, '"*.env", ', "")
+    with pytest.raises(Bad, match=re.escape("deny_write must keep .agents/**")):
+        sync(committed, links=False)
+    done = check_staged(committed)
+    assert done.returncode == 1
+    assert "deny_write must keep .agents/**" in done.stdout + done.stderr
+
+
+def test_an_unsynced_loosening_of_deny_read_is_caught_by_the_lock(
+    committed: Path,
+) -> None:
+    """A shell that only loosens what the policy denies, without a sync, is
+    refused at commit because the lock no longer matches the policy."""
+    replace_in(committed / ".agents/config/policy.toml", '"*.env", ', "")
     done = check_staged(committed)
     assert done.returncode == 1, done.stdout + done.stderr
-    assert ".agents/config/policy.toml" in done.stdout + done.stderr
+    assert "generated.lock: stale, policy .agents/config/policy.toml changed" in (
+        done.stdout + done.stderr
+    )
+
+
+def test_a_resynced_loosening_of_deny_read_is_left_to_codeowners(
+    committed: Path, repo: Path
+) -> None:
+    """Nothing pins deny_read below the project, so a loosening that is synced
+    commits: it is a configuration change reviewed at layer 3b, the owner's
+    CODEOWNERS entry on .agents/. A floor pin for deny_read is follow-up config."""
+    replace_in(committed / ".agents/config/policy.toml", '"*.env", ', "")
+    sync(committed, links=False)
+    done = check_staged(committed)
+    assert done.returncode == 0, done.stdout + done.stderr
+    codeowners = (repo / ".github/CODEOWNERS").read_text("utf-8").splitlines()
+    assert any(line.split()[:1] == ["/.agents/"] for line in codeowners)
 
 
 # ---------------------------------------------------------------- an altered receipt
