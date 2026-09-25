@@ -37,6 +37,7 @@ from tac.runner import (
     RunnerError,
     controller_store,
     create_key,
+    default_sandbox,
     ensure_store,
     open_runner,
 )
@@ -404,8 +405,14 @@ def test_observe_is_not_yet_live_without_live_or_with_an_unmet_requirement() -> 
         observe("p", "version", "claude", "root", "fresh", live=True, unmet=())
 
 
-def test_every_live_kind_is_described_and_the_runner_refuses_it(tmp_path: Path) -> None:
+def test_every_live_kind_is_described() -> None:
     assert set(LIVE_OBSERVATIONS) == set(typing.get_args(LiveProbeKind))
+
+
+# Without Seatbelt the runner refuses every probe before it reads the kind, so
+# the refusal that names a live kind is only reachable where the sandbox is.
+@pytest.mark.skipif(default_sandbox() is None, reason="needs macOS sandbox-exec")
+def test_the_runner_refuses_a_live_probe_kind(tmp_path: Path) -> None:
     root = tmp_path / "demo"
     make_repo(root)
     write(
