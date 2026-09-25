@@ -479,10 +479,10 @@ def test_the_macos_job_runs_the_seatbelt_tests_and_is_not_required() -> None:
     assert "shasum -a 256 -c" in install["run"]
 
 
-def test_the_work_job_judges_from_the_base_revision() -> None:
-    job = workflows()["ci.yml"]["jobs"]["work"]
-    # The gates run in this order, each the base revision's copy (the fetch is
-    # tests/test_ci_gates.py's to prove).
+def test_the_gates_job_judges_from_the_base_revision() -> None:
+    job = workflows()["ci.yml"]["jobs"]["gates"]
+    # After the private scan, the gates run in this order, each the base
+    # revision's copy (the fetch is tests/test_ci_gates.py's to prove).
     runs = [step.get("run", "") for step in job["steps"]]
     gates = re.findall(r'^bash "\$RUNNER_TEMP/gates/([\w.-]+)"', "\n".join(runs), re.M)
     assert gates == [

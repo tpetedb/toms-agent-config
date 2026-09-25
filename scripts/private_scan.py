@@ -20,8 +20,31 @@ Three modes:
                        the commit that publishes it.
 
 The term list is scripts/private_terms.txt next to this file (in CI, the base
-revision's copy); the one path whose content the scan skips is that list's own
-path, `scripts/private_terms.txt`, exactly.
+revision's copy). Each line of it is blank or one entry: a kind, one space, and
+the term's UTF-8 bytes in lowercase hex. Hex, so the public list is not
+searchable text and an older scan that greps every file does not flag it; it is
+not a secret, anyone can decode it. The kinds:
+  text      a fixed string, matched without regard to case
+  regex     a Python regular expression, matched with case, line by line
+  identity  an exact `Name <email>` pair, compared without regard to case,
+            that a commit's author or committer header may carry although a
+            term matches it: the owner's own commit identity, which every
+            commit already publishes. It exempts that header only; the same
+            words anywhere else, and any other identity, are still refused.
+The list takes no comments: a free-text line could carry a term past the scan,
+so any other line fails the list, and in a tree the scan reads the list at
+`scripts/private_terms.txt` like any other file less its entry lines, and
+reports each line there that is neither blank nor an entry.
+
+The list covers local home and workspace paths, the owner's business name,
+personal mail addresses and the owner's commit identity (Q22 in TODO.HUMAN.md
+asks whether it moves to the GitHub noreply address), business services and
+clients, private tools and repositories, machine names and private paths,
+subscription details, private watch tools, and the citation keys of the private
+design notes. A change to it needs the owner's review: CODEOWNERS names it.
+
+Add a term:     bash scripts/private_scan.sh --encode text 'the term'
+Read the list:  bash scripts/private_scan.sh --show-terms
 
 Runs on the system python3 from $RUNNER_TEMP in CI, outside any project
 environment, so it uses the standard library alone.
@@ -40,7 +63,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-# The term list's path in any tree: the only content the scan does not read.
+# The term list's path in any tree: its entry lines are the only content the
+# scan does not read, since each is a private term by design.
 TERMS_PATH = "scripts/private_terms.txt"
 # git-lfs reads at most this many bytes of a blob when it looks for a pointer.
 LFS_WINDOW = 1024
@@ -60,10 +84,20 @@ SHOWN = 200
 # Mode of a submodule entry: a commit in another repository, no blob here.
 GITLINK = b"160000"
 KINDS = ("text", "regex", "identity")
+# One entry of the term list, the whole line: a kind, one space, and at least
+# one byte in lowercase hex. Nothing else may follow, so no text rides along.
+ENTRY = re.compile(r"(text|regex|identity) ((?:[0-9a-f]{2})+)")
+ENTRY_BYTES = re.compile(rb"(?:text|regex|identity) (?:[0-9a-f]{2})+")
 # The commit headers that carry an identity, `Name <email> time zone`.
 IDENTITY_HEADERS = ("author", "committer")
 # Git's scissors line: git drops it and everything below it from the message.
 SCISSORS = b"# ------------------------ >8 ------------------------"
+
+
+NOT_AN_ENTRY = (
+    "neither blank nor an entry `<kind> <UTF-8 in lowercase hex>`; the list "
+    f"takes no comments (kinds: {', '.join(KINDS)})"
+)
 
 
 class ScanError(Exception):
@@ -93,23 +127,24 @@ def parse_terms(path: Path) -> list[tuple[str, str]]:
     """The (kind, term) pairs of a term list; a malformed line fails the scan
     rather than silently dropping a term."""
     try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as err:
+        # Bytes, not read_text: universal newlines would hide a carriage return.
+        text = path.read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError) as err:
         raise ScanError(f"cannot read the term list {path}: {err}") from err
     pairs = []
-    for number, raw in enumerate(text.splitlines(), 1):
-        line = raw.strip()
-        if not line or line.startswith("#"):
+    # Split on newlines alone, as the scan reads the list in a tree, so a stray
+    # carriage return fails here too.
+    for number, line in enumerate(text.split("\n"), 1):
+        if not line.strip():
             continue
-        kind, _, encoded = line.partition(" ")
-        if kind not in KINDS:
-            raise ScanError(f"{path}:{number}: the kind must be one of {KINDS}")
+        entry = ENTRY.fullmatch(line)
+        if entry is None:
+            raise ScanError(f"{path}:{number}: {NOT_AN_ENTRY}")
+        kind, encoded = entry.groups()
         try:
             term = bytes.fromhex(encoded).decode("utf-8")
         except ValueError as err:
             raise ScanError(f"{path}:{number}: the term is not UTF-8 in hex") from err
-        if not term:
-            raise ScanError(f"{path}:{number}: an empty term matches everything")
         pairs.append((kind, term))
     if not pairs:
         # An empty list would pass every file; that is a broken list, not a clean
@@ -228,6 +263,26 @@ def content_hits(where: str, data: bytes, terms: Terms) -> list[str]:
     return hits
 
 
+def term_list_hits(where: str, data: bytes, terms: Terms) -> list[str]:
+    """The term list as a tree carries it: every line that is not an entry is
+    read like any other file's, and reported, so a comment cannot carry a term
+    past the scan. An entry line is blanked in place, keeping line numbers."""
+    lines = data.split(b"\n")
+    hits = [
+        f"{where}:{number}: {NOT_AN_ENTRY}"
+        for number, line in enumerate(lines, 1)
+        if line.strip() and not ENTRY_BYTES.fullmatch(line)
+    ]
+    kept = [b"" if ENTRY_BYTES.fullmatch(line) else line for line in lines]
+    return hits + content_hits(where, b"\n".join(kept), terms)
+
+
+def blob_hits(path: str, where: str, data: bytes, terms: Terms) -> list[str]:
+    if path == TERMS_PATH:
+        return term_list_hits(where, data, terms)
+    return content_hits(where, data, terms)
+
+
 @dataclass(frozen=True)
 class Entry:
     """One path of a tree, index or diff: its mode, blob id and path."""
@@ -241,7 +296,7 @@ class Scan:
     def __init__(self, terms: Terms, blobs: Blobs) -> None:
         self.terms = terms
         self.blobs = blobs
-        self.seen: set[str] = set()
+        self.seen: set[tuple[str, bool]] = set()
         self.hits: list[str] = []
 
     def text(self, where: str, text: str) -> None:
@@ -251,13 +306,17 @@ class Scan:
     def entry(self, entry: Entry, where: str) -> None:
         if self.terms.match(entry.path):
             self.hits.append(f"{where}: the path names a private term")
-        if entry.mode == GITLINK or entry.path == TERMS_PATH:
+        if entry.mode == GITLINK:
             return
-        # One blob is read once, under the first path that names it.
-        if entry.oid in self.seen:
+        # One blob is read once per way of reading it, under the first path that
+        # names it: at the term list's path its entry lines are not read, so the
+        # same blob anywhere else is read again, whole.
+        key = (entry.oid, entry.path == TERMS_PATH)
+        if key in self.seen:
             return
-        self.seen.add(entry.oid)
-        self.hits += content_hits(where, self.blobs.read(entry.oid), self.terms)
+        self.seen.add(key)
+        data = self.blobs.read(entry.oid)
+        self.hits += blob_hits(entry.path, where, data, self.terms)
 
     def branch(self, name: str | None) -> None:
         if name:
@@ -375,14 +434,14 @@ def scan_worktree(scan: Scan) -> None:
     listed = git("ls-files", "-z", "--others", "--exclude-standard", "--modified")
     for raw in dict.fromkeys(listed.split(b"\0")):
         path = decode_path(raw)
-        if not raw or path == TERMS_PATH:
+        if not raw:
             continue
         if scan.terms.match(path):
             scan.hits.append(f"{path}: the path names a private term")
         full = Path(os.fsdecode(raw))
         if full.is_symlink() or not full.is_file():
             continue
-        scan.hits += content_hits(path, full.read_bytes(), scan.terms)
+        scan.hits += blob_hits(path, path, full.read_bytes(), scan.terms)
 
 
 def scan_index(scan: Scan) -> None:
