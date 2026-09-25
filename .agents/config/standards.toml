@@ -25,7 +25,7 @@ tool = "towncrier"                       # what assembles the fragments into CHA
 
 # ---- commits: what a commit message must look like.
 [commits]
-convention = "what-and-why"              # or "conventional-1.0.0"; open decision Q4
+convention = "what-and-why"              # or "conventional-1.0.0"; decided Q4, ADR 0002
 max_subject = 72                         # the longest subject line in characters; the floor's bound wins when it is lower
 trailers_required = ["Co-Authored-By"]   # when an agent commits
 
@@ -60,4 +60,4 @@ lint = "required"                        # required | optional (the floor requir
 secrets = "gitleaks"                     # the secret scanner: gitleaks | none (the floor requires gitleaks)
 dependencies = "pip-audit"               # the dependency audit run on the resolved lock
 licences = "allowlist"                   # a test over the resolved lock
-data = "soda-v3-optional"                # only when project.kind includes data-pipeline; open decision Q13
+data = "soda-v3-optional"                # only when project.kind includes data-pipeline; decided Q13, ADR 0002: 1.1 opt-in
