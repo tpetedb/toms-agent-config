@@ -70,9 +70,11 @@ EM_DASH = "\u2014"
 # Box drawing (U+2500 to U+257F) is the one Symbol, Other block a skill may use:
 # the directory trees the shipped skills print.
 BOX_DRAWING = range(0x2500, 0x2580)
-# Emoji that are not Symbol, Other: the variation selector, the zero-width joiner
-# and the skin tone modifiers.
-EMOJI_PARTS = frozenset({0xFE0F, 0x200D, *range(0x1F3FB, 0x1F400)})
+# Emoji that are not Symbol, Other: the variation selector, the zero-width joiner,
+# the enclosing keycap, the skin tone modifiers and the tag characters of flags.
+EMOJI_PARTS = frozenset(
+    {0xFE0F, 0x200D, 0x20E3, *range(0x1F3FB, 0x1F400), *range(0xE0020, 0xE0080)}
+)
 # Examples a skill documents and never runs: vendored verbatim, they drive a
 # browser at import, so they must not be executable either.
 EXAMPLES_DIR = "examples"
@@ -480,6 +482,8 @@ def test_a_clean_skill_passes(tmp_path: Path) -> None:
         ("star", "name: star\n" + GOOD, "\u2b50 ok\n", "pictographs"),
         ("watch", "name: watch\n" + GOOD, "\u231a ok\n", "pictographs"),
         ("joined", "name: joined\n" + GOOD, "a\u200db\n", "pictographs"),
+        ("keycap", "name: keycap\n" + GOOD, "1\u20e3 ok\n", "pictographs"),
+        ("tag", "name: tag\n" + GOOD, "a\U000e0067b\n", "pictographs"),
         ("twice", "name: evil\nname: twice\n" + GOOD, "x\n", "given twice"),
         ("lic", "name: lic\nlicense: see LICENSE\n" + GOOD, "x\n", "LICENSE"),
     ],
@@ -530,3 +534,16 @@ def test_every_script_at_any_depth_is_found(tmp_path: Path) -> None:
 def test_no_shipped_example_is_executable() -> None:
     examples = [p for p in SKILLS.glob(f"*/**/{EXAMPLES_DIR}/*") if p.is_file()]
     assert [p for p in examples if os.access(p, os.X_OK)] == []
+
+
+def test_design_keeps_the_shared_edit_and_the_adr_records_the_rest() -> None:
+    # Section 12's paragraph is a shared edit other orders may touch, so it
+    # stays as declared; what the build added on top lives in ADR 0003.
+    design = (REPO / "docs" / "DESIGN.md").read_text(encoding="utf-8")
+    start = design.index("**As built in M4.** Seventeen skills ship")
+    paragraph = design[start : design.index("\n", start)]
+    assert paragraph.endswith("No caveman skill, package or seed ships.")
+    adr = (REPO / "docs" / "adr" / "0003-skills-provenance-and-lint.md").read_text(
+        encoding="utf-8"
+    )
+    assert "`work-order/SKILL.md` gained `metadata.author: the owner`" in adr
