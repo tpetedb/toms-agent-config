@@ -6,7 +6,7 @@ A ticked box is a hint, never consent. An approval counts only as your own appro
 
 Credential handover convention: every secret goes into `agents.env`, outside the repository (Q17), under the env var named in the item. Never put a secret in chat or in the repository. Agents never receive what a step does not need; the runtime injects it.
 
-Rendered by `tac human render` from 30 items in `.human/approvals/` and `.human/todo.toml`, 11 open, as of 2026-09-25. Never edit this file by hand: `tac human render --check` fails on any difference.
+Rendered by `tac human render` from 31 items in `.human/approvals/` and `.human/todo.toml`, 12 open, as of 2026-09-25. Never edit this file by hand: `tac human render --check` fails on any difference.
 
 ## Agent identity (first: milestone M0 cannot pass without it)
 
@@ -112,3 +112,4 @@ Rendered by `tac human render` from 30 items in `.human/approvals/` and `.human/
       `just github-labels --dry-run` reads the public label list with no credential and prints what would be created or updated;
       `just github-labels --apply` creates and updates them with your own `gh`, reads them back, and never deletes a label the file does not declare.
       Waits: M2 (the issue forms name these labels; GitHub drops a label that does not exist).
+- [ ] Q24 Move the runner key and the tac-bot token into the login keychain: Run just runner-keychain on the host once, then restart the runner

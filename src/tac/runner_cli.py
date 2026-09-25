@@ -6,12 +6,14 @@ import json
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import click
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 import tac
+from tac.keychain import BOT_TOKEN, SECURITY, SIGNING_KEY, Keychain, KeychainError
 from tac.receipts import (
     ORDER_PATTERN,
     RECEIPTS_GLOB,
@@ -35,8 +37,13 @@ from tac.runner import (
     controller_store,
     create_key,
     ensure_store,
+    file_key,
+    inside_sandbox,
     install_command,
+    key_path,
+    keychain_key,
     open_runner,
+    private_hex,
     pub_file_text,
     receipt_from,
     refuse_agent_parent,
@@ -145,9 +152,16 @@ def runner_install(repo: Path) -> None:
 )
 def runner_serve(repo: Path, repository: str | None) -> None:
     """Serve the socket in the foreground until interrupted; host only."""
+    # Imported here: tac.run reads the pipelines, which the other runner
+    # commands never need.
+    from tac.run import gate_recipes
+
     try:
         refuse_agent_parent(os.environ)
-        runner = open_runner(repo, os.environ, repository=repository)
+        top = repo_top(repo)
+        runner = open_runner(
+            top, os.environ, repository=repository, recipes=gate_recipes(top)
+        )
         require_own_venv(runner.store, Path(tac.__file__))
         server = bind(runner)
     except (RunnerError, ReceiptError) as exc:
@@ -160,6 +174,101 @@ def runner_serve(repo: Path, repository: str | None) -> None:
         click.echo("tac runner stopped")
     finally:
         server.server_close()
+
+
+@runner_group.group("keychain")
+def keychain_group() -> None:
+    """The runner's two secrets in the login keychain (build condition C6)."""
+
+
+security_option = click.option(
+    "--security",
+    default=SECURITY,
+    show_default=True,
+    hidden=True,
+    help="The security executable, by absolute path; tests pass a fake.",
+)
+
+
+@keychain_group.command("import")
+@repo_option
+@security_option
+@click.option(
+    "--token-stdin",
+    is_flag=True,
+    help="Read the tac-bot token from stdin instead of a hidden prompt.",
+)
+def keychain_import(repo: Path, security: str, token_stdin: bool) -> None:
+    """Host only: move the signing key file into the login keychain, store the
+    tac-bot token beside it, then remove the file. Restart the runner after."""
+    try:
+        refuse_agent_parent(os.environ)
+        if inside_sandbox():
+            raise RunnerError(
+                "this process runs inside a sandbox; the keychain import runs "
+                "only in the owner's own terminal on the host"
+            )
+        top = repo_top(repo)
+        store = ensure_store(controller_store(top, os.environ))
+        chain = Keychain(store.name, security)
+        path = key_path(store)
+        private = file_key(store) if path.exists() else keychain_key(store, chain)
+        if private is None:
+            raise RunnerError("no signing key to move; run `just runner-init` first")
+        chain.write(SIGNING_KEY, private_hex(private))
+        if chain.read(SIGNING_KEY) != private_hex(private):
+            raise RunnerError("the keychain returned another key; the file is kept")
+        token = (
+            sys.stdin.read()
+            if token_stdin
+            else click.prompt("tac-bot token", hide_input=True)
+        ).strip()
+        chain.write(BOT_TOKEN, token)
+        if chain.read(BOT_TOKEN) != token:
+            raise RunnerError("the keychain returned another token")
+    except (RunnerError, KeychainError) as exc:
+        fail(str(exc))
+        return
+    if path.exists():
+        path.unlink()
+    click.echo(
+        f"moved the signing key into {chain.service(SIGNING_KEY)} and stored "
+        f"the tac-bot token in {chain.service(BOT_TOKEN)}; restart the runner"
+    )
+
+
+@runner_group.command("credential", hidden=True)
+@click.option("--slug", required=True, help="The controller store's slug.")
+@security_option
+@click.argument("operation")
+def runner_credential(slug: str, security: str, operation: str) -> None:
+    """A git credential helper for the runner's own git: the tac-bot token for
+    https://github.com, read from the keychain, answered on `get` only. The
+    runner's git is its one consumer, so an agent session or a sandboxed
+    process asking for it is refused before the keychain is read."""
+    if operation != "get":
+        return
+    try:
+        refuse_agent_parent(os.environ)
+        if inside_sandbox():
+            raise RunnerError(
+                "this process runs inside a sandbox; the tac-bot token goes only "
+                "to the runner's own git on the host"
+            )
+    except RunnerError as exc:
+        fail(str(exc))
+        return
+    fields = dict(
+        line.split("=", 1) for line in sys.stdin.read().splitlines() if "=" in line
+    )
+    if fields.get("protocol") != "https" or fields.get("host") != "github.com":
+        return
+    try:
+        token = Keychain(slug, security).read(BOT_TOKEN)
+    except KeychainError as exc:
+        fail(str(exc))
+        return
+    click.echo(f"username=x-access-token\npassword={token}")
 
 
 @runner_group.command("status")

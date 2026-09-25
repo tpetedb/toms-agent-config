@@ -8,8 +8,15 @@ hand it an exit code or a payload to sign (build condition C3).
 
 It serves only from its own venv in the controller store, built non-editable
 from the stamped package, so it never imports code from a checkout an agent can
-write. The signing key is a file in the controller store, mode 0600, until the
-keychain backend of milestone M3 (build condition C6) replaces it.
+write. The signing key lives in the macOS login keychain (build condition C6,
+`tac runner keychain import` moves it there); a key file in the controller
+store, mode 0600, is still read with a warning until the owner moves it.
+
+It issues the single-use dispatch tokens the handoff guard consumes (design
+section 5): only its own run loop issues one, in process, never a socket
+request; a token is consumed over the socket by an atomic rename, so of two
+concurrent spawns exactly one gets it, and a token presented with the wrong
+run, stage or hash is burned with the refusal.
 
 A gate runs code a builder wrote: the justfile recipe, an order's criteria as
 shell strings, the tests `just verify` starts. The runner never runs that code
@@ -51,7 +58,7 @@ import sys
 import tempfile
 import time
 import tomllib
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
@@ -62,6 +69,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 from pydantic import ValidationError as PydanticValidationError
 
+from tac.keychain import SIGNING_KEY, Keychain, KeychainError, system_keychain
 from tac.probes import project_trust
 from tac.receipts import (
     ID_PATTERN,
@@ -155,6 +163,17 @@ SHORT_TMP = 40
 GIT_STATUS_TIMEOUT_S = 120
 UNIX_PERMS_STORE = 0o700
 UNIX_PERMS_KEY = 0o600
+TOKENS = "tokens"
+USED = "used"
+TOKEN_PATTERN = r"^[0-9a-f]{64}$"
+SHA256_HEX = r"^[0-9a-f]{64}$"
+SESSION_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+# The guard waits no longer than this for the runner: its own deadline is 8 s.
+GUARD_TIMEOUT_S = 5.0
+MOVE_KEY = (
+    "the signing key is still a file in the controller store; run `just "
+    "runner-keychain` on the host to move it into the login keychain"
+)
 
 
 class RunnerError(Exception):
@@ -331,8 +350,12 @@ def key_path(store: Path) -> Path:
     return store / KEY_NAME
 
 
-def create_key(store: Path) -> Ed25519PrivateKey:
-    """Generate the signing key once; an existing key is never replaced."""
+def create_key(store: Path, keychain: Keychain | None = None) -> Ed25519PrivateKey:
+    """Generate the signing key once; an existing key, in the keychain or the
+    store, is never replaced."""
+    found = keychain_key(store, keychain)
+    if found is not None:
+        return found
     path = key_path(store)
     private = Ed25519PrivateKey.generate()
     pem = private.private_bytes(
@@ -343,13 +366,56 @@ def create_key(store: Path) -> Ed25519PrivateKey:
     try:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, UNIX_PERMS_KEY)
     except FileExistsError:
-        return load_key(store)
+        return file_key(store)
     with os.fdopen(fd, "wb") as handle:
         handle.write(pem)
     return private
 
 
-def load_key(store: Path) -> Ed25519PrivateKey:
+def keychain_key(
+    store: Path, keychain: Keychain | None = None
+) -> Ed25519PrivateKey | None:
+    """The signing key from the login keychain, or None when it holds none."""
+    chain = keychain if keychain is not None else system_keychain(store.name)
+    if chain is None:
+        return None
+    try:
+        if not chain.exists(SIGNING_KEY):
+            return None
+        raw = bytes.fromhex(chain.read(SIGNING_KEY))
+        return Ed25519PrivateKey.from_private_bytes(raw)
+    except (KeychainError, ValueError) as exc:
+        raise RunnerError(f"the keychain's signing key cannot be used: {exc}") from exc
+
+
+def private_hex(private: Ed25519PrivateKey) -> str:
+    return private.private_bytes(
+        serialization.Encoding.Raw,
+        serialization.PrivateFormat.Raw,
+        serialization.NoEncryption(),
+    ).hex()
+
+
+def load_key(
+    store: Path,
+    keychain: Keychain | None = None,
+    warn: Callable[[str], object] | None = None,
+) -> Ed25519PrivateKey:
+    """The keychain's signing key first, else the store's key file, with a
+    warning that names the step which moves it (build condition C6)."""
+    found = keychain_key(store, keychain)
+    if found is not None:
+        return found
+    private = file_key(store)
+    (warn or _stderr)(f"tac runner: {MOVE_KEY}")
+    return private
+
+
+def _stderr(message: str) -> None:
+    print(message, file=sys.stderr)
+
+
+def file_key(store: Path) -> Ed25519PrivateKey:
     path = key_path(store)
     if path.is_symlink():
         # A link would put the key outside the subtree the gate sandbox denies.
@@ -513,7 +579,28 @@ class Probe(BaseModel):
     order_id: str | None = Field(default=None, pattern=ORDER_PATTERN)
 
 
-Request = Annotated[Ping | PubKey | Gate | Probe, Field(discriminator="op")]
+class TokenConsume(BaseModel):
+    """The guard asks to spend a dispatch token for one spawn: what it names
+    must equal what the token was issued for, or the token is burned."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    op: Literal["token.consume"]
+    token: str = Field(pattern=TOKEN_PATTERN)
+    run_id: str = Field(pattern=ID_PATTERN)
+    stage: str = Field(pattern=ID_PATTERN)
+    sha256: str = Field(pattern=SHA256_HEX)
+    kind: Literal["workflow", "agent"]
+    session_id: str = Field(pattern=SESSION_PATTERN)
+
+
+TokenKind = Literal["workflow", "agent"]
+# Ops only the runner's own process performs; a socket request for one is
+# refused by name rather than as an unknown op.
+IN_PROCESS_OPS = frozenset({"token.issue"})
+
+Request = Annotated[
+    Ping | PubKey | Gate | Probe | TokenConsume, Field(discriminator="op")
+]
 REQUEST = TypeAdapter(Request)
 
 
@@ -538,6 +625,10 @@ def origin_repository(root: Path) -> str:
     if done.returncode != 0 or match is None:
         raise RunnerError("cannot name the repository: no usable origin remote")
     return f"{match.group(1)}/{match.group(2)}"
+
+
+def utc_text() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 def _sha(data: bytes) -> str:
@@ -570,6 +661,8 @@ class Runner:
             return self.gate(request)
         if isinstance(request, Probe):
             return self.probe(request)
+        if isinstance(request, TokenConsume):
+            return self.consume_token(request)
         if isinstance(request, PubKey):
             return {"pem": public_pem(self.private.public_key())}
         return {"pong": True, "key_id": key_id(self.private.public_key())}
@@ -825,8 +918,92 @@ class Runner:
         }
         return self.issue("probe", binding, observed)
 
+    # -- dispatch tokens
+
+    def tokens(self) -> Path:
+        folder = self.store / TOKENS
+        (folder / USED).mkdir(parents=True, exist_ok=True, mode=UNIX_PERMS_STORE)
+        return folder
+
+    def issue_token(
+        self, run_id: str, stage: str, sha256: str, kind: TokenKind, session_id: str
+    ) -> str:
+        """A single-use token bound to the run, the stage, the session the run
+        loop starts for it and the sha256 of the exact bytes it authorises (a
+        prompt or a Workflow script). Called by the run loop in this process
+        only; the store keeps its hash, never the token."""
+        for label, value, pattern in (
+            ("run id", run_id, ID_PATTERN),
+            ("stage", stage, ID_PATTERN),
+            ("sha256", sha256, SHA256_HEX),
+            ("session id", session_id, SESSION_PATTERN),
+        ):
+            if not re.match(pattern, value):
+                raise RunnerError(f"{label} {value!r} does not match {pattern}")
+        token = os.urandom(32).hex()
+        record = {
+            "run_id": run_id,
+            "stage": stage,
+            "sha256": sha256,
+            "kind": kind,
+            "session_id": session_id,
+            "issued": utc_text(),
+        }
+        path = self.tokens() / f"{hashlib.sha256(token.encode()).hexdigest()}.json"
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, UNIX_PERMS_KEY)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, sort_keys=True) + "\n")
+        return token
+
+    def consume_token(self, request: TokenConsume) -> dict[str, JsonValue]:
+        """Spend a token once. The rename is atomic, so of two consumers of the
+        same token one wins and the other finds nothing; a token presented with
+        the wrong binding is moved to used all the same, so a guessed hash
+        cannot be retried. The session is part of the binding: every dispatched
+        session can read the others' records in the worker store, so a token
+        copied into another session's record is burned, never spent."""
+        folder = self.tokens()
+        name = f"{hashlib.sha256(request.token.encode()).hexdigest()}.json"
+        used = folder / USED / name
+        try:
+            os.rename(folder / name, used)
+        except FileNotFoundError:
+            raise RunnerError(
+                "dispatch token refused: unknown, or already used by another spawn"
+            ) from None
+        try:
+            record = json.loads(used.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RunnerError(
+                f"dispatch token refused: its record is unreadable ({exc})"
+            ) from exc
+        wrong = [
+            f"{key} {getattr(request, key)!r} is not the {key} it was issued for"
+            for key in ("run_id", "stage", "sha256", "kind", "session_id")
+            if record.get(key) != getattr(request, key)
+        ]
+        spent = {
+            "session_id": request.session_id,
+            "at": utc_text(),
+            "allowed": not wrong,
+        }
+        used.with_suffix(".spent.json").write_text(
+            json.dumps(spent, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        if wrong:
+            raise RunnerError("dispatch token refused and burned: " + "; ".join(wrong))
+        return {
+            "allowed": True,
+            "run_id": request.run_id,
+            "stage": request.stage,
+            "kind": request.kind,
+        }
+
     def issue(
-        self, kind: Literal["gate", "probe"], binding: Binding, observed: dict
+        self,
+        kind: Literal["gate", "probe", "dispatch", "effect"],
+        binding: Binding,
+        observed: dict,
     ) -> dict[str, JsonValue]:
         signed = sign(self.private, kind, binding, observed)
         folder = self.store / "receipts" / binding.run_id
@@ -844,13 +1021,17 @@ def open_runner(
     repository: str | None = None,
     recipes: Mapping[str, int] = DEFAULT_GATE_RECIPES,
     search_path: str | None = None,
+    keychain: Keychain | None = None,
+    warn: Callable[[str], object] | None = None,
 ) -> Runner:
+    """The runner for this repository: the keychain's signing key first, else
+    the store's key file with a warning that names `just runner-keychain`."""
     top = repo_top(root)
     store = ensure_store(controller_store(top, environ))
     return Runner(
         root=top,
         store=store,
-        private=load_key(store),
+        private=load_key(store, keychain, warn),
         repository=repository or origin_repository(top),
         recipes=recipes,
         search_path=search_path if search_path is not None else environ.get("PATH", ""),
@@ -873,6 +1054,12 @@ def socket_path(store: Path) -> Path:
 def answer(runner: Runner, line: bytes) -> dict[str, JsonValue]:
     try:
         raw = json.loads(line)
+        if isinstance(raw, dict) and raw.get("op") in IN_PROCESS_OPS:
+            return {
+                "ok": False,
+                "error": f"{raw['op']} is performed only by the runner's own run "
+                "loop, never over the socket",
+            }
         return {"ok": True, "result": runner.handle(raw)}
     except json.JSONDecodeError:
         return {"ok": False, "error": "request is not JSON"}
@@ -955,19 +1142,31 @@ def connect(
         sock.close()
 
 
-def request(path: Path, payload: Mapping[str, object]) -> dict[str, JsonValue]:
-    """One request, one reply; a refusal is raised as RunnerError."""
-    with connect(path) as sock:
-        sock.sendall(json.dumps(dict(payload)).encode("utf-8") + b"\n")
-        with sock.makefile("rb") as stream:
-            line = stream.readline()
-    if not line:
+def request(
+    path: Path, payload: Mapping[str, object], timeout: float | None = None
+) -> dict[str, JsonValue]:
+    """One request, one reply; a refusal, a lost runner or a torn reply is
+    raised as RunnerError."""
+    try:
+        with connect(path, *(() if timeout is None else (timeout,))) as sock:
+            sock.sendall(json.dumps(dict(payload)).encode("utf-8") + b"\n")
+            with sock.makefile("rb") as stream:
+                line = stream.readline(MAX_REQUEST_BYTES + 1)
+    except OSError as exc:
+        raise RunnerError(f"the runner did not answer: {exc}") from exc
+    if not line.endswith(b"\n"):
         raise RunnerError("the runner closed the connection without a reply")
-    reply = json.loads(line)
+    try:
+        reply = json.loads(line)
+    except json.JSONDecodeError as exc:
+        raise RunnerError("the runner's reply is not JSON") from exc
+    if not isinstance(reply, dict):
+        raise RunnerError("the runner's reply is not an object")
     if not reply.get("ok"):
         raise RunnerError(str(reply.get("error", "refused")))
-    result = reply["result"]
-    assert isinstance(result, dict)
+    result = reply.get("result")
+    if not isinstance(result, dict):
+        raise RunnerError("the runner's reply carries no result")
     return result
 
 
