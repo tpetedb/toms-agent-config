@@ -81,6 +81,11 @@ ENV = "/usr/bin/env"
 GIT = "/usr/bin/git"
 # Claude Code names the project root for every hook command.
 CLAUDE_ROOT = "$CLAUDE_PROJECT_DIR"
+# The guard's own deny class: a hook that cannot even start the guard (no git
+# work tree around a Codex session, the stamped guard gone) refuses a tool call
+# there and lets every other event pass, since a stop sent back for a guard
+# that is not there would come back on every stop.
+DENY_CLASS = frozenset({"PreToolUse"})
 # A matcher that is a plain list of tool names, which can be merged with others.
 NAMES = re.compile(r"^[A-Za-z0-9_]+(\|[A-Za-z0-9_]+)*$")
 # The guard's path goes inside double quotes in a shell command.
@@ -242,9 +247,11 @@ def claude(config: Config, root: Path, outputs: list[str]) -> dict[str, Any]:
 
 
 def hook_command(config: Config, client: str, event: str) -> str:
-    """The shell command a client runs for one event: an empty environment
-    with a fixed PATH, the pinned interpreter in isolated mode, and the stamped
-    guard by absolute path (build condition C2)."""
+    """The shell command a client runs for one event: the stamped guard found by
+    absolute path, then started from an empty environment with a fixed PATH and
+    the pinned interpreter in isolated mode (build condition C2). A guard that
+    cannot be found fails the way the guard itself fails: closed before a tool
+    call, open with a note everywhere else."""
     guard = config.hooks.guard
     if not SAFE_SCRIPT.match(guard.script) or ".." in guard.script.split("/"):
         raise Bad(
@@ -257,12 +264,19 @@ def hook_command(config: Config, client: str, event: str) -> str:
         root = CLAUDE_ROOT
     else:
         root = "$(" + " ".join([*env, GIT, "rev-parse", "--show-toplevel"]) + ")"
+    missing = shlex.quote("tac guard: no stamped guard in this checkout; run tac init")
+    code = 2 if event in DENY_CLASS else 0
+    find = (
+        f'g="{root}/{guard.script}" && [ -f "$g" ] '
+        f"|| {{ echo {missing} >&2; exit {code}; }};"
+    )
     words = [
+        find,
         *env,
         *(f'{name}="${name}"' for name in HOOK_ENV),
         shlex.quote(guard.python),
         "-I",
-        f'"{root}/{guard.script}"',
+        '"$g"',
         "--client",
         client,
         "--event",

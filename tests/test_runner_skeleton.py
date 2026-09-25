@@ -672,6 +672,7 @@ def test_a_gate_cannot_reach_a_unix_socket_outside_its_scratch(
         assert not connected_to(srv)
 
 
+@pytest.mark.slow
 @seatbelt
 @needs_just
 @pytest.mark.parametrize(
@@ -790,6 +791,9 @@ def prepare_targets(repo: Path, targets: dict[str, Path]) -> dict[Path, bytes | 
     return before
 
 
+# Slow: sixteen sandboxed gates; the pre-push fast set leaves them to the full
+# suite and keeps the single sandboxed gate tests around them.
+@pytest.mark.slow
 @seatbelt
 @needs_just
 @pytest.mark.parametrize("worktree", [False, True], ids=["main-clone", "worktree"])

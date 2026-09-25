@@ -452,6 +452,38 @@ def test_the_rendered_command_runs_the_stamped_guard_in_a_hostile_session(
     assert "tac guard" not in stop.stdout + stop.stderr
 
 
+@pytest.mark.parametrize("client", ["claude", "codex"])
+def test_a_hook_that_finds_no_guard_refuses_a_tool_call_and_lets_a_stop_end(
+    tmp_path: Path, client: str
+) -> None:
+    """Outside a git work tree (Codex asks git for the root) or in a project
+    without the stamped guard (Claude), the rendered command starts nothing: it
+    refuses before a tool and lets a stop end, so no stop is sent back forever."""
+    probe = subprocess.run(
+        ["/usr/bin/git", "rev-parse", "--show-toplevel"],
+        cwd=tmp_path,
+        capture_output=True,
+        check=False,
+    )
+    if probe.returncode == 0:
+        pytest.skip("the temporary folder sits inside a git work tree")
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)}
+    env["CLAUDE_PROJECT_DIR"] = str(tmp_path)
+    for name, code in (("PreToolUse", 2), ("Stop", 0)):
+        ran = subprocess.run(
+            ["/bin/sh", "-c", rendered(REPO, client, name)],
+            input=json.dumps(event(name)),
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,
+            env=env,
+            check=False,
+            timeout=60,
+        )
+        assert ran.returncode == code, (name, ran.stderr)
+        assert "tac guard: no stamped guard in this checkout" in ran.stderr
+
+
 def test_the_lock_records_the_guard_and_tac_check_sees_it_change(
     real: Fixture,
 ) -> None:

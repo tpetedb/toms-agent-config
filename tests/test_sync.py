@@ -492,7 +492,14 @@ def _guard_constant(name: str) -> object:
         if isinstance(node, ast.Assign) and any(
             isinstance(t, ast.Name) and t.id == name for t in node.targets
         ):
-            return ast.literal_eval(node.value)
+            value = node.value
+            if (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Name)
+                and value.func.id == "frozenset"
+            ):
+                return frozenset(ast.literal_eval(value.args[0]))
+            return ast.literal_eval(value)
     raise AssertionError(f"hooks/run.py has no {name}")
 
 
@@ -500,6 +507,8 @@ def test_the_adapters_and_the_guard_agree_on_events_and_environment() -> None:
     # The guard cannot import tac, so it keeps its own copy of both tables.
     assert _guard_constant("EVENTS") == adapters.GUARD_EVENTS
     assert _guard_constant("PASS_ENV") == adapters.HOOK_ENV
+    # A hook that cannot find the guard fails the way the guard fails.
+    assert _guard_constant("DENY_CLASS") == adapters.DENY_CLASS
 
 
 def test_codex_hooks_use_the_tool_names_codex_reports(tmp_path: Path) -> None:

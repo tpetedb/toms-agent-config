@@ -1489,17 +1489,32 @@ _TAIL = " --deadline-s 8 --path " + _PATH
 _CODEX_ROOT = f"$(/usr/bin/env -i PATH={_PATH} /usr/bin/git rev-parse --show-toplevel)"
 
 
+def _find(root: str, event: str) -> str:
+    # The stamped guard is found first; one that is not there refuses a tool
+    # call and lets a stop end, as the guard's own failures do.
+    code = 2 if event == "PreToolUse" else 0
+    return (
+        f'g="{root}/.agents/hooks/run.py" && [ -f "$g" ] || '
+        "{ echo 'tac guard: no stamped guard in this checkout; run tac init' >&2; "
+        f"exit {code}; }}; "
+    )
+
+
 def _claude_hook(event: str) -> str:
     return (
-        _ENV + '"$CLAUDE_PROJECT_DIR/.agents/hooks/run.py" '
-        f"--client claude --event {event}" + _TAIL
+        _find("$CLAUDE_PROJECT_DIR", event)
+        + _ENV
+        + f'"$g" --client claude --event {event}'
+        + _TAIL
     )
 
 
 def _codex_hook(event: str) -> str:
     return (
-        _ENV + f'"{_CODEX_ROOT}/.agents/hooks/run.py" '
-        f"--client codex --event {event}" + _TAIL
+        _find(_CODEX_ROOT, event)
+        + _ENV
+        + f'"$g" --client codex --event {event}'
+        + _TAIL
     )
 
 

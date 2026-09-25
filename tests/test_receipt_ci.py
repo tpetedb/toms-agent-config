@@ -33,6 +33,11 @@ def verify_committed(root, files, *args):
 """
 
 
+# Slow: each case builds a base and a candidate repository and runs the CI
+# script over both, so the pre-push fast set leaves it to the full suite.
+pytestmark = pytest.mark.slow
+
+
 @pytest.fixture
 def runner_key() -> Ed25519PrivateKey:
     return Ed25519PrivateKey.generate()

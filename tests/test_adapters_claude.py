@@ -173,9 +173,9 @@ def test_every_hook_runs_the_stamped_guard_isolated(root: Path) -> None:
             command = hook["command"]
             # An empty environment, the pinned interpreter isolated, the stamped
             # guard by the project root Claude Code hands every hook (C2).
-            assert command.startswith("/usr/bin/env -i PATH=/usr/bin:/bin:")
-            assert " /usr/bin/python3 -I " in command
-            assert '"$CLAUDE_PROJECT_DIR/.agents/hooks/run.py"' in command
+            assert command.startswith('g="$CLAUDE_PROJECT_DIR/.agents/hooks/run.py" ')
+            assert "; /usr/bin/env -i PATH=/usr/bin:/bin:" in command
+            assert ' /usr/bin/python3 -I "$g" ' in command
             assert f"--client claude --event {event} " in command
             assert "hooks/run.py" not in command.replace(".agents/hooks/run.py", "")
             assert hook["timeout"] == load_config(root).hooks.guard.timeout_s

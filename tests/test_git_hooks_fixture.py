@@ -56,9 +56,14 @@ GOOD = "Add a farewell so the fixture holds a second change"
 TRAILER = "Co-Authored-By: A Model <model@example.com>"
 CLOSED = "http://127.0.0.1:9"
 
-pytestmark = pytest.mark.skipif(
-    not PREK.is_file() or UV is None, reason="prek or uv is not installed"
-)
+# Slow: every case builds a repository, installs prek and runs git end to end,
+# so the pre-push fast set leaves it to the full suite.
+pytestmark = [
+    pytest.mark.slow,
+    pytest.mark.skipif(
+        not PREK.is_file() or UV is None, reason="prek or uv is not installed"
+    ),
+]
 
 
 @dataclass(frozen=True)
