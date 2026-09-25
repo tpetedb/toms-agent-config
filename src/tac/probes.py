@@ -3,6 +3,10 @@
 The launch is `<client> --version` and nothing else, so no model session starts
 and no token is spent. Trust is read from each client's own user config, taking
 only the one key that says whether this checkout is trusted.
+
+The live probes of acceptance 8 are defined here as observations the runner will
+make of a real client session; until it makes them, each is refused by name with
+NotYetLive, so nothing reports a live probe passed without a runner receipt.
 """
 
 from __future__ import annotations
@@ -15,6 +19,9 @@ import tomllib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import get_args
+
+from tac.config_schema import LiveProbeKind
 
 # The harnesses release 1 enforces, by the executable each installs.
 CLIENTS = {"claude": "claude", "codex": "codex"}
@@ -203,3 +210,112 @@ def codex_hook_trust(root: Path) -> Trust:
         f"hooks in {', '.join(sources)} run only once approved by hash; "
         f"the owner's step: {CODEX_HOOK_STEP}",
     )
+
+
+# ---------------------------------------------------------------- live probes
+
+# Where a live probe starts its session, and which kind of session it is.
+PLACES = ("root", "subdir", "worktree")
+SESSIONS = ("fresh", "resumed", "headless")
+# What each live kind has the client do, and what the receipt must show. The
+# receipt records what the client actually did as well (design section 18, C1).
+LIVE_OBSERVATIONS: Mapping[str, tuple[str, str]] = {
+    "spawn-missing-token": (
+        "a native spawn from a session the runner dispatched, whose record holds "
+        "no token",
+        "the guard refuses the spawn: exit 2 and a deny",
+    ),
+    "spawn-altered-token": (
+        "a native spawn presenting its dispatch token with one character changed",
+        "the guard refuses the spawn and the runner burns nothing else",
+    ),
+    "spawn-reused-token": (
+        "two spawns presenting the same single-use dispatch token",
+        "exactly one spawn passes and the other is refused",
+    ),
+    "spawn-tool-absent": (
+        "a session under the delegation-off profile asking for its spawn tool",
+        "the spawn tool is absent from the session",
+    ),
+    "runner-lost": (
+        "a spawn whose token check loses the runner before the reply",
+        "the guard refuses the spawn",
+    ),
+    "hook-timeout": (
+        "a spawn whose checker does not answer within the guard's deadline",
+        "the guard answers deny before the client's hook timeout; the receipt "
+        "records what the client then did",
+    ),
+    "keychain-token-denied": (
+        "`security find-generic-password` for the tac-bot token entry inside the "
+        "sandboxed session",
+        "the read fails",
+    ),
+    "keychain-key-denied": (
+        "`security find-generic-password` for the runner signing key entry inside "
+        "the sandboxed session",
+        "the read fails",
+    ),
+    "ruleset-owner-review": (
+        "a pull request by the machine account that edits src/tac without the "
+        "owner's review",
+        "the ruleset refuses the merge",
+    ),
+    "push-required-checks": (
+        "a push to the default branch without the required checks",
+        "the ruleset refuses the push",
+    ),
+    "classifier-script-computed": (
+        "a registered Workflow run in auto mode",
+        "the classifier marks the workflow's prompts as script-computed",
+    ),
+}
+
+
+class NotYetLive(Exception):
+    """A live probe that does not run here, and why: not asked for with --live,
+    a requirement not met, or a kind the runner does not observe yet."""
+
+    def __init__(self, probe: str, reason: str) -> None:
+        super().__init__(f"{probe} is not live yet: {reason}")
+        self.probe = probe
+        self.reason = reason
+
+
+@dataclass(frozen=True, slots=True)
+class Observation:
+    """What the runner starts for a live probe and what it holds the client to."""
+
+    probe: str
+    kind: str
+    harness: str | None
+    place: str
+    session: str
+    does: str
+    expect: str
+
+
+def live_kind(kind: str) -> bool:
+    return kind in get_args(LiveProbeKind)
+
+
+def observe(
+    probe: str,
+    kind: str,
+    harness: str | None,
+    place: str,
+    session: str,
+    *,
+    live: bool,
+    unmet: Sequence[str],
+) -> Observation:
+    """The observation a live probe asks of the runner, or NotYetLive: while any
+    requirement is unmet, or without --live, nothing is started."""
+    if not live_kind(kind):
+        raise ValueError(f"{kind!r} is not a live probe kind")
+    if unmet:
+        raise NotYetLive(probe, "; ".join(unmet))
+    if not live:
+        raise NotYetLive(probe, "not asked for; run with --live on the host")
+    does, expect = LIVE_OBSERVATIONS[kind]
+    return Observation(probe, kind, harness, place, session, does, expect)
