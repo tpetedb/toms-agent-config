@@ -7,16 +7,20 @@
 # .agents/, extracted with git archive and built outside the checkout, so a pull
 # request that edits .agents/lib/tac cannot change how its own receipts are read.
 #
+# The base's verifier runs even when no receipt is committed: the base's
+# .agents/config/receipts.toml may require some of every changed order.
+#
 # Usage: scripts/ci_verify_receipts.sh <base-revision> <owner/name>
-# Exit:  0 when there are no receipts or all verify; 1 when any is refused or the
-#        base has no verifier to judge them with; 2 on a usage error.
+# Exit:  0 when all verify and none required is missing; 1 when any is refused
+#        or missing, or receipts arrive at a base with no verifier; 2 on a usage
+#        error.
 set -euo pipefail
 
 RECEIPTS_GLOB="work/orders/*/receipts/*.json"
 VERIFIER=".agents/lib/tac/src/tac/receipts.py"
 
 usage() {
-  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 case "${1:-}" in
@@ -42,12 +46,12 @@ base="$(git rev-parse --verify --quiet "${base_ref}^{commit}")" || {
 # A glob that matches nothing stays literal, so test the first expansion.
 # shellcheck disable=SC2086  # reason: the glob has to expand
 set -- $RECEIPTS_GLOB
-if [ ! -e "$1" ]; then
-  echo "no committed receipts"
-  exit 0
-fi
-
 if ! git cat-file -e "${base}:${VERIFIER}" 2>/dev/null; then
+  # Before the first stamped verifier lands nothing can be required either.
+  if [ ! -e "$1" ]; then
+    echo "no committed receipts"
+    exit 0
+  fi
   printf 'ci_verify_receipts: the base revision %s has no receipt verifier, so the %s committed receipt(s) cannot be judged\n' \
     "${base:0:12}" "$#" >&2
   exit 1

@@ -17,6 +17,7 @@ from tests._gitrepo import (
     REPOSITORY,
     commit_all,
     copy_toolchain,
+    expectations,
     git,
     make_repo,
     write,
@@ -55,7 +56,8 @@ def receipt(root: Path, key: Ed25519PrivateKey) -> SignedReceipt:
     bound = Binding(
         repository=REPOSITORY,
         revision=revision,
-        run_id="run-1",
+        # The acceptance gate expects an order's receipts under its own run.
+        run_id="demo",
         stage="verify",
         policy_hash=policy_hash(root, revision),
         order_id="demo",
@@ -155,3 +157,32 @@ def test_a_receipt_for_a_revision_already_on_the_base_is_refused(
     code, output = run_ci(root)
     assert code == 1, output
     assert "is already on the base" in output
+
+
+def test_a_receipt_followed_by_more_code_is_refused_by_the_base_verifier(
+    tmp_path: Path, runner_key: Ed25519PrivateKey
+) -> None:
+    root = base_repo(tmp_path, runner_key, verifier=True)
+    commit_receipt(root, receipt(root, runner_key))
+    write(root, "src/app.py", "print('changed after the gate')\n")
+    commit_all(root, "more code after the receipt")
+    code, output = run_ci(root)
+    assert code == 1, output
+    assert "src/app.py changed since" in output
+
+
+def test_a_required_receipt_cannot_be_dodged_by_committing_none(
+    tmp_path: Path, runner_key: Ed25519PrivateKey
+) -> None:
+    root = tmp_path / "demo"
+    make_repo(root, runner_pub=pub_file_text(runner_key))
+    copy_toolchain(root)
+    write(root, ".agents/config/receipts.toml", expectations("verify"))
+    commit_all(root, "stamp the toolchain and require a verify receipt")
+    git(root, "branch", "base")
+    git(root, "checkout", "-q", "-b", "candidate")
+    write(root, "work/orders/demo/order.toml", "v = 1\n")
+    commit_all(root, "an order with no receipt")
+    code, output = run_ci(root)
+    assert code == 1, output
+    assert "work/orders/demo: no verified verify receipt" in output

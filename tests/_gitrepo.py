@@ -43,6 +43,28 @@ kind = "trust"
 expect_exit = 0
 """
 
+# What the acceptance gate expects of a receipt; `required` is filled in by the
+# tests that need an order to carry one.
+EXPECTATIONS = """schema_version = 1
+required = [{required}]
+
+[stages.verify]
+kind = "gate"
+observed = {{ argv = ["just", "verify"], exit = 0 }}
+
+[stages.work-check]
+kind = "gate"
+observed = {{ argv = ["just", "work-check", "{{order}}"], exit = 0 }}
+
+[stages."probe.version"]
+kind = "probe"
+observed = {{ probe = "version", matched = true }}
+"""
+
+
+def expectations(*required: str) -> str:
+    return EXPECTATIONS.format(required=", ".join(f'"{r}"' for r in required))
+
 
 def git(root: Path, *args: str) -> str:
     done = subprocess.run(
@@ -65,11 +87,13 @@ def commit_all(root: Path, message: str) -> str:
 
 
 def make_repo(root: Path, runner_pub: str | None = None) -> str:
-    """A repository with an origin, the probe table and maybe a runner.pub."""
+    """A repository with an origin, the probe table, the receipt expectations
+    and maybe a runner.pub."""
     root.mkdir(parents=True, exist_ok=True)
     git(root, "init", "-q")
     git(root, "remote", "add", "origin", ORIGIN)
     write(root, ".agents/config/probes.toml", PROBES)
+    write(root, ".agents/config/receipts.toml", expectations())
     if runner_pub is not None:
         write(root, ".agents/config/runner.pub", runner_pub)
     return commit_all(root, "base")

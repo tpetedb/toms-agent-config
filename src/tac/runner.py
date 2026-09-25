@@ -29,7 +29,9 @@ act. The child gets only the variables in GATE_ENV_VARS, the runner's PATH and
 the scratch locations. The gate runs in the
 checkout at the committed revision it judges, and a gate that leaves HEAD moved
 or the tree changed gets no receipt. Where there is no sandbox-exec (not macOS),
-the runner refuses to gate and never falls back to running unsandboxed.
+the runner refuses to gate and never falls back to running unsandboxed. A client
+probe starts the claude or codex executable the same way, with no write to the
+tree, and is refused where the sandbox is missing.
 """
 
 from __future__ import annotations
@@ -590,7 +592,7 @@ class Runner:
                 "the runner runs candidate code only inside a macOS Seatbelt "
                 f"sandbox and cannot apply one here (platform {sys.platform}, "
                 f"{SANDBOX_EXEC} missing, or the runner itself already sandboxed); "
-                "it refuses to gate rather than run unsandboxed"
+                "it refuses to gate or probe rather than run unsandboxed"
             )
         writable = [scratch, self.root] if write_tree else [scratch]
         protected = [self.root / name for name in GATE_PROTECTED]
@@ -772,17 +774,25 @@ class Runner:
         )
         spec = self.probe_spec(binding.revision, request.probe)
         executable = self.which(HARNESS_EXECUTABLES[request.harness])
-        try:
-            done = subprocess.run(
-                [executable, "--version"],
-                capture_output=True,
-                text=True,
-                timeout=PROBE_TIMEOUT_S,
-                check=False,
-            )
-            exit_code, out = done.returncode, done.stdout
-        except subprocess.TimeoutExpired:
-            exit_code, out = -1, ""
+        # A client's startup code is not the runner's: it gets the gate's
+        # confinement, no write to the tree, the scrubbed environment and a
+        # scratch HOME, so it cannot reach the key, the store, a socket or a token.
+        with self.scratch() as scratch:
+            argv = self.confined([executable, "--version"], scratch, write_tree=False)
+            try:
+                done = subprocess.run(
+                    argv,
+                    cwd=scratch,
+                    env=self.child_env(scratch),
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
+                    timeout=PROBE_TIMEOUT_S,
+                    check=False,
+                )
+                exit_code, out = done.returncode, done.stdout
+            except subprocess.TimeoutExpired:
+                exit_code, out = -1, ""
         lines = out.strip().splitlines()
         version = lines[0].strip() if lines and exit_code == 0 else None
         expected: dict[str, JsonValue] = {"exit": spec.expect_exit}

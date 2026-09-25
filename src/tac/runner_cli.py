@@ -23,6 +23,7 @@ from tac.receipts import (
     parse,
     policy_hash,
     receipt_json_schema,
+    receipt_policy,
     resolve,
     trusted_key_from_revision,
     verify,
@@ -189,7 +190,12 @@ def receipt_schema() -> None:
 @click.option("--harness", required=True, help="claude or codex.")
 @click.option("--probe", "probe", required=True, help="A probe in probes.toml.")
 @click.option("--order", "order", default=None, help="Also copy into this order.")
-@click.option("--run", "run_id", default=None, help="Run id; defaults per probe.")
+@click.option(
+    "--run",
+    "run_id",
+    default=None,
+    help="Run id; defaults to the order, which CI expects, else one per probe.",
+)
 @repo_option
 @socket_option
 def receipt_client(
@@ -215,7 +221,8 @@ def receipt_client(
                 "op": "probe",
                 "harness": harness,
                 "probe": probe,
-                "run_id": run_id or f"probe-{harness}-{probe}",
+                # CI holds a committed receipt to its order's run.
+                "run_id": run_id or order or f"probe-{harness}-{probe}",
                 # Signed into the binding, so CI can hold the copy to its folder.
                 "order_id": order,
             },
@@ -311,18 +318,23 @@ def receipt_verify_tree(
         fail(str(exc))
         return
     files = sorted(top.glob(RECEIPTS_GLOB))
-    if not files:
-        click.echo("no committed receipts")
-        return
     try:
-        key: Ed25519PublicKey | None = trusted_key(top, base, key_env)
-    except MissingTrustRoot as exc:
-        click.echo(f"tac: {exc}", err=True)
-        key = None
-    try:
+        policy = receipt_policy(top, base)
+        if not files and (policy is None or not policy.required):
+            click.echo("no committed receipts")
+            return
+        key: Ed25519PublicKey | None = None
+        if files:
+            try:
+                key = trusted_key(top, base, key_env)
+            except MissingTrustRoot as exc:
+                click.echo(f"tac: {exc}", err=True)
         results = verify_committed(top, files, key, repository, base, head)
     except ReceiptError as exc:
         fail(str(exc))
+        return
+    if not results:
+        click.echo("no committed receipts, and no order here needs one")
         return
     for result in results:
         mark = "ok  " if result.ok else "FAIL"

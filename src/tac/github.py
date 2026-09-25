@@ -303,18 +303,61 @@ def ruleset_problems(ruleset: Mapping[str, Any]) -> list[str]:
     elif ruleset["bypass_actors"]:
         actors = ", ".join(_describe_actor(a) for a in ruleset["bypass_actors"])
         problems.append(f"bypass_actors is not empty ({actors})")
-    review = any(
-        (r.get("parameters") or {}).get("require_code_owner_review") is True
-        for r in _rules(ruleset, "pull_request")
-    )
-    if not review:
-        problems.append("no pull_request rule requires code-owner review")
-    checks = any(
-        (r.get("parameters") or {}).get("required_status_checks")
+    problems += review_problems(ruleset)
+    problems += check_problems(ruleset)
+    return problems
+
+
+def review_problems(ruleset: Mapping[str, Any]) -> list[str]:
+    """Code-owner review that someone has to give: a flag with zero approving
+    reviews asks nobody to approve, so the two are judged on the same rule."""
+    pulls = [r.get("parameters") or {} for r in _rules(ruleset, "pull_request")]
+    owners = [p for p in pulls if p.get("require_code_owner_review") is True]
+    if not owners:
+        return ["no pull_request rule requires code-owner review"]
+    counts = [p.get("required_approving_review_count") for p in owners]
+    if not any(isinstance(n, int) and n >= 1 for n in counts):
+        shown = ", ".join(repr(n) for n in counts)
+        return [
+            "the code-owner review asks for no approving review "
+            f"(required_approving_review_count {shown})"
+        ]
+    return []
+
+
+def check_problems(
+    ruleset: Mapping[str, Any], checks: Sequence[str] = REQUIRED_CHECKS
+) -> list[str]:
+    """Every job of ci.yml required, each from the GitHub Actions app.
+
+    A required check that names another context, or one that any integration
+    may post, is satisfied by a status whoever holds statuses write can forge,
+    so a nonempty list alone proves nothing.
+    """
+    listed = [
+        c
         for r in _rules(ruleset, "required_status_checks")
-    )
-    if not checks:
-        problems.append("no required status checks")
+        for c in (r.get("parameters") or {}).get("required_status_checks") or []
+        if isinstance(c, Mapping)
+    ]
+    if not listed:
+        return ["no required status checks"]
+    problems: list[str] = []
+    for name in checks:
+        sources = [c.get("integration_id") for c in listed if c.get("context") == name]
+        if not sources:
+            problems.append(f"the {name!r} check is not required")
+        elif any(source != GITHUB_ACTIONS_APP_ID for source in sources):
+            # One more entry for the same context is one more source that counts.
+            shown = ", ".join(
+                "any integration" if source is None else str(source)
+                for source in sources
+                if source != GITHUB_ACTIONS_APP_ID
+            )
+            problems.append(
+                f"the {name!r} check may come from {shown}, not only the GitHub "
+                f"Actions app ({GITHUB_ACTIONS_APP_ID})"
+            )
     return problems
 
 
