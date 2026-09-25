@@ -180,6 +180,20 @@ gate-wheel:
 changelog:
     uv run --frozen towncrier build --draft --version Unreleased
 
+# ---- docs: the diagrams and the skills (docs/DESIGN.md, 12 and 14)
+
+# Render every diagram with the mermaid-cli pinned in mise.toml into a scratch folder, then refresh docs/diagrams/render.lock.
+diagrams-render *args:
+    uv run --frozen tac diagrams render {{ args }}
+
+# The inventory and render.lock hold for the sources, without node: what tests/test_diagrams.py and tac check judge.
+diagrams-check:
+    uv run --frozen tac diagrams check
+
+# The skill lint: the portable subset of the Agent Skills specification, provenance, the listing budget.
+skills-lint:
+    uv run --frozen pytest -q tests/test_skills.py
+
 # ---- work orders: a task is data and its acceptance is a command (work/README.md)
 
 # Scaffold a draft order on this branch: just work-new docs-intro docs "Intro page"

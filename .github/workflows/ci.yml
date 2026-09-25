@@ -56,6 +56,12 @@ jobs:
         run: uv run --frozen --no-sync --project .agents tac pipeline check
       - name: Labels, issue forms and the pull request template hold
         run: uv run --frozen --no-sync --project .agents tac github lint
+      - name: Diagrams match their render lock
+        # The inventory and render.lock hold for the sources, without node or a
+        # browser. The pinned render itself (just diagrams-render) runs on the
+        # developer's machine: headless Chromium cannot start its sandbox on this
+        # runner image, and how CI should run it is the owner's decision.
+        run: uv run --frozen tac diagrams check
 
   # No step here runs the candidate's code: no uv sync of its project, no test,
   # no script from its checkout. tests/test_ci_gates.py holds every step to that.

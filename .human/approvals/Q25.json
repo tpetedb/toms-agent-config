@@ -1,0 +1,37 @@
+{
+  "agent": null,
+  "answers": [],
+  "approval": null,
+  "arguments": {},
+  "asked_at": "2026-09-25T18:43:16Z",
+  "blocks": [
+    "diagram rendering in CI"
+  ],
+  "decided_at": null,
+  "decided_by": null,
+  "details": [],
+  "env_var": null,
+  "expires_at": null,
+  "id": "Q25",
+  "item_version": 1,
+  "kind": "question",
+  "notes": [],
+  "options": [
+    "Keep CI to the lock check (just diagrams-check) and render on your machine",
+    "Lift the AppArmor restriction on the disposable runner before rendering (Chromium's documented option 1; keeps Chromium's own sandbox)",
+    "Install Chromium's SUID sandbox on the runner (option 3)"
+  ],
+  "pipeline": null,
+  "pull_request": null,
+  "question": "How should CI run the pinned diagram render? Headless Chromium cannot start its sandbox on the ubuntu runner (AppArmor restricts unprivileged user namespaces on Ubuntu 23.10 and later).",
+  "rank": 50,
+  "recommendation": "the first now; the second if you want CI to render, since the runner is thrown away after the job",
+  "recommendation_source": "Chromium docs/security/apparmor-userns-restrictions.md",
+  "revision": null,
+  "stage": null,
+  "status": "pending",
+  "title": "Diagrams in CI",
+  "tool": null,
+  "topic": "standards",
+  "waits": "M4"
+}

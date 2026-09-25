@@ -1,0 +1,26 @@
+{
+  "mermaid_cli": "12.0.0",
+  "sources": {
+    "docs/DESIGN.md#mermaid-1": "58b4b89a24d9666755cff09df3dc9f4f79df41152272ca33a168732e8cca4b78",
+    "docs/DESIGN.md#mermaid-2": "77f3bf7ee1fb4ad2381c87c87a489dd6144eefc60ff1e8a7e6e3f14912c0b9bb",
+    "docs/DESIGN.md#mermaid-3": "2c899bf4e16238f3bd3bbf9ed458d11f73cc3d20f221ffcc9084ed7518e07f26",
+    "docs/DESIGN.md#mermaid-4": "f5635cc8f63664c709f6fb52c0b0eda7771522cc13817468417d74df6d34c8e9",
+    "docs/DESIGN.md#mermaid-5": "27b248d43f6b38214bd9d2d49f52c6b35c9fc7a9ffdcc0f2e17213ac3a9479ff",
+    "docs/DESIGN.md#mermaid-6": "0d87554b1f6ee5bb9cbfc8fca92a7ac732cb416b6f9310d541ffb9419d8c5e19",
+    "docs/DESIGN.md#mermaid-7": "d5af5cb440c0428125e997776ea57cde8da0e833c57fab95b3823a7b66c05e01",
+    "docs/DESIGN.md#mermaid-8": "fbfdc0b0bb957a357ca1d6f7ed9860840576626836eba5d2d28d402235f7a4c0",
+    "docs/diagrams/README.md#mermaid-1": "900893a0665b16dedf1387c51b7da2ad7766ffcb19822aa457a8228f5e587fe3",
+    "docs/diagrams/lifecycle-board.mmd": "5d11b10f41f5e4d6299307744d521f6e9f843dc72b3d9860709e446fe936dd7a",
+    "docs/diagrams/lifecycle-hook.mmd": "ab8ef9bc133d377f33561c3bb2329668cccbb1d0451c8c824d6a9e4254610e55",
+    "docs/diagrams/lifecycle-human-loop.mmd": "8441fbbf9fc9b438640a5608ef3e013c3e7b52b731b3b9c1ba44ba6e86d714a0",
+    "docs/diagrams/lifecycle-init.mmd": "82b633fd0b6a65877f773ea54899f6c7528d63a83370f438bafc2e8f5eab0122",
+    "docs/diagrams/lifecycle-memory.mmd": "84e1352305c149ea835de2c7443298da2e25ddfba6871eb8c125356ce5583e3d",
+    "docs/diagrams/lifecycle-release.mmd": "391f4c5e167c214cf0f01b0f6880204f3d50cb2604091efb1309a68fb3beb3ce",
+    "docs/diagrams/lifecycle-sync.mmd": "3ca00655fc2c2e9ee7973378cd77d9415b80d416ebfcd32875b9f5319c08b713",
+    "docs/diagrams/pipeline-board.mmd": "5376d4eec4d1c8e3b56db4a4b723ba362a4ff855ed26d8e07fab8c54719967fd",
+    "docs/diagrams/pipeline-order.mmd": "df9b8a194f65fc625b0cbb7bff0938814b10894b5e4abd28744e6932abdf8bdc",
+    "docs/diagrams/pipeline-release.mmd": "7c80289a236fd74479d25cec0486511b853bf6727c82510484291e2ade4db794",
+    "docs/diagrams/pipeline-retro.mmd": "49fad3170b1926d71429af0fef630d9303593f38342e610bf8d60331262fe9e7",
+    "docs/diagrams/pipeline-review.mmd": "cec7459cb19a0d579d642ee5e5fc8d220074b23cadf282005ebe416ef65fbced"
+  }
+}

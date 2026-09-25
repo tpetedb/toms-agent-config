@@ -6,7 +6,7 @@ A ticked box is a hint, never consent. An approval counts only as your own appro
 
 Credential handover convention: every secret goes into `agents.env`, outside the repository (Q17), under the env var named in the item. Never put a secret in chat or in the repository. Agents never receive what a step does not need; the runtime injects it.
 
-Rendered by `tac human render` from 32 items in `.human/approvals/` and `.human/todo.toml`, 13 open, as of 2026-09-25. Never edit this file by hand: `tac human render --check` fails on any difference.
+Rendered by `tac human render` from 33 items in `.human/approvals/` and `.human/todo.toml`, 14 open, as of 2026-09-25. Never edit this file by hand: `tac human render --check` fails on any difference.
 
 ## Agent identity (first: milestone M0 cannot pass without it)
 
@@ -69,6 +69,9 @@ Rendered by `tac human render` from 32 items in `.human/approvals/` and `.human/
 - [x] Q13 Soda: an optional extra pinned to the Apache-2.0 v3 line (3.5.6, SodaCL), the v4 line under the Elastic License 2.0, or postponed to 1.1?
       Recommendation: postpone to 1.1, and pin v3 as an opt-in extra if data work needs it sooner. Waits: M8.
       Answered 2026-09-25 by tpetedb, owner-via-chief: postponed to 1.1; the Apache-2.0 v3 line comes in as an opt-in extra if data work needs it sooner, see [docs/adr/0002-owner-decisions-2026-09-25.md](docs/adr/0002-owner-decisions-2026-09-25.md).
+- [ ] Q25 Diagrams in CI: How should CI run the pinned diagram render? Headless Chromium cannot start its sandbox on the ubuntu runner (AppArmor restricts unprivileged user namespaces on Ubuntu 23.10 and later).
+      Options: Keep CI to the lock check (just diagrams-check) and render on your machine; Lift the AppArmor restriction on the disposable runner before rendering (Chromium's documented option 1; keeps Chromium's own sandbox); Install Chromium's SUID sandbox on the runner (option 3).
+      Recommendation (Chromium docs/security/apparmor-userns-restrictions.md): the first now; the second if you want CI to render, since the runner is thrown away after the job Blocks: diagram rendering in CI. Waits: M4.
 
 ## The public repository's history and identity
 

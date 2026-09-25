@@ -1,0 +1,34 @@
+%% Pipeline order: from an issue to landed, every stage and gate in dependency order.
+%% Drawn from .agents/config/pipelines/order.toml.
+%% Legend: green terminator, blue process, yellow decision, orange input or output, red stop.
+flowchart TD
+    I[/"issue"/] --> IN["intake: chief<br/>writes order-request"]
+    IN --> SP["specify: chief, skill work-order<br/>writes order-spec"]
+    SP --> BU["build: builder, skill work-order<br/>writes build-report, at most 50 turns"]
+    BU --> G1{"build gate: just work-check"}
+    G1 -->|fail| RP["just work-repair<br/>at most 2 reruns"]
+    RP --> G1
+    G1 -->|still failing| H1[/"to the owner"/]
+    G1 -->|pass| RV["review: reviewer on the other provider<br/>writes review"]
+    RV --> G2{"review gate: just work-review"}
+    G2 -->|fail| H2[/"one repair, then the owner"/]
+    G2 -->|pass| CT{"a cross team?"}
+    CT -->|yes| SO["signoff: manager<br/>writes signoff"]
+    CT -->|"no, skipped"| GA{"gate: just work-accept<br/>and just checks, waits on M2"}
+    SO --> GA
+    GA -->|fail| H3[/"to the owner"/]
+    GA -->|pass| PU["publish: the runner<br/>commit, push, open-pr"]
+    PU --> RC["recap: chief<br/>writes recap"]
+    RC --> LA[/"land: the owner merges<br/>with the one command"/]
+    LA --> Z(["landed"])
+    classDef term fill:#00A86B,stroke:#00D084,color:#000000
+    classDef proc fill:#0067A5,stroke:#0088CC,color:#FFFFFF
+    classDef dec fill:#FFBF00,stroke:#FFD500,color:#000000
+    classDef io fill:#FF8C1A,stroke:#FFA94D,color:#000000
+    classDef store fill:#9A2A2A,stroke:#F04923,color:#FFFFFF
+    classDef stop fill:#D32F2F,stroke:#F04923,color:#FFFFFF
+    class Z term
+    class IN,SP,BU,RP,RV,SO,PU,RC proc
+    class G1,G2,CT,GA dec
+    class I,LA io
+    class H1,H2,H3 stop
