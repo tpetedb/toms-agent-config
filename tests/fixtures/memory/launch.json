@@ -1,0 +1,8 @@
+{
+  "provider": "anthropic",
+  "harness": "claude-code",
+  "model": "claude-opus-5-5",
+  "effort_requested": "xhigh",
+  "effort_actual": "xhigh",
+  "role": "builder"
+}

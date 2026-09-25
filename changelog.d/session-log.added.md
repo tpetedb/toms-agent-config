@@ -1,0 +1,1 @@
+`tac session log` journals each session event, with all four token fields, into the worker store and keeps a per-day index of one line per session; `tac session purge` is the one audited way to take a session out, and every memory and session write passes a secrets scan that names the pattern and never the value.

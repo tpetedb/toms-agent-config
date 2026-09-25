@@ -1,0 +1,10 @@
+{
+  "records": {},
+  "schema_version": 1,
+  "status": {
+    "confirmed": [],
+    "conflict": [],
+    "superseded": [],
+    "unconfirmed": []
+  }
+}
