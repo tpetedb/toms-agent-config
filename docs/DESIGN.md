@@ -439,7 +439,7 @@ types = ["added", "changed", "deprecated", "removed", "fixed", "security"]
 tool = "towncrier"
 
 [commits]
-convention = "what-and-why"              # or "conventional-1.0.0"; open decision Q4
+convention = "what-and-why"              # or "conventional-1.0.0"; decided Q4, ADR 0002
 max_subject = 72
 trailers_required = ["Co-Authored-By"]   # when an agent commits
 
@@ -469,7 +469,7 @@ lint = "required"
 secrets = "gitleaks"
 dependencies = "pip-audit"
 licences = "allowlist"                   # a test over the resolved lock
-data = "soda-v3-optional"                # only when project.kind includes data-pipeline; open decision Q13
+data = "soda-v3-optional"                # only when project.kind includes data-pipeline; decided Q13, ADR 0002: 1.1 opt-in
 ```
 
 `tac check` reads this registry and runs one checker per line: the version is bumped when the changelog has fragments, a fragment is present for a code change, the commit convention holds, dates in file names and frontmatter are ISO 8601, a rendered diagram exists per pipeline and lifecycle, ruff and basedpyright pass, gitleaks and pip-audit pass, the licence allowlist holds, and the Soda scan passes where data changes and the extra is enabled.
@@ -922,7 +922,7 @@ Legend: green terminator, blue process, yellow decision, dim red data store; dot
 
 **Secrets.** Agents never receive secrets they do not need. The launcher sets `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`; Claude gets `sandbox.credentials` or `denyRead` on the secrets directory, `~/.ssh`, `~/.aws` and `~/.config/gh`; Codex gets `shell_environment_policy.inherit = "core"` with `ignore_default_excludes = false`; the bot token reaches only the runner's `gh`, through a credential helper; `tac doctor` proves each deny with a live read.
 
-**`agents.env`.** A common and sensible deny rule blocks `*.env` for every agent, and TAC keeps it. So the real `agents.env` does not live in the repository by default: its path is `[secrets] env_file`, the launcher, compose or CI secrets inject it per step, and agents never read it (Q17 asks whether the owner prefers the repository root, gitignored). The repository ships `agents.env.example` with names and comments only, and every non-secret runtime setting lives in `config/runtime.toml`. Nothing is renamed to dodge the deny.
+**`agents.env`.** A common and sensible deny rule blocks `*.env` for every agent, and TAC keeps it. So the real `agents.env` does not live in the repository by default: its path is `[secrets] env_file`, the launcher, compose or CI secrets inject it per step, and agents never read it (Q17 decided outside the repository, ADR 0002). The repository ships `agents.env.example` with names and comments only, and every non-secret runtime setting lives in `config/runtime.toml`. Nothing is renamed to dodge the deny.
 
 **`.agents/.venv`** (build condition C4). The agent toolchain has its own project, `.agents/pyproject.toml` and `.agents/uv.lock`, never mixed with the project's own environment. The venv is built only by bootstrap, the runner or CI, with `uv sync --frozen --no-editable --project .agents`. `tac` comes from a named path source declared in `[tool.uv.sources]`: `.agents/lib/tac/`, the package copy that `tac stamp` writes from the pinned release (in this repository, from `src/`). `--no-editable` matters: by default `uv sync` installs the project, and any workspace member, in editable mode, which would let the checker import straight from a source tree instead of site-packages. `tac doctor` verifies that the imported `tac` resolves to site-packages and not to `src/tac/`. Every in-session call is `uv run --frozen --no-sync --project .agents tac ...`; workers never sync. Python, the external tools, image digests and the lock are frozen in `mise.toml`, `uv.lock` and `generated.lock`. Under Codex the venv is read-only because `.agents` is read-only inside writable roots ([sandbox](https://developers.openai.com/codex/sandbox)), and under Claude by the `denyWrite` rule, so a worker-writable environment never supplies the checker's interpreter.
 
@@ -1119,16 +1119,16 @@ Pinned in `.agents/pyproject.toml` and `mise.toml` (the CLIs); licence and telem
 | sqlfluff | SQL lint where a project has SQL | MIT | none documented; egress-tested | 1 |
 | [mise](https://mise.jdx.dev/) | pins the CLIs (needs `mise trust` once) | MIT | none documented; egress-tested | 1 |
 | [copier](https://copier.readthedocs.io/en/stable/) | stamping and updates (`--trust` for tasks) | MIT | none documented; egress-tested | 1 |
-| commitizen | only if Conventional Commits are chosen (Q4) | MIT | none documented; egress-tested | if Q4 |
+| commitizen | not used: Q4 chose what-and-why, ADR 0002 | MIT | none documented; egress-tested | no |
 | hypothesis | property tests for the selector and the config merger | MPL-2.0 | none documented; egress-tested | 1.1 |
 | ipykernel, nbstripout | notebooks where a project has them; outputs stripped at commit | BSD-3-Clause, MIT | none documented; egress-tested | 1.1 |
 | vale | prose style, optional | MIT | none documented; egress-tested | 1.1 |
-| soda-core v3 | data-quality gate, SodaCL YAML, local DuckDB connector, no Soda Cloud | Apache-2.0 ([v3.5.6 licence](https://github.com/sodadata/soda-core/blob/v3.5.6/LICENSE)) | `send_anonymous_usage_stats: false` in the selected configuration, which is searched in the home directory before the project; proven by an offline passing and failing scan without Cloud credentials | optional extra `tac[data]`, per Q13 |
+| soda-core v3 | data-quality gate, SodaCL YAML, local DuckDB connector, no Soda Cloud | Apache-2.0 ([v3.5.6 licence](https://github.com/sodadata/soda-core/blob/v3.5.6/LICENSE)) | `send_anonymous_usage_stats: false` in the selected configuration, which is searched in the home directory before the project; proven by an offline passing and failing scan without Cloud credentials | optional extra `tac[data]`, 1.1 opt-in per Q13, ADR 0002 |
 | great_expectations | reference only, not shipped | Apache-2.0 | usage statistics on by default | no |
 
 Soda: the supported line is soda-core v3 (3.5.6). The current v4 line is under the Elastic License 2.0 with telemetry reported on by default (its opt-out variable is not independently verified) and is not used. Soda is an optional extra, enabled only when `project.kind` includes data-pipeline, so the MIT core never depends on it. `gh` ships with `GH_TELEMETRY=false`.
 
-Why prek over pre-commit and lefthook: it reads the standard `.pre-commit-config.yaml`, needs no Python and integrates with uv. Why towncrier over git-cliff: fragments are the changelog model in use, and towncrier is the fragment tool; git-cliff derives the changelog from commits, and the commit convention is still open (Q4).
+Why prek over pre-commit and lefthook: it reads the standard `.pre-commit-config.yaml`, needs no Python and integrates with uv. Why towncrier over git-cliff: fragments are the changelog model in use, and towncrier is the fragment tool; git-cliff derives the changelog from commits, and Q4 decided the commit convention as what and why, not Conventional Commits (ADR 0002).
 
 ## 16. Reuse list with licences
 
@@ -1139,12 +1139,12 @@ Why prek over pre-commit and lefthook: it reads the standard `.pre-commit-config
 | `tools/board.py`, the memory schema, their tests | [vibe-map PR #192](https://github.com/tpetedb/vibe-map/pull/192) | MIT (owner) | ported as `tac room` and `tac memory` |
 | `harness.py`, templates, profiles, the lock | [vibe-map PR #197](https://github.com/tpetedb/vibe-map/pull/197) | MIT (owner) | ported as `tac sync`, `check`, `doctor`, `explain` |
 | strict and sandboxed Jinja rendering, a staleness hook, a per-task model router, a status log, comment-keeping TOML edits | the owner's documentation pipeline that renders Jinja scaffolds and validates them (private) | the owner's; code moves in under MIT with an authorship line | taken |
-| the `TODO.HUMAN.md` format, one charter with thin adapters pinned by a test, a gate runner for `just`, an em-dash check, tighten-only overrides | a private platform repository | needs redistribution permission from that repository's owner, not only a licence line (Q19) | taken once Q19 allows |
+| the `TODO.HUMAN.md` format, one charter with thin adapters pinned by a test, a gate runner for `just`, an em-dash check, tighten-only overrides | a private platform repository | nothing is redistributed: no code is copied from it (Q19) | re-implemented from scratch here as patterns, each with an authorship line, per Q19, ADR 0002 |
 | commented TOML style, symlink sync, the hook `.test.sh` pattern, several skills | the owner's private dotfiles toolbox | the owner's | taken |
 | a versioned JSONL bus and an IDE registry | the owner's private workspace orchestrator | the owner's | adapted |
 | session-bus design | [earendil-works/pi](https://github.com/earendil-works/pi) | MIT | credited, re-implemented |
 | diagnostic record and handoff receipt shapes | archify | MIT | shapes adopted, code not vendored |
-| ponytail, trimmed | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) | MIT | opt-in skill with its notice, pending Q1 |
+| ponytail, trimmed | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) | MIT | vendored, trimmed, as an opt-in skill for builders, its notice in `THIRD_PARTY.md` when it lands; decided per Q1, ADR 0002 |
 | `AGENTS.md` format | [agents.md](https://agents.md/) | MIT | followed |
 | Agent Skills specification | [agentskills.io](https://agentskills.io/specification) | specification | followed; skill bodies not vendored |
 | issue forms, label-sync, github-script, release-drafter | GitHub, [EndBug/label-sync](https://github.com/EndBug/label-sync), actions/github-script, [release-drafter](https://github.com/release-drafter/release-drafter) | first-party, MIT, MIT, ISC | taken |

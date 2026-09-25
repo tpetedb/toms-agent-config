@@ -82,10 +82,10 @@ jobs:
         # clone, so nothing can move it. The checkout is the candidate's, so a
         # gate script run from it could be edited to exit 0; the base's copy runs
         # instead. A base that predates a script (the pull request that adds it,
-        # and the bootstrap pull requests #1, #2 and #4) runs the candidate's
-        # copy and says so; those need the owner's direct review. This workflow
-        # file is the candidate's too: CODEOWNERS on /.github/ and the ruleset's
-        # required owner review protect it (docs/DESIGN.md, 8).
+        # and the bootstrap pull request #6) runs the candidate's copy and says
+        # so; those need the owner's direct review. This workflow file is the
+        # candidate's too: CODEOWNERS on /.github/ and the ruleset's required
+        # owner review protect it (docs/DESIGN.md, 8).
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GATES: >-
