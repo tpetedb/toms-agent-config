@@ -276,6 +276,10 @@ flowchart LR
 """
 
 
+# The last line of GOOD, after which a mutant appends a line of its own.
+TAIL = "    class b proc\n"
+
+
 def lint(text: str) -> list[str]:
     return house_problems(Source("x.mmd", "x.mmd", text))
 
@@ -296,6 +300,16 @@ def test_a_clean_source_passes() -> None:
         (", blue process", "", "the legend does not say 'blue process'"),
         ("step", "a — step", "an em dash"),
         ("class a term", "class a,ghost term", "class names ghost"),
+        (TAIL, TAIL + "    Z(rounded box) --> Y>asym]\n", "node Z uses '('"),
+        (TAIL, TAIL + "    Z(rounded box) --> Y>asym]\n", "node Y uses '>'"),
+        (TAIL, TAIL + "    q[plain rect]\n", "node q has an unquoted label"),
+        (TAIL, TAIL + "    q[plain rect]\n", "node q has no class"),
+        (TAIL, TAIL + "    new --> other\n", "node new is never drawn"),
+        (TAIL, TAIL + "    new --> other\n", "node other has no class"),
+        (TAIL, TAIL + '    s@{ shape: doc, label: "d" }\n', "node s uses '@{'"),
+        (TAIL, TAIL + "    style b fill:#FFFFFF\n", "an inline style"),
+        (TAIL, TAIL + "    b --> ?\n", "cannot read"),
+        (TAIL, TAIL + "    b -->\n", "no node after it"),
     ],
 )
 def test_the_house_lint_refuses(old: str, new: str, expected: str) -> None:

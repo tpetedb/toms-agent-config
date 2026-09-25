@@ -78,6 +78,6 @@ The full table, with what each check proves, is "Checks that tell you it worked"
 
 1. Clone the repository and enter it.
 2. `mise trust && mise install`: uv, just and mermaid-cli at the pinned versions. Rendering diagrams also needs node 22.13 or later on `PATH`.
-3. `bash bootstrap.sh`: installs uv and mise when absent, builds `.agents/.venv` from the stamped copy with `uv sync --frozen --no-editable --project .agents`, and runs `tac init`.
+3. `bash bootstrap.sh`: installs uv when absent and reports whether mise is there (it never installs mise; get it from [mise.jdx.dev](https://mise.jdx.dev)). It builds `.venv` for the tests and `.agents/.venv` from the stamped copy with `uv sync --frozen --no-editable --project .agents`, builds the runner venv with `tac runner install` when it runs outside an agent session, and runs `tac doctor`. `tac init` does not run yet: the script says it is skipped until it arrives with tac-core.
 4. Work through the S-steps of [TODO.HUMAN.md](../TODO.HUMAN.md) that apply to this machine: client trust (S1 to S3), `mise trust` and `just doctor` (S6), the git hooks (S7). The runner key (S5) and the GitHub steps (S4, S9) are once per repository, not per machine.
 5. `just verify`, then `just doctor`. Both green means the machine is ready.

@@ -3,7 +3,7 @@
 %% Legend: green terminator, blue process, yellow decision, orange input or output, dim red data store, red stop.
 flowchart TD
     A(["clone the repository"]) --> B["mise trust, mise install<br/>uv and just, pinned"]
-    B --> C["bash bootstrap.sh<br/>installs uv and mise when absent"]
+    B --> C["bash bootstrap.sh<br/>installs uv when absent, reports mise"]
     C --> D["uv sync --frozen --no-editable --project .agents<br/>the deployed judge"]
     D --> E["tac init<br/>the question bank"]
     Q[("templates/init/questions.toml")] -.-> E
