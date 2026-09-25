@@ -22,6 +22,11 @@ JUSTFILE = "justfile"
 # so a rule that names today's files only would leave tomorrow's unowned.
 NEW_WORKFLOW = f"{WORKFLOWS}/<new>.yml"
 NEW_GATE = f"{SCRIPTS}/ci_<new>.sh"
+# Every .gitattributes steers how git reads and checks out what CI judges: it
+# can mark a text file binary, which git grep -I then skips. The root one and a
+# stand-in for one in a folder, which applies below it just the same.
+ATTRIBUTES = ".gitattributes"
+NEW_ATTRIBUTES = f"<dir>/{ATTRIBUTES}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,8 +112,8 @@ def location(root: Path) -> str | None:
 def ci_paths(root: Path, codeowners: str) -> list[str]:
     """Every path CI runs from or whose change steers what it runs: each
     workflow, each gate script and each script a workflow names, the justfile
-    whose recipes CI mirrors, CODEOWNERS itself, and a stand-in for a new
-    workflow and a new gate."""
+    whose recipes CI mirrors, CODEOWNERS itself, every .gitattributes, and a
+    stand-in for a new workflow and a new gate."""
     workflows = root / WORKFLOWS
     files = sorted(
         p for p in workflows.glob("*") if p.is_file() and p.suffix in (".yml", ".yaml")
@@ -123,7 +128,7 @@ def ci_paths(root: Path, codeowners: str) -> list[str]:
     ]
     if (root / JUSTFILE).is_file():
         paths.append(JUSTFILE)
-    paths += [codeowners, NEW_WORKFLOW, NEW_GATE]
+    paths += [codeowners, ATTRIBUTES, NEW_ATTRIBUTES, NEW_WORKFLOW, NEW_GATE]
     return list(dict.fromkeys(paths))
 
 

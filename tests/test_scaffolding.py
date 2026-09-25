@@ -94,6 +94,7 @@ def test_codeowners_names_the_owner_on_the_guarded_paths(repo: Path) -> None:
         "/.github/CODEOWNERS",
         "/scripts/ci_*.sh",
         "/scripts/private_scan.sh",
+        ".gitattributes",
         # Run on the host or in CI, or pin what does, or hold the test guards.
         "/scripts/",
         "/tests/conftest.py",

@@ -11,7 +11,14 @@ from pathlib import Path
 
 import pytest
 
-from tac.codeowners import NEW_GATE, NEW_WORKFLOW, ci_gaps, owners_of, parse
+from tac.codeowners import (
+    NEW_ATTRIBUTES,
+    NEW_GATE,
+    NEW_WORKFLOW,
+    ci_gaps,
+    owners_of,
+    parse,
+)
 from tac.doctor import CHECKS, Status, check_codeowners_ci
 from tests._gitrepo import REPO, write
 
@@ -30,12 +37,15 @@ PATHS = (
     "scripts/ci_work.sh",
     "scripts/private_scan.sh",
     "justfile",
+    ".gitattributes",
+    NEW_ATTRIBUTES,
     NEW_WORKFLOW,
     NEW_GATE,
 )
 COVERED = """/.github/  @owner
 /scripts/  @owner
 /justfile  @owner
+.gitattributes  @owner
 """
 
 
@@ -60,7 +70,7 @@ def test_this_repositorys_codeowners_covers_what_ci_runs() -> None:
 def test_folder_rules_on_github_scripts_and_the_justfile_pass(tmp_path: Path) -> None:
     status, detail = check_codeowners_ci(project(tmp_path, COVERED))
     assert status is Status.PASS, detail
-    assert "7 paths" in detail
+    assert "9 paths" in detail
 
 
 def test_a_missing_codeowners_fails(tmp_path: Path) -> None:
@@ -97,6 +107,16 @@ def test_codeowners_that_guard_other_paths_fail_naming_every_ci_path(
             "scripts/private_scan.sh: the last matching rule names no owner",
         ),
         (COVERED + "/scripts/ @tac-bot\n", f"{NEW_GATE}: owned only by the agent"),
+        # Attributes can mark a text file binary, so every one is owned: the
+        # root rule alone leaves a folder's own file open.
+        (
+            COVERED.replace(".gitattributes  @owner", ""),
+            ".gitattributes: no rule matches",
+        ),
+        (
+            COVERED.replace(".gitattributes  @owner", "/.gitattributes  @owner"),
+            f"{NEW_ATTRIBUTES}: no rule matches",
+        ),
         # CODEOWNERS itself: whoever edits it decides every other rule.
         (COVERED + "/.github/CODEOWNERS\n", ".github/CODEOWNERS: the last matching"),
     ],

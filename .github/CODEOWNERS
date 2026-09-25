@@ -26,3 +26,6 @@
 /.github/CODEOWNERS         @tpetedb
 /scripts/ci_*.sh            @tpetedb
 /scripts/private_scan.sh    @tpetedb
+# Attributes decide what git treats as binary and how it checks files out, at
+# any depth, so a bare name owns every one of them.
+.gitattributes              @tpetedb

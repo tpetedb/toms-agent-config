@@ -1,0 +1,1 @@
+The private scan reads no gitattributes (`git --attr-source=<empty tree> grep`), so a candidate's `.gitattributes` with `-diff` or `binary` can no longer hide a private term from `git grep -I`; it now scans its own file too, skipping only the term-list lines of the copy that runs; CODEOWNERS owns every `.gitattributes` and `tac doctor`'s `codeowners-ci` check names a gap there.
