@@ -18,6 +18,7 @@ from tac.inbox_cli import inbox_group
 from tac.launch_cli import launch_command
 from tac.memory_cli import memory_group, select_command
 from tac.pipeline_cli import pipeline_group
+from tac.proof_cli import proof_group
 from tac.run_cli import run_command
 from tac.runner_cli import receipt_group, runner_group
 from tac.session_cli import session_group
@@ -86,3 +87,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+cli.add_command(proof_group)

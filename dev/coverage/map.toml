@@ -1,0 +1,1013 @@
+# =============================================================================
+# dev/coverage/map.toml: the coverage manifest (docs/DESIGN.md, section 13).
+# One entry per condition `tac proof coverage --list` derives from the
+# configuration and the source. `just coverage-proof` refuses a condition
+# without an entry, an entry for no condition and a test id that does not
+# collect, runs every named test, and fails a condition whose test failed or
+# was skipped. Each entry:
+#   condition: the derived id;
+#   why: one line on what the tests prove about it, for the reviewer;
+#   tests: pytest node ids; a bare id of a parametrized test takes every case;
+#   probe, requires, live: a live probe of tac.proof.LIVE_PROBES (one, or a
+#     dotted group such as C1) and what it needs; it runs through
+#     `just dev-proof --require-live` on the host and never counts as passed here.
+# =============================================================================
+schema_version = 1
+
+# ---- hooks: every check hooks.toml wires on a client, and its mutation runs.
+
+[[entries]]
+condition = "hook.owned-paths.claude.deny"
+why = "an Edit outside the order is refused with its owner; each mutant lets it through"
+tests = [
+  "tests/test_work.py::test_an_edit_outside_the_order_is_refused_with_the_owner",
+  "tests/test_hooks.py::test_owned_paths_and_order_check_speak_through_tac_work",
+  "tests/test_mutation.py::test_emptying_the_matcher_lets_the_refused_event_through[owned-paths-claude]",
+  "tests/test_mutation.py::test_a_check_function_that_answers_allow_lets_the_event_through[owned-paths-claude]",
+  "tests/test_mutation.py::test_a_guard_that_answers_allow_for_the_check_lets_its_case_through[owned-paths-claude]",
+]
+
+[[entries]]
+condition = "hook.owned-paths.codex.deny"
+why = "every file an apply_patch names is asked about; each mutant lets an outside file through"
+tests = [
+  "tests/test_hooks.py::test_owned_paths_asks_once_for_every_file_a_patch_names",
+  "tests/test_mutation.py::test_emptying_the_matcher_lets_the_refused_event_through[owned-paths-codex]",
+  "tests/test_mutation.py::test_a_check_function_that_answers_allow_lets_the_event_through[owned-paths-codex]",
+  "tests/test_mutation.py::test_a_guard_that_answers_allow_for_the_check_lets_its_case_through[owned-paths-codex]",
+]
+
+[[entries]]
+condition = "hook.secret-read.claude.deny"
+why = "Read, Grep and Glob of secrets, the store and the secrets folder are refused; each mutant lets one through"
+tests = [
+  "tests/test_hooks.py::test_a_read_of_a_secret_is_refused",
+  "tests/test_hooks.py::test_a_glob_or_grep_for_secrets_is_refused",
+  "tests/test_hooks.py::test_a_read_of_the_controller_store_or_the_secrets_folder_is_refused",
+  "tests/test_hooks.py::test_the_real_checker_refuses_generated_files_and_secrets",
+  "tests/test_mutation.py::test_emptying_the_matcher_lets_the_refused_event_through[secret-read-claude]",
+  "tests/test_mutation.py::test_a_check_function_that_answers_allow_lets_the_event_through[secret-read-claude]",
+  "tests/test_mutation.py::test_a_guard_that_answers_allow_for_the_check_lets_its_case_through[secret-read-claude]",
+]
+
+[[entries]]
+condition = "hook.generated-paths.claude.deny"
+why = "an edit to a generated path or under deny_write is refused as the client rules refuse it; each mutant lets it through"
+tests = [
+  "tests/test_hooks.py::test_the_real_checker_refuses_generated_files_and_secrets",
+  "tests/test_hooks.py::test_the_guard_denies_what_the_rendered_client_rules_deny",
+  "tests/test_hooks.py::test_an_edit_in_the_controller_store_is_refused",
+  "tests/test_mutation.py::test_emptying_the_matcher_lets_the_refused_event_through[generated-paths-claude]",
+  "tests/test_mutation.py::test_a_check_function_that_answers_allow_lets_the_event_through[generated-paths-claude]",
+  "tests/test_mutation.py::test_a_guard_that_answers_allow_for_the_check_lets_its_case_through[generated-paths-claude]",
+]
+
+[[entries]]
+condition = "hook.generated-paths.codex.deny"
+why = "a patch that adds, updates, deletes or moves onto a generated path is refused; each mutant lets it through"
+tests = [
+  "tests/test_hooks.py::test_a_codex_patch_on_a_generated_path_is_refused",
+  "tests/test_hooks.py::test_a_codex_patch_that_moves_a_file_onto_a_generated_path_is_refused",
+  "tests/test_mutation.py::test_emptying_the_matcher_lets_the_refused_event_through[generated-paths-codex]",
+  "tests/test_mutation.py::test_a_check_function_that_answers_allow_lets_the_event_through[generated-paths-codex]",
+  "tests/test_mutation.py::test_a_guard_that_answers_allow_for_the_check_lets_its_case_through[generated-paths-codex]",
+]
+
+[[entries]]
+condition = "hook.handoff-guard.claude.deny"
+why = "Agent, Task and Workflow are refused to a worker role and without a valid token; each mutant lets a worker spawn through"
+tests = [
+  "tests/test_workflow_guard.py::test_the_guard_denies_every_spawn_tool_to_a_worker_role",
+  "tests/test_workflow_guard.py::test_the_claude_handoff_guard_matches_workflow",
+  "tests/test_guard_failure.py::test_a_missing_token_is_a_deny",
+  "tests/test_mutation.py::test_emptying_the_matcher_lets_the_refused_event_through[handoff-guard-claude]",
+  "tests/test_mutation.py::test_a_check_function_that_answers_allow_lets_the_event_through[handoff-guard-claude]",
+  "tests/test_mutation.py::test_a_guard_that_answers_allow_for_the_check_lets_its_case_through[handoff-guard-claude]",
+]
+
+[[entries]]
+condition = "hook.handoff-guard.codex.deny"
+why = "wired but refusing nothing yet: spawn_agent is judged allow and what holds is native Codex subagents rendered off"
+tests = [
+  "tests/test_workflow_guard.py::test_codex_spawn_agent_is_judged_as_before",
+  "tests/test_adapters_codex.py::test_no_profile_enables_codex_delegation_without_a_rendered_guard",
+  "tests/test_mutation.py::test_the_checks_named_not_load_bearing_refuse_nothing_yet",
+]
+
+[[entries]]
+condition = "hook.spawn-record.claude.record"
+why = "a subagent start is journaled and never changes an answer; no hook renders until the follow-up config"
+tests = [
+  "tests/test_workflow_guard.py::test_a_subagent_start_is_recorded_in_the_worker_store",
+  "tests/test_workflow_guard.py::test_a_record_check_never_changes_the_answer",
+  "tests/test_sync.py::test_a_record_check_renders_no_hook",
+  "tests/test_mutation.py::test_the_checks_named_not_load_bearing_refuse_nothing_yet",
+]
+
+[[entries]]
+condition = "hook.spawn-record.codex.record"
+why = "as on Claude: journaled only, and rendered into no Codex hook yet"
+tests = [
+  "tests/test_workflow_guard.py::test_a_record_check_never_changes_the_answer",
+  "tests/test_sync.py::test_a_record_check_renders_no_hook",
+  "tests/test_mutation.py::test_the_checks_named_not_load_bearing_refuse_nothing_yet",
+]
+
+[[entries]]
+condition = "hook.order-check.claude.reminder"
+why = "a stop and a subagent stop on a failing order are sent back once; each mutant lets the stop end"
+tests = [
+  "tests/test_work.py::test_a_builder_cannot_stop_on_an_order_that_does_not_hold",
+  "tests/test_hooks.py::test_a_stop_is_sent_back_once_and_then_ends",
+  "tests/test_hooks.py::test_owned_paths_and_order_check_speak_through_tac_work",
+  "tests/test_mutation.py::test_emptying_the_matcher_lets_the_refused_event_through[order-check-claude]",
+  "tests/test_mutation.py::test_a_check_function_that_answers_allow_lets_the_event_through[order-check-claude]",
+  "tests/test_mutation.py::test_a_guard_that_answers_allow_for_the_check_lets_its_case_through[order-check-claude]",
+]
+
+[[entries]]
+condition = "hook.order-check.codex.reminder"
+why = "a Codex stop on a failing order is sent back once; each mutant lets it end"
+tests = [
+  "tests/test_hooks.py::test_owned_paths_and_order_check_speak_through_tac_work",
+  "tests/test_mutation.py::test_emptying_the_matcher_lets_the_refused_event_through[order-check-codex]",
+  "tests/test_mutation.py::test_a_check_function_that_answers_allow_lets_the_event_through[order-check-codex]",
+  "tests/test_mutation.py::test_a_guard_that_answers_allow_for_the_check_lets_its_case_through[order-check-codex]",
+]
+
+# ---- pipelines: every stage and gate of every enabled pipeline. The order
+# pipeline runs end to end against fake clients; the others are checked by the
+# pipeline checker and their templates render, since tac run takes only order.
+
+[[entries]]
+condition = "pipeline.order.stage.intake"
+why = "runs to complete in the order run; its template renders from its examples"
+tests = [
+  "tests/test_runner.py::test_an_order_runs_to_the_owner_s_approval_then_to_the_merge_command",
+  "tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/intake.md.j2]",
+  "tests/test_pipelines.py::test_the_order_pipeline_has_its_intake_and_effect_stages",
+]
+
+[[entries]]
+condition = "pipeline.order.stage.specify"
+why = "runs to complete, its dispatch bound to its prompt; its template renders"
+tests = [
+  "tests/test_runner.py::test_an_order_runs_to_the_owner_s_approval_then_to_the_merge_command",
+  "tests/test_runner.py::test_each_dispatch_is_bound_to_its_prompt_and_billed_to_the_subscription",
+  "tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/specify.md.j2]",
+]
+
+[[entries]]
+condition = "pipeline.order.stage.build"
+why = "runs to complete; a bad result is repaired once, then goes to the owner"
+tests = [
+  "tests/test_runner.py::test_an_order_runs_to_the_owner_s_approval_then_to_the_merge_command",
+  "tests/test_runner.py::test_one_repair_pass_recovers_a_first_bad_result",
+  "tests/test_runner.py::test_a_result_that_fails_twice_goes_to_the_owner",
+  "tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/build.md.j2]",
+]
+
+[[entries]]
+condition = "pipeline.order.stage.review"
+why = "reaches reviewed on the other provider in the order run"
+tests = [
+  "tests/test_runner.py::test_an_order_runs_to_the_owner_s_approval_then_to_the_merge_command",
+  "tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/review.md.j2]",
+  "tests/test_pipelines.py::test_the_other_provider_only_on_a_review_stage",
+]
+
+[[entries]]
+condition = "pipeline.order.stage.signoff"
+why = "skipped for one team, run for a cross-team order"
+tests = [
+  "tests/test_runner.py::test_a_cross_team_order_runs_its_signoff",
+  "tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/signoff.md.j2]",
+]
+
+[[entries]]
+condition = "pipeline.order.stage.gate"
+why = "the runner's real gate runs in the order worktree; a failing gate is repaired at most retry.max times"
+tests = [
+  "tests/test_runner.py::test_a_gate_stage_runs_the_runner_s_real_gate_in_the_order_worktree",
+  "tests/test_runner.py::test_a_failing_gate_is_repaired_at_most_retry_max_times",
+]
+
+[[entries]]
+condition = "pipeline.order.stage.publish"
+why = "commit, push and pull request as tac-bot after one approval, resumable after a crash"
+tests = [
+  "tests/test_runner.py::test_an_order_runs_to_the_owner_s_approval_then_to_the_merge_command",
+  "tests/test_runner.py::test_a_crash_between_push_and_pull_request_resumes_to_complete",
+  "tests/test_runner.py::test_an_external_effect_needs_one_signed_approval_used_once",
+]
+
+[[entries]]
+condition = "pipeline.order.stage.recap"
+why = "runs to complete in the order run; the recap template and contract hold"
+tests = [
+  "tests/test_runner.py::test_an_order_runs_to_the_owner_s_approval_then_to_the_merge_command",
+  "tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[human/recap.md.j2]",
+  "tests/test_human.py::test_a_recap_that_breaks_its_contract_is_refused",
+]
+
+[[entries]]
+condition = "pipeline.order.stage.land"
+why = "waits for the owner with the squash merge pinned to the head commit"
+tests = [
+  "tests/test_runner.py::test_an_order_runs_to_the_owner_s_approval_then_to_the_merge_command",
+  "tests/test_runner.py::test_the_merge_command_is_squash_pinned_to_the_head_commit",
+]
+
+[[entries]]
+condition = "pipeline.order.gate.work-check"
+why = "the gate's recipe exists with the arity the runner calls; a failing check fails the order"
+tests = [
+  "tests/test_runner.py::test_the_gate_allowlist_holds_each_arity_to_the_justfile",
+  "tests/test_work.py::test_a_failing_command_fails_the_order_and_shows_its_output",
+]
+
+[[entries]]
+condition = "pipeline.order.gate.work-repair"
+why = "repair runs at most retry.max times; without a builder it writes the handoff and still fails"
+tests = [
+  "tests/test_runner.py::test_a_failing_gate_is_repaired_at_most_retry_max_times",
+  "tests/test_work.py::test_repair_without_a_builder_writes_the_handoff_and_still_fails",
+  "tests/test_pipelines.py::test_a_retry_repair_with_the_wrong_values_is_refused",
+]
+
+[[entries]]
+condition = "pipeline.order.gate.work-review"
+why = "a review counts only when current, by someone else, and ruling on every criterion"
+tests = [
+  "tests/test_runner.py::test_the_gate_allowlist_holds_each_arity_to_the_justfile",
+  "tests/test_work.py::test_nobody_accepts_their_own_work",
+  "tests/test_work.py::test_a_review_lapses_when_an_owned_file_moves_after_it",
+]
+
+[[entries]]
+condition = "pipeline.order.gate.work-accept"
+why = "acceptance measures for itself and needs the other teams' sign-off"
+tests = [
+  "tests/test_runner.py::test_the_gate_allowlist_holds_each_arity_to_the_justfile",
+  "tests/test_work.py::test_acceptance_measures_for_itself",
+  "tests/test_work.py::test_another_teams_files_need_that_teams_sign_off",
+]
+
+[[entries]]
+condition = "pipeline.order.gate.checks"
+why = "a gate that waits on M2 holds the run back: tac run refuses the shipped order pipeline until it is live"
+tests = [
+  "tests/test_runner.py::test_tac_run_refuses_the_shipped_order_pipeline_until_its_gate_is_live",
+  "tests/test_pipelines.py::test_a_waiting_gate_whose_recipe_exists_is_refused",
+]
+
+[[entries]]
+condition = "pipeline.board.stage.design"
+why = "checked, not run: the stage passes the pipeline checker and its template renders"
+tests = [
+  "tests/test_pipelines.py::test_each_pipeline_validates_on_its_own[board]",
+  "tests/test_pipelines.py::test_a_director_stage_names_its_seats",
+  "tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/design.md.j2]",
+]
+
+[[entries]]
+condition = "pipeline.board.stage.review"
+why = "checked, not run: the critique template renders"
+tests = [
+  "tests/test_pipelines.py::test_each_pipeline_validates_on_its_own[board]",
+  "tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/critique.md.j2]",
+]
+
+[[entries]]
+condition = "pipeline.board.stage.revise"
+why = "checked, not run: the revise template renders"
+tests = [
+  "tests/test_pipelines.py::test_each_pipeline_validates_on_its_own[board]",
+  "tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/revise.md.j2]",
+]
+
+[[entries]]
+condition = "pipeline.board.stage.decide"
+why = "checked, not run: a gate stage whose tally waits on M8, refused as a live gate until then"
+tests = [
+  "tests/test_pipelines.py::test_each_pipeline_validates_on_its_own[board]",
+  "tests/test_pipelines.py::test_a_waiting_gate_whose_recipe_exists_is_refused",
+]
+
+[[entries]]
+condition = "pipeline.board.stage.propose"
+why = "checked, not run: the propose template renders"
+tests = [
+  "tests/test_pipelines.py::test_each_pipeline_validates_on_its_own[board]",
+  "tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/propose.md.j2]",
+]
+
+[[entries]]
+condition = "pipeline.board.stage.rule"
+why = "checked, not run: an owner action is never an effect"
+tests = [
+  "tests/test_pipelines.py::test_each_pipeline_validates_on_its_own[board]",
+  "tests/test_pipelines.py::test_an_owner_action_as_an_effect_is_refused",
+]
+
+[[entries]]
+condition = "pipeline.board.gate.board-tally"
+why = "a gate waiting on M8: refused while its recipe is missing or waiting"
+tests = [
+  "tests/test_pipelines.py::test_a_waiting_gate_whose_recipe_exists_is_refused",
+  "tests/test_pipelines.py::test_a_gate_recipe_the_justfile_lacks_is_refused",
+]
+
+[[entries]]
+condition = "pipeline.review.stage.review"
+why = "checked, not run: the delta review renders and only a review stage takes the other provider"
+tests = [
+  "tests/test_pipelines.py::test_each_pipeline_validates_on_its_own[review]",
+  "tests/test_pipelines.py::test_the_other_provider_only_on_a_review_stage",
+  "tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/delta-review.md.j2]",
+]
+
+[[entries]]
+condition = "pipeline.review.gate.work-review"
+why = "the same review gate as the order pipeline's"
+tests = [
+  "tests/test_runner.py::test_the_gate_allowlist_holds_each_arity_to_the_justfile",
+  "tests/test_work.py::test_a_review_names_a_commit_and_the_order_names_a_builder",
+]
+
+[[entries]]
+condition = "pipeline.release.stage.plan"
+why = "checked, not run: the release template renders"
+tests = [
+  "tests/test_pipelines.py::test_each_pipeline_validates_on_its_own[release]",
+  "tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/release.md.j2]",
+]
+
+[[entries]]
+condition = "pipeline.release.stage.verify"
+why = "checked, not run: a gate stage whose argv arrays name recipes the justfile has"
+tests = [
+  "tests/test_pipelines.py::test_each_pipeline_validates_on_its_own[release]",
+  "tests/test_pipelines.py::test_every_gate_is_an_argv_array",
+]
+
+[[entries]]
+condition = "pipeline.release.stage.publish"
+why = "checked, not run: an effect with a gate upstream, as the order pipeline's publish runs"
+tests = [
+  "tests/test_pipelines.py::test_each_pipeline_validates_on_its_own[release]",
+  "tests/test_pipelines.py::test_an_effect_without_a_gate_upstream_is_refused",
+]
+
+[[entries]]
+condition = "pipeline.release.stage.merge"
+why = "checked, not run: the merge is the owner's action"
+tests = [
+  "tests/test_pipelines.py::test_each_pipeline_validates_on_its_own[release]",
+  "tests/test_pipelines.py::test_no_shipped_effect_is_an_owner_action",
+]
+
+[[entries]]
+condition = "pipeline.release.stage.cut"
+why = "checked, not run: the release is the owner's action"
+tests = [
+  "tests/test_pipelines.py::test_each_pipeline_validates_on_its_own[release]",
+  "tests/test_pipelines.py::test_no_shipped_effect_is_an_owner_action",
+]
+
+[[entries]]
+condition = "pipeline.release.gate.verify"
+why = "just verify runs the same lint as CI and every gate"
+tests = [
+  "tests/test_scaffolding.py::test_verify_runs_the_same_workflow_and_shell_lint_as_ci",
+  "tests/test_scaffolding.py::test_ci_runs_every_gate",
+]
+
+[[entries]]
+condition = "pipeline.release.gate.changelog"
+why = "the recipe exists and the fragments are named slug.type"
+tests = [
+  "tests/test_pipelines.py::test_each_pipeline_validates_on_its_own[release]",
+  "tests/test_scaffolding.py::test_changelog_fragments_are_named_slug_dot_type",
+]
+
+[[entries]]
+condition = "pipeline.retro.stage.extract"
+why = "checked, not run: the retro template renders"
+tests = [
+  "tests/test_pipelines.py::test_each_pipeline_validates_on_its_own[retro]",
+  "tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/retro.md.j2]",
+]
+
+[[entries]]
+condition = "pipeline.retro.stage.promote"
+why = "checked, not run: promotion is the owner's, refused inside an agent session"
+tests = [
+  "tests/test_pipelines.py::test_each_pipeline_validates_on_its_own[retro]",
+  "tests/test_memory.py::test_promote_is_refused_inside_an_agent_session",
+]
+
+# ---- handoffs: every template and every contract.
+
+[[entries]]
+condition = "handoff.build"
+tests = ["tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/build.md.j2]"]
+
+[[entries]]
+condition = "handoff.contract-repair"
+why = "rendered by tac handoff validate with the diagnostics, once, then a human item"
+tests = [
+  "tests/test_handoff.py::test_a_failing_result_gets_one_repair_then_becomes_a_human_item",
+  "tests/test_pipelines.py::test_the_repair_template_is_never_a_stage_template",
+]
+
+[[entries]]
+condition = "handoff.critique"
+tests = ["tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/critique.md.j2]"]
+
+[[entries]]
+condition = "handoff.delta-review"
+tests = ["tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/delta-review.md.j2]"]
+
+[[entries]]
+condition = "handoff.design"
+tests = ["tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/design.md.j2]"]
+
+[[entries]]
+condition = "handoff.intake"
+tests = ["tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/intake.md.j2]"]
+
+[[entries]]
+condition = "handoff.propose"
+tests = ["tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/propose.md.j2]"]
+
+[[entries]]
+condition = "handoff.release"
+tests = ["tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/release.md.j2]"]
+
+[[entries]]
+condition = "handoff.retro"
+tests = ["tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/retro.md.j2]"]
+
+[[entries]]
+condition = "handoff.review"
+tests = ["tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/review.md.j2]"]
+
+[[entries]]
+condition = "handoff.revise"
+tests = ["tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/revise.md.j2]"]
+
+[[entries]]
+condition = "handoff.signoff"
+tests = ["tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/signoff.md.j2]"]
+
+[[entries]]
+condition = "handoff.specify"
+tests = ["tests/test_handoff.py::test_every_shipped_template_renders_from_its_examples[handoffs/specify.md.j2]"]
+
+[[entries]]
+condition = "handoff.repair"
+why = "the work-order repair handoff, written from the failing criteria with its output fenced"
+tests = [
+  "tests/test_work.py::test_repair_without_a_builder_writes_the_handoff_and_still_fails",
+  "tests/test_work.py::test_check_output_cannot_close_the_fence_around_it",
+  "tests/test_handoff.py::test_no_handoff_template_shares_a_name_with_a_package_one",
+]
+
+[[entries]]
+condition = "contract.board-question"
+tests = [
+  "tests/test_contracts.py::test_every_model_facing_contract_is_in_the_strict_subset[contracts/handoffs/board-question.schema.json]",
+  "tests/test_contracts.py::test_every_model_facing_contract_has_an_example_that_meets_it[contracts/handoffs/board-question.schema.json]",
+]
+
+[[entries]]
+condition = "contract.build-report"
+tests = [
+  "tests/test_contracts.py::test_every_model_facing_contract_is_in_the_strict_subset[contracts/handoffs/build-report.schema.json]",
+  "tests/test_contracts.py::test_every_model_facing_contract_has_an_example_that_meets_it[contracts/handoffs/build-report.schema.json]",
+]
+
+[[entries]]
+condition = "contract.critique"
+tests = [
+  "tests/test_contracts.py::test_every_model_facing_contract_is_in_the_strict_subset[contracts/handoffs/critique.schema.json]",
+  "tests/test_contracts.py::test_every_model_facing_contract_has_an_example_that_meets_it[contracts/handoffs/critique.schema.json]",
+]
+
+[[entries]]
+condition = "contract.issue"
+tests = [
+  "tests/test_contracts.py::test_every_model_facing_contract_is_in_the_strict_subset[contracts/handoffs/issue.schema.json]",
+  "tests/test_contracts.py::test_every_model_facing_contract_has_an_example_that_meets_it[contracts/handoffs/issue.schema.json]",
+]
+
+[[entries]]
+condition = "contract.lessons"
+tests = [
+  "tests/test_contracts.py::test_every_model_facing_contract_is_in_the_strict_subset[contracts/handoffs/lessons.schema.json]",
+  "tests/test_contracts.py::test_every_model_facing_contract_has_an_example_that_meets_it[contracts/handoffs/lessons.schema.json]",
+]
+
+[[entries]]
+condition = "contract.order-request"
+tests = [
+  "tests/test_contracts.py::test_every_model_facing_contract_is_in_the_strict_subset[contracts/handoffs/order-request.schema.json]",
+  "tests/test_contracts.py::test_every_model_facing_contract_has_an_example_that_meets_it[contracts/handoffs/order-request.schema.json]",
+]
+
+[[entries]]
+condition = "contract.order-spec"
+tests = [
+  "tests/test_contracts.py::test_every_model_facing_contract_is_in_the_strict_subset[contracts/handoffs/order-spec.schema.json]",
+  "tests/test_contracts.py::test_every_model_facing_contract_has_an_example_that_meets_it[contracts/handoffs/order-spec.schema.json]",
+]
+
+[[entries]]
+condition = "contract.position"
+tests = [
+  "tests/test_contracts.py::test_every_model_facing_contract_is_in_the_strict_subset[contracts/handoffs/position.schema.json]",
+  "tests/test_contracts.py::test_every_model_facing_contract_has_an_example_that_meets_it[contracts/handoffs/position.schema.json]",
+]
+
+[[entries]]
+condition = "contract.proposal"
+tests = [
+  "tests/test_contracts.py::test_every_model_facing_contract_is_in_the_strict_subset[contracts/handoffs/proposal.schema.json]",
+  "tests/test_contracts.py::test_every_model_facing_contract_has_an_example_that_meets_it[contracts/handoffs/proposal.schema.json]",
+]
+
+[[entries]]
+condition = "contract.recap"
+tests = [
+  "tests/test_contracts.py::test_every_model_facing_contract_is_in_the_strict_subset[contracts/handoffs/recap.schema.json]",
+  "tests/test_contracts.py::test_every_model_facing_contract_has_an_example_that_meets_it[contracts/handoffs/recap.schema.json]",
+]
+
+[[entries]]
+condition = "contract.release-plan"
+tests = [
+  "tests/test_contracts.py::test_every_model_facing_contract_is_in_the_strict_subset[contracts/handoffs/release-plan.schema.json]",
+  "tests/test_contracts.py::test_every_model_facing_contract_has_an_example_that_meets_it[contracts/handoffs/release-plan.schema.json]",
+]
+
+[[entries]]
+condition = "contract.review"
+tests = [
+  "tests/test_contracts.py::test_every_model_facing_contract_is_in_the_strict_subset[contracts/handoffs/review.schema.json]",
+  "tests/test_contracts.py::test_every_model_facing_contract_has_an_example_that_meets_it[contracts/handoffs/review.schema.json]",
+]
+
+[[entries]]
+condition = "contract.signoff"
+tests = [
+  "tests/test_contracts.py::test_every_model_facing_contract_is_in_the_strict_subset[contracts/handoffs/signoff.schema.json]",
+  "tests/test_contracts.py::test_every_model_facing_contract_has_an_example_that_meets_it[contracts/handoffs/signoff.schema.json]",
+]
+
+# ---- memory: every command of tac memory.
+
+[[entries]]
+condition = "memory.add"
+tests = [
+  "tests/test_memory.py::test_the_cli_adds_searches_and_lints_in_the_redirected_store",
+  "tests/test_memory.py::test_add_writes_the_tool_metadata_from_the_launch_record",
+  "tests/test_memory.py::test_the_cli_refuses_a_secret_and_never_prints_it",
+]
+
+[[entries]]
+condition = "memory.event"
+tests = [
+  "tests/test_memory.py::test_events_derive_status_and_never_rewrite_a_record",
+  "tests/test_memory.py::test_the_cli_refuses_an_event_note_holding_a_secret",
+]
+
+[[entries]]
+condition = "memory.index"
+tests = ["tests/test_memory.py::test_the_index_is_deterministic_and_byte_identical"]
+
+[[entries]]
+condition = "memory.lint"
+tests = [
+  "tests/test_memory.py::test_lint_names_gaps_repeats_and_dangling_events",
+  "tests/test_memory.py::test_lint_names_a_record_over_the_cap_and_a_stale_index",
+]
+
+[[entries]]
+condition = "memory.promote"
+tests = [
+  "tests/test_memory.py::test_promote_accepts_a_record_with_a_verified_receipt",
+  "tests/test_memory.py::test_promote_is_refused_inside_an_agent_session",
+  "tests/test_memory.py::test_promote_without_evidence_names_the_basis_rule",
+]
+
+[[entries]]
+condition = "memory.schema"
+tests = ["tests/test_memory.py::test_the_record_contract_matches_the_model_and_the_strict_subset"]
+
+[[entries]]
+condition = "memory.search"
+tests = [
+  "tests/test_memory.py::test_the_cli_adds_searches_and_lints_in_the_redirected_store",
+  "tests/test_memory.py::test_the_cli_selects_only_this_repositorys_records",
+]
+
+# ---- the human loop: every item kind and every transition.
+
+[[entries]]
+condition = "human.question"
+tests = [
+  "tests/test_human.py::test_ask_adds_an_item_with_its_recommendation_blocks_and_milestone",
+  "tests/test_human.py::test_a_question_needs_its_recommendation_blocks_and_milestone",
+]
+
+[[entries]]
+condition = "human.approval"
+tests = [
+  "tests/test_human.py::test_an_approval_binds_an_action_and_a_revision",
+  "tests/test_approvals.py::test_approve_signs_on_the_host_and_the_signature_verifies",
+]
+
+[[entries]]
+condition = "human.step"
+tests = ["tests/test_human.py::test_a_step_needs_no_recommendation"]
+
+[[entries]]
+condition = "human.answer"
+tests = [
+  "tests/test_human.py::test_answer_records_the_owner_and_closes_a_question",
+  "tests/test_human.py::test_an_answer_never_approves_an_approval",
+  "tests/test_human.py::test_the_agent_identity_cannot_answer_for_the_owner",
+]
+
+[[entries]]
+condition = "human.ask"
+tests = [
+  "tests/test_human.py::test_ask_adds_an_item_with_its_recommendation_blocks_and_milestone",
+  "tests/test_human.py::test_ask_never_overwrites_an_item",
+]
+
+[[entries]]
+condition = "human.recap"
+tests = [
+  "tests/test_human.py::test_recap_writes_a_dated_file_in_the_order_the_owner_reads",
+  "tests/test_human.py::test_a_recap_over_four_hundred_words_is_refused",
+]
+
+[[entries]]
+condition = "human.render"
+tests = [
+  "tests/test_human.py::test_the_shipped_page_is_its_own_render",
+  "tests/test_human.py::test_a_hand_edit_fails_the_check",
+]
+
+[[entries]]
+condition = "human.verify"
+tests = [
+  "tests/test_approvals.py::test_verify_reads_the_trusted_key_and_exits_by_verdict",
+  "tests/test_approvals.py::test_verify_takes_the_key_from_the_base_revision_only",
+  "tests/test_approvals.py::test_verify_asks_github_through_the_owners_gh_and_exits_by_verdict",
+]
+
+[[entries]]
+condition = "human.approve"
+tests = [
+  "tests/test_approvals.py::test_approve_signs_on_the_host_and_the_signature_verifies",
+  "tests/test_approvals.py::test_approve_is_refused_inside_an_agent_session",
+  "tests/test_approvals.py::test_approve_is_refused_inside_a_sandbox",
+]
+
+[[entries]]
+condition = "human.timeout-without-consent"
+tests = [
+  "tests/test_approvals.py::test_a_timeout_is_never_consent",
+  "tests/test_approvals.py::test_the_knob_file_cannot_make_a_timeout_consent",
+  "tests/test_approvals.py::test_no_review_is_waiting_even_after_the_timeout",
+]
+
+# ---- the enforcement layers of design section 9.
+
+[[entries]]
+condition = "layer.1"
+why = "the rendered entry points match the golden files and the lock, and a hand edit is caught"
+tests = [
+  "tests/test_sync.py::test_renders_match_golden_files",
+  "tests/test_sync.py::test_the_repository_is_in_sync",
+  "tests/test_sync.py::test_a_hand_edit_is_caught",
+  "tests/test_sync_idempotent.py::test_a_second_sync_writes_nothing_and_checks_clean",
+]
+
+[[entries]]
+condition = "layer.2"
+why = "the stamped guard answers each client as documented, runs isolated, and fails closed"
+tests = [
+  "tests/test_hooks.py::test_a_refused_tool_call_exits_2_with_the_documented_deny",
+  "tests/test_hook_isolation.py::test_the_rendered_command_runs_the_stamped_guard_in_a_hostile_session",
+  "tests/test_guard_failure.py::test_a_hook_timeout_answers_deny_before_the_client_gives_up",
+]
+
+[[entries]]
+condition = "layer.3a"
+why = "prek refuses an invalid message, a failing fast test and a hand edit of a generated file"
+tests = [
+  "tests/test_git_hooks_fixture.py::test_an_invalid_commit_message_is_refused",
+  "tests/test_git_hooks_fixture.py::test_a_push_with_a_failing_fast_test_is_refused",
+  "tests/test_git_hooks_fixture.py::test_a_staged_hand_edit_of_a_generated_file_is_refused",
+]
+
+[[entries]]
+condition = "layer.3b"
+why = "CI judges with the base revision's checker, floor and verifier; CODEOWNERS covers what CI runs"
+tests = [
+  "tests/test_ci_work.py::test_the_base_checker_judges_and_the_candidates_never_runs",
+  "tests/test_ci_config.py::test_a_loosened_floor_is_refused_though_the_candidate_blinds_its_checker",
+  "tests/test_receipt_ci.py::test_a_candidate_key_and_verifier_change_nothing",
+  "tests/test_codeowners.py::test_this_repositorys_codeowners_covers_what_ci_runs",
+]
+probe = "bypass.ruleset-owner-review"
+requires = ["github-identity"]
+live = true
+
+# ---- doctor: every named check.
+
+[[entries]]
+condition = "doctor.uv-on-path"
+tests = ["tests/test_proof.py::test_doctor_uv_on_path_passes_with_uv_and_fails_without"]
+
+[[entries]]
+condition = "doctor.agents-project"
+tests = [
+  "tests/test_doctor_exit.py::test_agents_project_requires_the_named_path_source",
+  "tests/test_doctor_exit.py::test_agents_project_refuses_an_editable_source",
+]
+
+[[entries]]
+condition = "doctor.agents-lib"
+tests = ["tests/test_proof.py::test_doctor_agents_lib_names_a_missing_stamped_file"]
+
+[[entries]]
+condition = "doctor.agents-lib-current"
+tests = [
+  "tests/test_doctor_exit.py::test_a_stamp_behind_src_fails_and_names_the_file",
+  "tests/test_scaffolding.py::test_the_stamped_checker_matches_src_tac",
+]
+
+[[entries]]
+condition = "doctor.hook-guard-current"
+tests = ["tests/test_hooks.py::test_doctor_names_a_guard_that_was_never_stamped"]
+
+[[entries]]
+condition = "doctor.agents-venv"
+tests = ["tests/test_proof.py::test_doctor_agents_venv_needs_an_interpreter"]
+
+[[entries]]
+condition = "doctor.tac-import"
+tests = [
+  "tests/test_doctor_exit.py::test_tac_import_asks_the_deployed_interpreter",
+  "tests/test_doctor_exit.py::test_tac_import_fails_on_an_editable_install",
+]
+
+[[entries]]
+condition = "doctor.agents-config"
+tests = ["tests/test_core.py::test_the_doctor_loads_the_whole_configuration"]
+
+[[entries]]
+condition = "doctor.generated-lock"
+tests = ["tests/test_sync.py::test_doctor_reports_drift"]
+
+[[entries]]
+condition = "doctor.runner-pub"
+tests = [
+  "tests/test_doctor_exit.py::test_runner_pub_with_a_key_passes_and_names_it",
+  "tests/test_doctor_exit.py::test_runner_pub_placeholder_fails_and_names_the_owner_step",
+]
+
+[[entries]]
+condition = "doctor.codeowners-ci"
+tests = [
+  "tests/test_codeowners.py::test_this_repositorys_codeowners_covers_what_ci_runs",
+  "tests/test_codeowners.py::test_each_gap_is_named",
+]
+
+[[entries]]
+condition = "doctor.github-ruleset"
+tests = [
+  "tests/test_doctor_exit.py::test_doctor_exits_non_zero_on_a_seeded_bypass_actor",
+  "tests/test_doctor_ruleset.py::test_a_holding_ruleset_passes",
+  "tests/test_doctor_ruleset.py::test_a_non_empty_bypass_actors_fails",
+]
+
+[[entries]]
+condition = "doctor.session-identity"
+tests = [
+  "tests/test_doctor_ruleset.py::test_the_owner_login_in_an_agent_session_fails",
+  "tests/test_doctor_ruleset.py::test_the_machine_account_in_an_agent_session_passes",
+]
+
+[[entries]]
+condition = "doctor.client-claude"
+tests = [
+  "tests/test_probes.py::test_client_status_reports_the_version",
+  "tests/test_probes.py::test_client_status_fails_when_the_client_is_missing",
+]
+
+[[entries]]
+condition = "doctor.trust-claude"
+tests = [
+  "tests/test_probes.py::test_claude_trusts_an_accepted_folder",
+  "tests/test_probes.py::test_claude_without_acceptance_is_not_trusted",
+]
+
+[[entries]]
+condition = "doctor.client-codex"
+tests = [
+  "tests/test_probes.py::test_doctor_carries_a_client_and_a_trust_check_per_harness",
+  "tests/test_probes.py::test_client_status_fails_when_version_does_not_answer",
+]
+
+[[entries]]
+condition = "doctor.trust-codex"
+tests = [
+  "tests/test_probes.py::test_codex_trusts_a_trusted_project",
+  "tests/test_probes.py::test_codex_untrusted_wins",
+  "tests/test_probes.py::test_a_linked_worktree_is_trusted_through_the_main_checkout",
+]
+
+[[entries]]
+condition = "doctor.hook-trust-codex"
+tests = [
+  "tests/test_probes.py::test_project_hooks_stay_undecided_and_name_the_owner_step",
+  "tests/test_adapters_codex.py::test_the_rendered_hooks_wait_for_the_owner_s_approval",
+]
+
+# ---- the build conditions of design section 18.
+
+[[entries]]
+condition = "condition.C1"
+why = "offline through the stamped guard and a real runner; live on both clients once the owner's steps are done"
+tests = [
+  "tests/test_guard_failure.py",
+  "tests/test_bypass.py::test_a_native_spawn_whose_token_was_already_spent_is_denied",
+]
+probe = "C1"
+requires = ["codex-resumed", "runner-key", "client-claude", "trust-claude", "client-codex", "trust-codex"]
+live = true
+
+[[entries]]
+condition = "condition.C2"
+tests = ["tests/test_hook_isolation.py"]
+
+[[entries]]
+condition = "condition.C3"
+tests = [
+  "tests/test_receipt_trust.py::test_a_candidate_supplied_key_is_rejected",
+  "tests/test_receipt_trust.py::test_a_receipt_replayed_into_another_context_is_rejected",
+  "tests/test_receipt_ci.py",
+]
+
+[[entries]]
+condition = "condition.C4"
+tests = [
+  "tests/test_guard_py39.py::test_the_source_guard_itself_loads_under_3_9",
+  "tests/test_doctor_exit.py::test_agents_project_refuses_an_editable_source",
+  "tests/test_scaffolding.py::test_agents_toolchain_installs_tac_from_the_stamped_copy",
+]
+
+[[entries]]
+condition = "condition.C5"
+tests = [
+  "tests/test_doctor_ruleset.py::test_each_active_branch_ruleset_is_fetched_by_id_and_tags_are_not",
+  "tests/test_doctor_ruleset.py::test_a_missing_bypass_actors_fails_with_the_owner_token",
+  "tests/test_git_hooks_fixture.py::test_a_clean_change_commits_and_pushes",
+]
+
+[[entries]]
+condition = "condition.C6"
+why = "offline against a fake security; live inside sandboxed sessions once the key is in the keychain"
+tests = [
+  "tests/test_runner.py::test_the_runner_names_exactly_two_keychain_entries",
+  "tests/test_runner.py::test_a_third_keychain_name_is_refused_before_any_process_starts",
+  "tests/test_runner.py::test_the_merge_command_is_squash_pinned_to_the_head_commit",
+]
+probe = "C6"
+requires = ["codex-resumed", "runner-key", "keychain", "client-claude", "trust-claude", "client-codex", "trust-codex"]
+live = true
+
+# ---- the bypass attempts of design section 9.
+
+[[entries]]
+condition = "bypass.ruleset-owner-review"
+why = "offline the ruleset tac applies requires code owners; the refusal itself is GitHub's, live"
+tests = [
+  "tests/test_github_apply.py::test_the_ruleset_requires_code_owners_and_squash_only",
+  "tests/test_github_apply.py::test_the_ruleset_turns_bypass_off_for_everyone",
+]
+probe = "bypass.ruleset-owner-review"
+requires = ["github-identity"]
+live = true
+
+[[entries]]
+condition = "bypass.push-required-checks"
+tests = ["tests/test_github_apply.py::test_the_required_checks_are_the_ci_jobs"]
+probe = "bypass.push-required-checks"
+requires = ["github-identity"]
+live = true
+
+[[entries]]
+condition = "bypass.forged-approval"
+tests = [
+  "tests/test_approvals.py::test_a_forged_file_is_refused",
+  "tests/test_approvals.py::test_a_forged_signature_is_refused",
+  "tests/test_approvals.py::test_the_item_file_records_nothing_the_verifier_trusts",
+]
+
+[[entries]]
+condition = "bypass.altered-receipt"
+tests = [
+  "tests/test_bypass.py::test_an_altered_receipt_is_recomputed_and_rejected_by_the_ci_verifier_script",
+  "tests/test_receipt_trust.py::test_an_altered_committed_receipt_is_rejected_by_ci",
+]
+
+[[entries]]
+condition = "bypass.policy-tamper-guard"
+tests = [
+  "tests/test_hooks.py::test_an_edit_under_the_policy_s_deny_write_is_refused",
+  "tests/test_adapters_claude.py::test_writes_to_the_tree_and_every_locked_output_are_denied",
+]
+
+[[entries]]
+condition = "bypass.policy-tamper-commit"
+tests = [
+  "tests/test_bypass.py::test_a_policy_tamper_written_through_a_shell_is_refused_at_commit",
+  "tests/test_git_hooks_fixture.py::test_a_staged_hand_edit_of_a_generated_file_is_refused",
+]
+
+[[entries]]
+condition = "bypass.policy-tamper-boundary"
+why = "offline CODEOWNERS names the owner on .agents/; the ruleset refusing a merge without that review is live"
+tests = [
+  "tests/test_scaffolding.py::test_codeowners_names_the_owner_on_the_guarded_paths",
+  "tests/test_ci_config.py::test_a_loosened_floor_is_refused_though_the_candidate_blinds_its_checker",
+]
+probe = "bypass.ruleset-owner-review"
+requires = ["github-identity"]
+live = true
+
+[[entries]]
+condition = "bypass.hook-removed"
+tests = ["tests/test_mutation.py"]
+
+[[entries]]
+condition = "bypass.spawn-without-token"
+tests = [
+  "tests/test_guard_failure.py::test_a_missing_token_is_a_deny",
+  "tests/test_guard_failure.py::test_an_altered_token_is_a_deny_and_burns_nothing_else",
+  "tests/test_guard_failure.py::test_a_token_reused_by_two_concurrent_spawns_lets_exactly_one_through",
+  "tests/test_bypass.py::test_a_native_spawn_whose_token_was_already_spent_is_denied",
+]
+
+[[entries]]
+condition = "bypass.workflow-unregistered"
+tests = [
+  "tests/test_bypass.py::test_a_workflow_call_with_an_unregistered_script_is_denied",
+  "tests/test_workflow_guard.py::test_an_unregistered_script_is_denied",
+]
+
+[[entries]]
+condition = "bypass.workflow-without-token"
+tests = [
+  "tests/test_bypass.py::test_a_workflow_call_without_a_token_is_denied",
+  "tests/test_workflow_guard.py::test_a_registered_script_without_a_runner_token_is_denied",
+]
+
+[[entries]]
+condition = "bypass.workflow-reused-token"
+tests = [
+  "tests/test_bypass.py::test_a_workflow_call_with_a_reused_token_is_denied",
+  "tests/test_workflow_guard.py::test_a_registered_script_with_the_runner_s_token_is_allowed",
+]
+
+[[entries]]
+condition = "bypass.workflow-from-builder"
+tests = [
+  "tests/test_bypass.py::test_a_workflow_call_from_a_builder_is_denied",
+  "tests/test_workflow_guard.py::test_a_builder_s_workflow_call_is_denied",
+]
+
+[[entries]]
+condition = "bypass.registered-run"
+why = "offline: prompts bind by hash, results meet their contracts, the run's receipt verifies; the Workflow run receipt waits for the PostToolUse follow-up config"
+tests = [
+  "tests/test_handoff.py::test_render_fences_the_payload_and_binds_everything_by_hash",
+  "tests/test_handoff.py::test_a_result_is_judged_against_the_contract_it_was_dispatched_with",
+  "tests/test_runner.py::test_each_dispatch_is_bound_to_its_prompt_and_billed_to_the_subscription",
+  "tests/test_runner.py::test_a_receipt_signed_in_a_run_verifies_against_the_runner_key",
+  "tests/test_workflow_guard.py::test_a_workflow_result_is_recorded_for_the_dispatch_receipt",
+]
+
+[[entries]]
+condition = "bypass.classifier"
+why = "only a live auto-mode session shows what the classifier marks"
+probe = "bypass.classifier"
+requires = ["live-claude-session"]
+live = true
