@@ -16,11 +16,14 @@ https://developers.openai.com/codex/subagents.
 from __future__ import annotations
 
 import hashlib
+import re
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from tac.config import CONFIG_DIR, Config
+from tac.work import Bad
 
 CONTEXT_DIR = ".agents/context"
 BRIEF_FILE = f"{CONTEXT_DIR}/brief.md"
@@ -53,6 +56,35 @@ CLAUDE_TELEMETRY: dict[str, dict[str, str]] = {
 # The subagent tool under its current and former names; denied outright when the
 # profile turns native delegation off, so refusal survives a hook failure (C1).
 CLAUDE_SPAWN_TOOLS = ("Agent", "Task")
+
+# ---- hook wiring (design section 9, build condition C2)
+
+# The events the guard answers per client, as each client's docs name them:
+# https://code.claude.com/docs/en/hooks and https://developers.openai.com/codex/hooks.
+# hooks/run.py keeps the same table, since it cannot import this package.
+GUARD_EVENTS: dict[str, tuple[str, ...]] = {
+    "claude": ("PreToolUse", "PostToolUse", "Stop", "SubagentStop", "SessionStart"),
+    "codex": ("PreToolUse", "PostToolUse", "Stop", "SessionStart"),
+}
+# An event wired and judged by the checks hooks.toml writes for another: a
+# subagent's stop on Claude is held to what a session's stop is held to.
+CONFIGURED_AS = {"SubagentStop": "Stop"}
+# Events whose matcher filters by tool name; the others take every occurrence.
+TOOL_EVENTS = frozenset({"PreToolUse", "PostToolUse"})
+# What a hook command hands on from the client's environment, and nothing else:
+# the guard's own PASS_ENV, so PYTHON*, UV_*, GIT_* and tokens never reach it.
+HOOK_ENV = ("HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR")
+ENV = "/usr/bin/env"
+# Codex sets no project folder for a hook and starts it in the session's
+# folder, so the root comes from git, run by absolute path in an empty
+# environment (https://developers.openai.com/codex/hooks).
+GIT = "/usr/bin/git"
+# Claude Code names the project root for every hook command.
+CLAUDE_ROOT = "$CLAUDE_PROJECT_DIR"
+# A matcher that is a plain list of tool names, which can be merged with others.
+NAMES = re.compile(r"^[A-Za-z0-9_]+(\|[A-Za-z0-9_]+)*$")
+# The guard's path goes inside double quotes in a shell command.
+SAFE_SCRIPT = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,7 +234,98 @@ def claude(config: Config, root: Path, outputs: list[str]) -> dict[str, Any]:
         "env": env,
         "extras": _read(root, CLAUDE_EXTRAS_FILE),
         "roles": roles_for(config, root, "claude"),
+        "hooks": hooks(config, "claude"),
     }
+
+
+# ---------------------------------------------------------------- hooks
+
+
+def hook_command(config: Config, client: str, event: str) -> str:
+    """The shell command a client runs for one event: an empty environment
+    with a fixed PATH, the pinned interpreter in isolated mode, and the stamped
+    guard by absolute path (build condition C2)."""
+    guard = config.hooks.guard
+    if not SAFE_SCRIPT.match(guard.script) or ".." in guard.script.split("/"):
+        raise Bad(
+            f"{CONFIG_DIR}/hooks.toml: guard.script {guard.script!r} must be a "
+            "plain path inside the checkout"
+        )
+    path = ":".join(guard.path)
+    env = [ENV, "-i", "PATH=" + shlex.quote(path)]
+    if client == "claude":
+        root = CLAUDE_ROOT
+    else:
+        root = "$(" + " ".join([*env, GIT, "rev-parse", "--show-toplevel"]) + ")"
+    words = [
+        *env,
+        *(f'{name}="${name}"' for name in HOOK_ENV),
+        shlex.quote(guard.python),
+        "-I",
+        f'"{root}/{guard.script}"',
+        "--client",
+        client,
+        "--event",
+        event,
+        "--deadline-s",
+        str(guard.deadline_s),
+        "--path",
+        shlex.quote(path),
+    ]
+    return " ".join(words)
+
+
+def _merge(matchers: list[str]) -> list[str]:
+    """One matcher per group: `*` covers everything, plain tool names merge
+    into one alternation, and anything else stays a group of its own."""
+    if "*" in matchers:
+        return ["*"]
+    names: list[str] = []
+    other: list[str] = []
+    for matcher in matchers:
+        if NAMES.match(matcher):
+            names += [n for n in matcher.split("|") if n not in names]
+        elif matcher not in other:
+            other.append(matcher)
+    return (["|".join(names)] if names else []) + other
+
+
+def hooks(config: Config, client: str) -> list[dict[str, Any]]:
+    """Every hook group a client's file takes, from config/hooks.toml: one per
+    event and matcher, each running the guard once. A check with an empty
+    matcher is not wired on that client; a record-only check changes no answer
+    and waits for the worker store journal, so it renders nothing yet."""
+    wanted: dict[str, list[str]] = {}
+    for name, spec in config.hooks.checks.items():
+        matcher = spec.claude if client == "claude" else spec.codex
+        if not matcher or spec.kind == "record":
+            continue
+        events = [spec.event] + [
+            fired
+            for fired, judged in CONFIGURED_AS.items()
+            if judged == spec.event and fired in GUARD_EVENTS[client]
+        ]
+        for event in events:
+            if event not in GUARD_EVENTS[client]:
+                raise Bad(
+                    f"{CONFIG_DIR}/hooks.toml: checks.{name} is wired on {client} "
+                    f"for {event}, which the guard does not answer there"
+                )
+            wanted.setdefault(event, []).append(
+                matcher if event in TOOL_EVENTS else "*"
+            )
+    groups = []
+    for event in GUARD_EVENTS[client]:
+        for matcher in _merge(wanted.get(event, [])):
+            groups.append(
+                {
+                    "event": event,
+                    "matcher": "" if matcher == "*" else matcher,
+                    "command": hook_command(config, client, event),
+                    "timeout": config.hooks.guard.timeout_s,
+                }
+            )
+    return groups
 
 
 # ---------------------------------------------------------------- Codex
@@ -220,6 +343,7 @@ def codex(config: Config, root: Path) -> dict[str, Any]:
         "inherit": config.runtime.env.codex_inherit,
         "agents_enabled": profile.native_delegation != "off",
         "max_threads": config.knobs.teams.max_local_agents,
+        "hooks": hooks(config, "codex"),
         "roles": [
             {**role, "developer_instructions": _developer_instructions(role)}
             for role in roles_for(config, root, "codex")

@@ -14,7 +14,7 @@ schema_version = 1
 ".agents/config/gates/mixed.toml" = "3e47ab91cd931efb3c064ae760a3ca4de464385c17b90014fb6e299dca67e13b"
 ".agents/config/gates/tool.toml" = "305e8c0042992f981315efa1883a3f3838d3b9be1590692f6ff975c8df7516fc"
 ".agents/config/github.toml" = "4e91f0edf1d595a0cd4b7d466be72aa5eabd43a73b9be3b69b576bac102c3d6d"
-".agents/config/hooks.toml" = "abc908730fc0d6eb7f67d8d124d6362938e068ac9fcd44ad2620d2ae3c723f77"
+".agents/config/hooks.toml" = "2f6ea7f36eff32a52e7111ecb67823ff9cce63ec3dfe6dde9c6e0c34a29b0bef"
 ".agents/config/mcp.toml" = "a5ebdd9c08e6a5175d1e1a900118afac635b5e54f92a1b8989272ace9619479e"
 ".agents/config/models.toml" = "92e56d65ff72a54f3be5f42e821f7d4a57eb6af8284cb67b9700a37be6f2a5e9"
 ".agents/config/network.toml" = "74b9a81741b4ef613a2297625d817d1c85a36864734fe987cb20b0629d7b9bd9"
@@ -43,9 +43,10 @@ schema_version = 1
 [templates]
 "templates/adapters/claude/CLAUDE.md.j2" = "95d3ac1569e5ba812abe91e3f95fd77328fae97bfeab7d6563aa4c7d99db2750"
 "templates/adapters/claude/agent.md.j2" = "c21a03e0ac76409c03a0db7822be737a627ae98854707e60cf94020599667a63"
-"templates/adapters/claude/settings.json.data.j2" = "ddaaee2b06fb13a11c7e9fa15ab7a4bd6bdb8619ad558293b7b43369f8416150"
+"templates/adapters/claude/settings.json.data.j2" = "2f05dfb000a22463ff45b41e8a289c5c874b4cebe877ef39c19da0846da09d44"
 "templates/adapters/codex/agent.toml.data.j2" = "9e8371ffb57e264263d528b4ad994d97efa2f5969977bcef0511626e89373a76"
 "templates/adapters/codex/config.toml.data.j2" = "07e41a1f1930c4a7fdbdaf9e5f2934f451755212c150361e640e4af09d4a0431"
+"templates/adapters/codex/hooks.json.data.j2" = "ff0e97ef758e36fbcc771347cace527411f78eb6ad64723307f00c543d59dbba"
 "templates/adapters/common/AGENTS.md.j2" = "679f40c71c3d93914ab3385a975ff8dbe3e6924c5d027be2624ca4a5e6448188"
 
 [policy]
@@ -56,6 +57,7 @@ schema_version = 1
 
 [hooks]
 ".agents/hooks/run.py" = "0f2056af525c3bbeb16a11fdfc158dcf39802f223cad84f6a15081eaf3a84c18"
+"hooks/git/prek.toml" = "02a622662f16b0537ece3413a30a279ebffbf5dcf72a17565bd546ce11de9689"
 "hooks/run.py" = "0f2056af525c3bbeb16a11fdfc158dcf39802f223cad84f6a15081eaf3a84c18"
 
 [outputs]
@@ -65,12 +67,13 @@ schema_version = 1
 ".claude/agents/manager.md" = "417aef90cef445f060eaed92150960198c38701b72c98a7a20bdb3a8225630ac"
 ".claude/agents/reviewer.md" = "300e2dc9aa605740ccf72d81b3c88834a11dbd77e74fc9448f80b7fb0ae7cd25"
 ".claude/agents/scout.md" = "7ae098f3b9ab1e11880169355d6706602aa597bad865cedb937d22bfa75f796c"
-".claude/settings.json" = "87a5dc23893a332be7cd54e67dad2f94feaf953b5848363004121578365f8aae"
+".claude/settings.json" = "6b732a781735833b81b542b5fc8960b579ebe3e2a6376514f0b682076ee1d9ba"
 ".codex/agents/builder.toml" = "ed466fd61f9c046feb1d305f90d5bb2d72aa56cb0f9e13fe950d4e531e0c79e3"
 ".codex/agents/director.toml" = "cb5a0fd5947e0947ee0dc520bf17f065b69d62d21b36a64377b74cf859f39aba"
 ".codex/agents/manager.toml" = "188c5a0249dd78cc3d653a7cd44ea6a720b8180977ba25c70c57d36b61ce90fc"
 ".codex/agents/reviewer.toml" = "b14a844f3e92d50139eea94bfafbe6ddad0522e8a11203310e2a8dcc99f4eac1"
 ".codex/agents/scout.toml" = "1deed79a1c0795c199cff7d6202eb8862f00afa990017b8c7d8a424a41a1f6ba"
 ".codex/config.toml" = "53d5a2a1c6626174a9c390652f9aef0d01a59a28ea0702c1e39d9e242afdb9fd"
-"AGENTS.md" = "a0d5af53a90589de85355e3ebe595db188f06d1f3cd1fafee8dbdc58473567e5"
+".codex/hooks.json" = "eefccd8c868ac78ff3db7671c2a5bb354faffaf8567a8c720e4c2ff5bac01d19"
+"AGENTS.md" = "1bad134989cb0be6d4094302922a549850847abc5d8dda0ef383a5383d58632f"
 "CLAUDE.md" = "69da52717ebfacfe3b2fa33afba1fc5e132c0a859fc72d198804f6c3ec021c7c"

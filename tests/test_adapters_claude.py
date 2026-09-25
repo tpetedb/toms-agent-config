@@ -163,8 +163,32 @@ def test_the_network_allowlist_comes_from_network_toml(root: Path) -> None:
     assert allowed == list(load_config(root).network.egress.allow)
 
 
-def test_hooks_are_an_empty_table_until_m2(root: Path) -> None:
-    assert settings(root)["hooks"] == {}
+def test_every_hook_runs_the_stamped_guard_isolated(root: Path) -> None:
+    hooks = settings(root)["hooks"]
+    assert set(hooks) == {"PreToolUse", "Stop", "SubagentStop"}
+    for event, groups in hooks.items():
+        for group in groups:
+            (hook,) = group["hooks"]
+            assert set(hook) == {"type", "command", "timeout"}
+            command = hook["command"]
+            # An empty environment, the pinned interpreter isolated, the stamped
+            # guard by the project root Claude Code hands every hook (C2).
+            assert command.startswith("/usr/bin/env -i PATH=/usr/bin:/bin:")
+            assert " /usr/bin/python3 -I " in command
+            assert '"$CLAUDE_PROJECT_DIR/.agents/hooks/run.py"' in command
+            assert f"--client claude --event {event} " in command
+            assert "hooks/run.py" not in command.replace(".agents/hooks/run.py", "")
+            assert hook["timeout"] == load_config(root).hooks.guard.timeout_s
+
+
+def test_a_check_moved_off_claude_is_no_longer_wired(tmp_path: Path) -> None:
+    copy_project(tmp_path)
+    hooks = tmp_path / ".agents/config/hooks.toml"
+    replace_in(hooks, 'claude = "Read|Grep|Glob"', 'claude = ""')
+    sync(tmp_path, links=False)
+    (group,) = settings(tmp_path)["hooks"]["PreToolUse"]
+    assert "Read" not in group["matcher"].split("|")
+    assert "Edit" in group["matcher"].split("|")
 
 
 def test_claude_md_imports_agents_md(root: Path) -> None:

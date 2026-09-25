@@ -24,26 +24,28 @@ from pydantic import BaseModel, ConfigDict, JsonValue
 
 import tac
 from tac import work
+from tac.adapters import CONFIGURED_AS, GUARD_EVENTS, TOOL_EVENTS
 from tac.config import Config, load_config
 from tac.draft07 import draft07
 from tac.sync import generated_paths
 
 CONTRACT = "contracts/hook-verdict.schema.json"
 Client = Literal["claude", "codex"]
-# The events the guard forwards, per client, as each client's docs name them.
-EVENTS: Mapping[str, tuple[str, ...]] = {
-    "claude": ("PreToolUse", "PostToolUse", "Stop", "SubagentStop", "SessionStart"),
-    "codex": ("PreToolUse", "PostToolUse", "Stop", "SessionStart"),
-}
-# A subagent's stop on Claude is judged by the checks written for Stop.
-CONFIGURED_AS = {"SubagentStop": "Stop"}
-# Events that carry a tool_name for the matchers; the rest match only `*`.
-TOOL_EVENTS = frozenset({"PreToolUse", "PostToolUse"})
+# The events the guard forwards, per client, and the ones judged by another
+# event's checks; the adapters render the hooks from the same tables.
+EVENTS: Mapping[str, tuple[str, ...]] = GUARD_EVENTS
 # Where each tool names the file it acts on: Edit, Write, Read and NotebookEdit
 # use file_path or notebook_path; Grep and Glob search under path, and Glob's
 # pattern may name a file outright.
 EDIT_KEYS = ("file_path", "notebook_path")
 READ_KEYS = ("file_path", "notebook_path", "path", "pattern")
+# Codex edits files through apply_patch, whose tool_input.command holds the
+# patch; each file it adds, updates, deletes or moves to is named on a header
+# line (https://developers.openai.com/codex/hooks).
+PATCH_TOOL = "apply_patch"
+PATCH_FILE = re.compile(
+    r"^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+?)\s*$", re.M
+)
 
 
 class Verdict(BaseModel):
@@ -84,6 +86,16 @@ def _targets(payload: Mapping[str, Any], keys: tuple[str, ...]) -> Iterator[str]
             yield value
 
 
+def _edits(payload: Mapping[str, Any]) -> Iterator[str]:
+    """Every file an editing call names, whether by a path key or, for
+    apply_patch, on the patch's own header lines."""
+    yield from _targets(payload, EDIT_KEYS)
+    if payload.get("tool_name") != PATCH_TOOL:
+        return
+    for patch in _targets(payload, ("command",)):
+        yield from (m.group(1) for m in PATCH_FILE.finditer(patch))
+
+
 def _absolute(raw: str, payload: Mapping[str, Any], root: Path) -> Path:
     path = Path(os.path.expanduser(raw))
     if not path.is_absolute():
@@ -112,7 +124,7 @@ def check_generated_paths(
 ) -> str | None:
     """An edit to a generated file or a path the policy keeps from every agent."""
     generated = set(generated_paths(root))
-    for raw in _targets(payload, EDIT_KEYS):
+    for raw in _edits(payload):
         rel = _relative(_absolute(raw, payload, root), root)
         if rel is None:
             continue
@@ -152,11 +164,19 @@ def check_secret_read(
 
 
 def check_owned_paths(
-    _root: Path, payload: Mapping[str, Any], _config: Config
+    root: Path, payload: Mapping[str, Any], _config: Config
 ) -> str | None:
-    """An edit outside what the orders on this branch own (tac work)."""
-    code, why = work.hook_pre_tool(dict(payload))
-    return why if code else None
+    """An edit outside what the orders on this branch own (tac work), asked
+    once per file the call names."""
+    for raw in _edits(payload):
+        one = {
+            **payload,
+            "tool_input": {"file_path": str(_absolute(raw, payload, root))},
+        }
+        code, why = work.hook_pre_tool(one)
+        if code:
+            return why
+    return None
 
 
 def check_order(_root: Path, payload: Mapping[str, Any], _config: Config) -> str | None:

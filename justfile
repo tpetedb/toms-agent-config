@@ -49,6 +49,10 @@ pipeline-check *names:
 pipeline-plan name:
     {{ tac }} pipeline plan {{ quote(name) }}
 
+# Host or runner only: install the git hooks of hooks/git/prek.toml into this clone.
+hooks-install:
+    uv run --frozen --no-sync prek install --config hooks/git/prek.toml
+
 # Refuse private terms in tracked and new files.
 private-scan:
     bash scripts/private_scan.sh

@@ -38,7 +38,7 @@ from typing import Any
 from jinja2 import StrictUndefined, TemplateError
 from jinja2.sandbox import SandboxedEnvironment
 
-from tac import adapters, contracts, handoff, pipelines, tomlwrite
+from tac import adapters, contracts, githooks, handoff, pipelines, tomlwrite
 from tac.config import CONFIG_DIR, Config, load_config
 from tac.standards import FLOOR_FILE
 from tac.tomldoc import document
@@ -56,11 +56,11 @@ LOCK_VERSION = 1
 ALLOWED: dict[str, tuple[str, ...]] = {
     "common": ("AGENTS.md",),
     "claude": ("CLAUDE.md", ".claude/settings.json", ".claude/agents/{role}.md"),
-    "codex": (".codex/config.toml", ".codex/agents/{role}.toml"),
+    "codex": (".codex/config.toml", ".codex/hooks.json", ".codex/agents/{role}.toml"),
 }
 # Folders whose every file is generated: a file there, at any depth, that no
 # template renders is an unexpected output. All of `.codex/` is owned because
-# Codex runs a `.codex/hooks.json` it finds in a trusted project.
+# Codex runs whatever hooks it finds there in a trusted project.
 OWNED_DIRS = (".claude/agents", ".codex")
 FIRST_LINE = re.compile(r"^\{#\s*output:\s*(\S+)\s*#\}\s*$")
 ROLE_NAME = re.compile(r"^[a-z][a-z0-9-]*$")
@@ -520,6 +520,7 @@ def check_tree(root: Path) -> list[str]:
         if current != result.lock:
             problems.append(f"{LOCK_FILE}: not what tac sync writes; run tac sync")
     problems += _chain_budget(config, result)
+    problems += githooks.check_git_hooks(root, config)
     problems += contracts.check_contracts(root)
     problems += handoff.check_templates(root)
     problems += pipelines.check_pipelines(root)

@@ -23,6 +23,7 @@ build-backend = "uv_build"
 dev = [
   "actionlint-py>=1.7.12.25",
   "basedpyright>=1.31",
+  "prek==0.5.3",
   "pytest>=8.4",
   "pyyaml>=6.0",
   "ruff>=0.13",
@@ -53,6 +54,11 @@ executionEnvironments = [{ root = "hooks", pythonVersion = "3.9" }]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra"
+# The pre-push hook runs the fast set: -m "not integration and not slow".
+markers = [
+  "integration: reaches the network; nightly and on tags, never in the fast set",
+  "slow: too slow for every push; the full suite still runs it",
+]
 
 [tool.towncrier]
 name = "toms-agent-config"

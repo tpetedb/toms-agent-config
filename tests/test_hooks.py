@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -382,12 +383,81 @@ def test_the_real_checker_lets_ordinary_calls_through(real: Fixture) -> None:
         assert done.returncode == 0, done.stderr
 
 
+def rendered(root: Path, client: str, event_name: str) -> str:
+    """The one command a client's rendered file runs for an event."""
+    rel = ".claude/settings.json" if client == "claude" else ".codex/hooks.json"
+    hooks = json.loads((root / rel).read_text("utf-8"))["hooks"]
+    (group,) = hooks[event_name]
+    (one,) = group["hooks"]
+    return one["command"]
+
+
+@pytest.mark.skipif(
+    not os.access("/usr/bin/python3", os.X_OK), reason="no system interpreter"
+)
+@pytest.mark.parametrize("client", ["claude", "codex"])
+def test_the_rendered_command_runs_the_stamped_guard_in_a_hostile_session(
+    real: Fixture, tmp_path: Path, client: str
+) -> None:
+    """The exact command tac sync renders, run by a shell as the client runs it,
+    from an environment and a checkout an agent prepared: it reaches the real
+    checker, refuses an edit of a generated file, and loads nothing planted."""
+    done = subprocess.run(
+        ["/usr/bin/git", "init", "-q", str(real.root)], capture_output=True, check=False
+    )
+    assert done.returncode == 0, done.stderr
+    env, marker, work_dir = hostile(real, tmp_path)
+    target = real.root / ".claude" / "settings.json"
+    if client == "claude":
+        env["CLAUDE_PROJECT_DIR"] = str(real.root)
+        cwd = work_dir
+        call = tool_event("PreToolUse", file_path=str(target))
+    else:
+        # Codex names no project folder, so the command asks git from the
+        # session's folder, anywhere inside the checkout.
+        cwd = real.root / "src"
+        cwd.mkdir(exist_ok=True)
+        call = tool_event(
+            "PreToolUse",
+            tool="apply_patch",
+            command=patch("Update File: ../.claude/settings.json"),
+        )
+    call["cwd"] = str(cwd)
+    command = rendered(real.root, client, "PreToolUse")
+    ran = subprocess.run(
+        ["/bin/sh", "-c", command],
+        input=json.dumps(call),
+        capture_output=True,
+        text=True,
+        cwd=cwd,
+        env=env,
+        check=False,
+        timeout=120,
+    )
+    assert not marker.exists(), marker.read_text("utf-8")
+    assert ran.returncode == 2, ran.stderr
+    assert "[generated-paths] .claude/settings.json is generated" in ran.stderr
+    stop = subprocess.run(
+        ["/bin/sh", "-c", rendered(real.root, client, "Stop")],
+        input=json.dumps(event("Stop", cwd=str(cwd))),
+        capture_output=True,
+        text=True,
+        cwd=cwd,
+        env=env,
+        check=False,
+        timeout=120,
+    )
+    assert not marker.exists(), marker.read_text("utf-8")
+    assert stop.returncode == 0, stop.stderr
+    assert "tac guard" not in stop.stdout + stop.stderr
+
+
 def test_the_lock_records_the_guard_and_tac_check_sees_it_change(
     real: Fixture,
 ) -> None:
     lock = read_lock(real.root)
     assert lock is not None
-    assert set(lock["hooks"]) == {STAMPED}
+    assert set(lock["hooks"]) == {STAMPED, "hooks/git/prek.toml"}
     assert check_tree(real.root) == []
     with real.guard.open("a", encoding="utf-8") as handle:
         handle.write("# edited\n")
@@ -497,15 +567,87 @@ def test_an_edit_under_the_policy_s_deny_write_is_refused(project: Path) -> None
 
 
 def test_a_check_left_unwired_on_a_client_does_not_run(project: Path) -> None:
-    """generated-paths names no Codex tool until a probe proves the name."""
-    verdict = judge(
+    """secret-read names no Codex tool, since Codex reads through its shell,
+    and Codex reports every edit as apply_patch, never as Edit."""
+    read = judge(
+        project,
+        "codex",
+        "PreToolUse",
+        tool_name="Read",
+        tool_input={"file_path": "~/.ssh/id_ed25519"},
+    )
+    edit = judge(
         project,
         "codex",
         "PreToolUse",
         tool_name="Edit",
         tool_input={"file_path": str(project / "AGENTS.md")},
     )
+    assert read.verdict == edit.verdict == "allow"
+
+
+def patch(*headers: str) -> str:
+    body = [f"*** {h}\n@@\n+x" for h in headers]
+    return "*** Begin Patch\n" + "\n".join(body) + "\n*** End Patch\n"
+
+
+@pytest.mark.parametrize(
+    "header",
+    ["Update File: AGENTS.md", "Add File: .codex/extra.toml", "Delete File: CLAUDE.md"],
+)
+def test_a_codex_patch_on_a_generated_path_is_refused(
+    project: Path, header: str
+) -> None:
+    verdict = judge(
+        project,
+        "codex",
+        "PreToolUse",
+        tool_name="apply_patch",
+        tool_input={"command": patch("Add File: src/new.py", header)},
+        cwd=str(project),
+    )
+    assert (verdict.verdict, verdict.check) == ("deny", "generated-paths")
+
+
+def test_a_codex_patch_that_moves_a_file_onto_a_generated_path_is_refused(
+    project: Path,
+) -> None:
+    text = patch("Update File: src/app.py").replace(
+        "@@", "*** Move to: .claude/settings.json\n@@"
+    )
+    verdict = judge(
+        project,
+        "codex",
+        "PreToolUse",
+        tool_name="apply_patch",
+        tool_input={"command": text},
+        cwd=str(project),
+    )
+    assert (verdict.verdict, verdict.check) == ("deny", "generated-paths")
+    assert ".claude/settings.json" in verdict.reason
+
+
+def test_owned_paths_asks_once_for_every_file_a_patch_names(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked: list[str] = []
+
+    def record(given: dict[str, Any]) -> tuple[int, str]:
+        asked.append(given["tool_input"]["file_path"])
+        return 0, ""
+
+    monkeypatch.setattr(work, "hook_pre_tool", record)
+    verdict = judge(
+        project,
+        "codex",
+        "PreToolUse",
+        tool_name="apply_patch",
+        tool_input={"command": patch("Add File: src/a.py", "Update File: docs/b.md")},
+        cwd=str(project),
+    )
     assert verdict.verdict == "allow"
+    real = project.resolve()
+    assert asked == [str(real / "src/a.py"), str(real / "docs/b.md")]
 
 
 def test_owned_paths_and_order_check_speak_through_tac_work(

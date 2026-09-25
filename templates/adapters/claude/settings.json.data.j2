@@ -27,5 +27,18 @@ denyWrite = {{ claude.deny_write | toml }}
 [sandbox.network]
 allowedDomains = {{ claude.allowed_domains | toml }}
 
-# The guard's wiring arrives with order 3, tac-hooks (M2).
+# Every hook runs the stamped guard, from config/hooks.toml:
+# https://code.claude.com/docs/en/hooks
 [hooks]
+{% for group in claude.hooks %}
+
+[[hooks.{{ group.event }}]]
+{% if group.matcher %}
+matcher = {{ group.matcher | toml }}
+{% endif %}
+
+[[hooks.{{ group.event }}.hooks]]
+type = "command"
+command = {{ group.command | toml }}
+timeout = {{ group.timeout | toml }}
+{% endfor %}

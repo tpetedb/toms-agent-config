@@ -10,6 +10,7 @@ the diff like any other change.
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import subprocess
@@ -19,6 +20,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from tac import adapters
 from tac import sync as sync_mod
 from tac.cli import cli
 from tac.contracts import MODEL_FACING_DIR, strict_subset_problems
@@ -171,13 +173,14 @@ def test_an_unexpected_output_is_caught(tmp_path: Path) -> None:
 
 
 def test_an_unexpected_file_anywhere_under_codex_is_caught(tmp_path: Path) -> None:
-    # Codex runs .codex/hooks.json in a trusted project, so a planted one is red.
+    # Codex runs the hooks it finds under .codex/ in a trusted project, so a
+    # planted file and an emptied hooks.json are both red.
     root = synced(tmp_path)
     (root / ".codex/hooks.json").write_text("{}\n")
     (root / ".codex/rules").mkdir()
     (root / ".codex/rules/extra.rules").write_text("allow\n")
     problems = check_tree(root)
-    assert ".codex/hooks.json: unexpected; no template renders it" in problems
+    assert any(p.startswith(".codex/hooks.json: edited by hand") for p in problems)
     assert ".codex/rules/extra.rules: unexpected; no template renders it" in problems
 
 
@@ -477,3 +480,145 @@ def test_only_model_facing_contracts_are_held_to_the_subset(tmp_path: Path) -> N
     )
     handoff.write_text(json.dumps({"$schema": DRAFT_07, **STRICT}))
     assert check_tree(root) == []
+
+
+# ---------------------------------------------------------------- hook wiring
+
+
+def _guard_constant(name: str) -> object:
+    """A constant of the stdlib guard, read without importing it."""
+    tree = ast.parse((REPO / "hooks" / "run.py").read_text(encoding="utf-8"))
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == name for t in node.targets
+        ):
+            return ast.literal_eval(node.value)
+    raise AssertionError(f"hooks/run.py has no {name}")
+
+
+def test_the_adapters_and_the_guard_agree_on_events_and_environment() -> None:
+    # The guard cannot import tac, so it keeps its own copy of both tables.
+    assert _guard_constant("EVENTS") == adapters.GUARD_EVENTS
+    assert _guard_constant("PASS_ENV") == adapters.HOOK_ENV
+
+
+def test_codex_hooks_use_the_tool_names_codex_reports(tmp_path: Path) -> None:
+    root = synced(tmp_path)
+    hooks = json.loads((root / ".codex/hooks.json").read_text())["hooks"]
+    assert set(hooks) == {"PreToolUse", "Stop"}
+    (pre,) = hooks["PreToolUse"]
+    # apply_patch for every file edit, spawn_agent for a native subagent:
+    # https://developers.openai.com/codex/hooks
+    assert pre["matcher"].split("|") == ["apply_patch", "spawn_agent"]
+    for groups in hooks.values():
+        for group in groups:
+            (one,) = group["hooks"]
+            assert (
+                "/usr/bin/git rev-parse --show-toplevel)/.agents/hooks/run.py"
+                in (one["command"])
+            )
+            assert "--client codex" in one["command"]
+
+
+def test_a_record_check_renders_no_hook(tmp_path: Path) -> None:
+    root = synced(tmp_path)
+    claude = json.loads((root / ".claude/settings.json").read_text())["hooks"]
+    codex = json.loads((root / ".codex/hooks.json").read_text())["hooks"]
+    assert "SubagentStart" not in claude
+    assert "SubagentStart" not in codex
+
+
+def test_a_check_on_an_event_the_guard_does_not_answer_is_refused(
+    tmp_path: Path,
+) -> None:
+    root = copy_project(tmp_path)
+    replace_in(
+        root / ".agents/config/hooks.toml",
+        'event = "SubagentStart"                   # PreToolUse | PostToolUse | '
+        "SessionStart | SubagentStart | Stop\n"
+        'kind = "record"',
+        'event = "SubagentStart"\nkind = "reminder"',
+    )
+    with pytest.raises(Bad, match=r"spawn-record is wired on claude for SubagentStart"):
+        render(root)
+
+
+def test_matchers_merge_into_one_group_and_a_regex_keeps_its_own() -> None:
+    assert adapters._merge(["Edit|Write", "Read", "Write"]) == ["Edit|Write|Read"]
+    assert adapters._merge(["Edit", "mcp__.*"]) == ["Edit", "mcp__.*"]
+    assert adapters._merge(["Edit", "*"]) == ["*"]
+
+
+def test_a_guard_script_that_leaves_plain_words_is_refused(tmp_path: Path) -> None:
+    root = copy_project(tmp_path)
+    replace_in(
+        root / ".agents/config/hooks.toml",
+        'script = ".agents/hooks/run.py"',
+        'script = ".agents/hooks/run.py$(id)"',
+    )
+    with pytest.raises(Bad, match=r"guard\.script"):
+        render(root)
+
+
+def test_the_lock_hashes_the_git_hooks_with_the_guard(tmp_path: Path) -> None:
+    root = synced(tmp_path)
+    lock = sync_mod.read_lock(root)
+    assert lock is not None
+    assert "hooks/git/prek.toml" in lock["hooks"]
+    prek = root / "hooks/git/prek.toml"
+    prek.write_text(prek.read_text() + "\n# an edit\n")
+    assert (
+        f"{LOCK_FILE}: stale, hooks hooks/git/prek.toml changed since the last sync"
+        in check_tree(root)
+    )
+
+
+# ---------------------------------------------------------------- git hooks
+
+
+def test_the_git_hooks_must_run_what_hooks_toml_names_in_order(
+    tmp_path: Path,
+) -> None:
+    root = synced(tmp_path)
+    replace_in(
+        root / ".agents/config/hooks.toml",
+        'pre_commit = ["ruff-format", "ruff-check",',
+        'pre_commit = ["ruff-check", "ruff-format",',
+    )
+    sync(root, links=False)
+    problems = check_tree(root)
+    assert any(
+        p.startswith("hooks/git/prek.toml: pre-commit runs ['ruff-format'")
+        and "names ['ruff-check', 'ruff-format'" in p
+        for p in problems
+    ), problems
+
+
+def test_a_git_hook_that_fetches_or_is_not_a_system_command_is_refused(
+    tmp_path: Path,
+) -> None:
+    root = synced(tmp_path)
+    prek = root / "hooks/git/prek.toml"
+    text = prek.read_text()
+    text = text.replace('repo = "local"', 'repo = "https://example.com/hooks"', 1)
+    prek.write_text(text)
+    sync(root, links=False)
+    assert "hooks/git/prek.toml: every repo is local; nothing is fetched" in (
+        check_tree(root)
+    )
+    prek.write_text(
+        text.replace('repo = "https://example.com/hooks"', 'repo = "local"').replace(
+            'language = "system"', 'language = "python"', 1
+        )
+    )
+    sync(root, links=False)
+    assert "hooks/git/prek.toml: ruff-format is not language = system" in (
+        check_tree(root)
+    )
+
+
+def test_missing_git_hooks_are_named(tmp_path: Path) -> None:
+    root = synced(tmp_path)
+    (root / "hooks/git/prek.toml").unlink()
+    sync(root, links=False)
+    assert any(p.startswith("hooks/git/prek.toml: missing") for p in check_tree(root))

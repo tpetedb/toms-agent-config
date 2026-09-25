@@ -127,8 +127,12 @@ def test_the_generated_config_explains_every_key(root: Path) -> None:
             assert lines[i - 1].startswith("#"), line
 
 
-def test_the_config_leaves_nothing_for_hook_trust_until_m2(root: Path) -> None:
-    assert hook_trust_status(root)[0] is Status.PASS
+def test_the_rendered_hooks_wait_for_the_owner_s_approval(root: Path) -> None:
+    # Codex runs a project hook only once approved by its hash, and keeps the
+    # approvals where tac cannot read them, so the doctor names the owner's step.
+    status, detail = hook_trust_status(root)
+    assert status is Status.UNKNOWN
+    assert ".codex/hooks.json" in detail and "/hooks" in detail
 
 
 def test_every_agent_file_has_the_fields_codex_requires(root: Path) -> None:

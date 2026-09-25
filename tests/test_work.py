@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -1473,19 +1474,70 @@ def test_the_config_teams_parse_as_plain_toml() -> None:
     assert work.load_teams(REPO).ids() == set(data["teams"])
 
 
-# ------------------------------------------------------------ carried to M2
+# ------------------------------------------------------------ the hook wiring
 
-
-@pytest.mark.xfail(
-    strict=True,
-    reason="order 3 tac-hooks (M2) wires the guard for Claude and Codex through "
-    "hooks/run.py; when it does this passes, and that order removes the marker "
-    "and names the exact commands",
+# What every rendered hook runs: an empty environment with a fixed PATH and the
+# guard's own pass-through variables, the system interpreter isolated, and the
+# stamped guard by absolute path (DESIGN 9, build condition C2).
+_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
+_ENV = (
+    f"/usr/bin/env -i PATH={_PATH} "
+    'HOME="$HOME" USER="$USER" LOGNAME="$LOGNAME" LANG="$LANG" '
+    'LC_ALL="$LC_ALL" LC_CTYPE="$LC_CTYPE" TMPDIR="$TMPDIR" /usr/bin/python3 -I '
 )
+_TAIL = " --deadline-s 8 --path " + _PATH
+_CODEX_ROOT = f"$(/usr/bin/env -i PATH={_PATH} /usr/bin/git rev-parse --show-toplevel)"
+
+
+def _claude_hook(event: str) -> str:
+    return (
+        _ENV + '"$CLAUDE_PROJECT_DIR/.agents/hooks/run.py" '
+        f"--client claude --event {event}" + _TAIL
+    )
+
+
+def _codex_hook(event: str) -> str:
+    return (
+        _ENV + f'"{_CODEX_ROOT}/.agents/hooks/run.py" '
+        f"--client codex --event {event}" + _TAIL
+    )
+
+
+def _wired(hooks: dict[str, Any]) -> dict[str, list[tuple[str, list[str]]]]:
+    return {
+        event: [
+            (group.get("matcher", "*"), [h["command"] for h in group["hooks"]])
+            for group in groups
+        ]
+        for event, groups in hooks.items()
+    }
+
+
 def test_the_hooks_are_wired_to_events_claude_code_has() -> None:
     claude = json.loads((REPO / ".claude" / "settings.json").read_text())["hooks"]
-    for event in ("PreToolUse", "Stop", "SubagentStop"):
-        assert [h["command"] for group in claude[event] for h in group["hooks"]]
+    assert _wired(claude) == {
+        "PreToolUse": [
+            (
+                "Edit|Write|MultiEdit|NotebookEdit|Read|Grep|Glob|Agent|Task",
+                [_claude_hook("PreToolUse")],
+            )
+        ],
+        "Stop": [("*", [_claude_hook("Stop")])],
+        "SubagentStop": [("*", [_claude_hook("SubagentStop")])],
+    }
+    for groups in claude.values():
+        for group in groups:
+            assert [h["type"] for h in group["hooks"]] == ["command"]
+            assert [h["timeout"] for h in group["hooks"]] == [10]
+
+
+def test_the_hooks_are_wired_to_events_and_tools_codex_has() -> None:
     codex = json.loads((REPO / ".codex" / "hooks.json").read_text())["hooks"]
-    for event in ("PreToolUse", "Stop"):
-        assert [h["command"] for group in codex[event] for h in group["hooks"]]
+    assert _wired(codex) == {
+        "PreToolUse": [("apply_patch|spawn_agent", [_codex_hook("PreToolUse")])],
+        "Stop": [("*", [_codex_hook("Stop")])],
+    }
+    for groups in codex.values():
+        for group in groups:
+            assert [h["type"] for h in group["hooks"]] == ["command"]
+            assert [h["timeout"] for h in group["hooks"]] == [10]
