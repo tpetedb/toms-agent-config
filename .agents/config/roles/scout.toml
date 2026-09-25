@@ -27,6 +27,12 @@ writes = ["worker-store"]
 may = ["read", "search the web", "cite first-party sources"]
 # What the role may never do, whatever the prompt says.
 may_not = ["write outside the worker store", "state a claim without a source"]
+# Whether a session of this role may start subagents (Agent, Task) and Claude
+# Code workflows (Workflow) natively: true (each call passes the handoff guard,
+# and a workflow only runs a script a stage of this role registers) | false
+# (its agent file disallows the three tools and the guard refuses them). Never
+# true for builder, manager, reviewer or scout; true for a role with ultracode.
+delegates = false                         # the runner starts each scout
 # The standing brief rendered into the agent file, after the common AGENTS.md.
 instructions = """
 Cite the first-party page for every claim, and mark what you could not verify.

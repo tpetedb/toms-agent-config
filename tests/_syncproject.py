@@ -65,3 +65,25 @@ def frontmatter(text: str) -> dict[str, Any]:
 
 def toml(path: Path) -> dict[str, Any]:
     return tomllib.loads(path.read_text(encoding="utf-8"))
+
+
+# The chief's seat with and without ultracode, as config/models.toml writes it.
+CHIEF_ULTRACODE = (
+    'anthropic = { model = "claude-opus-5-5", effort = "xhigh", ultracode = true }'
+)
+CHIEF_PLAIN = 'anthropic = { model = "claude-opus-5-5", effort = "xhigh" }'
+
+
+def ultracode_off(root: Path) -> None:
+    """Take ultracode off every seat, as a project must before a profile turns
+    native delegation off: the chief's seat and each director launched with it."""
+    path = root / ".agents/config/models.toml"
+    replace_in(path, CHIEF_ULTRACODE, CHIEF_PLAIN)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(
+        text.replace('launch_effort = "ultracode" ', 'launch_effort = "xhigh"    '),
+        encoding="utf-8",
+    )
+    models = tomllib.loads(path.read_text(encoding="utf-8"))
+    assert not models["roles"]["chief"]["anthropic"].get("ultracode")
+    assert all(d["launch_effort"] != "ultracode" for d in models["directors"].values())

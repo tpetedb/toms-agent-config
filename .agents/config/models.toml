@@ -49,6 +49,10 @@ provider = "anthropic"                    # a provider id | any | other
 # a lower effort. It is a launch setting, so `just chief` runs `claude --agent chief
 # --effort ultracode` and the agent file says effort xhigh; it is never written into
 # .claude/settings.json, where it would turn on for every session in the project.
+# Ultracode starts agents through Workflow, so the role's charter says delegates =
+# true and the active profile keeps native_delegation = "guarded" (tac check
+# refuses "off"; the enterprise profile needs ultracode taken off here), and the
+# handoff guard runs only a script a stage of the role registers.
 # To turn it off, delete `ultracode = true` and set the effort you want (with no
 # effort, Opus 5.5 starts at medium unless your own settings save a level);
 # `/effort high` drops one running session back.

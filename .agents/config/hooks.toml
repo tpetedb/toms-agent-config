@@ -49,11 +49,14 @@ kind = "deny"                             # deny | reminder | record
 claude = "Edit|Write|MultiEdit|NotebookEdit"   # Claude's file-editing tools
 codex = "apply_patch"                     # Codex edits files through apply_patch; the check reads the patch's file headers
 
-# A native subagent spawn without a valid single-use dispatch token (section 5).
+# A native spawn the guard cannot vouch for (section 5): any spawn tool used by a
+# role whose charter says delegates = false, any of them under native_delegation =
+# "off", and a Workflow call whose script a stage of the caller's role does not
+# register with its sha256 in generated.lock. Single-use dispatch tokens join in M3.
 [checks.handoff-guard]
 event = "PreToolUse"                      # PreToolUse | PostToolUse | SessionStart | SubagentStart | Stop
 kind = "deny"                             # deny | reminder | record
-claude = "Agent|Task"                     # the current and former names of Claude's subagent tool
+claude = "Agent|Task|Workflow"            # the subagent tool under its current and former names, and Workflow, which starts a dynamic workflow
 codex = "spawn_agent"                     # Codex's subagent tool
 
 # A subagent start, recorded only: SubagentStart cannot block in either client.

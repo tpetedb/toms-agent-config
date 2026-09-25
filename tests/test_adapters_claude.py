@@ -18,7 +18,13 @@ import pytest
 from tac.adapters import CLAUDE_TELEMETRY, charter_sha256, claude_session, seat
 from tac.config import load_config
 from tac.sync import render, sync
-from tests._syncproject import copy_project, frontmatter, replace_in, synced
+from tests._syncproject import (
+    copy_project,
+    frontmatter,
+    replace_in,
+    synced,
+    ultracode_off,
+)
 
 SCHEMA_URL = "https://json.schemastore.org/claude-code-settings.json"
 # The settings keys this adapter writes, each documented in the settings reference.
@@ -284,6 +290,7 @@ def test_ultracode_is_a_launch_flag_never_a_file_setting(root: Path) -> None:
 
 def test_native_delegation_off_denies_the_spawn_tools(tmp_path: Path) -> None:
     root = copy_project(tmp_path)
+    ultracode_off(root)
     replace_in(
         root / ".agents/config/profiles/standard.toml",
         'native_delegation = "guarded"',
@@ -291,7 +298,7 @@ def test_native_delegation_off_denies_the_spawn_tools(tmp_path: Path) -> None:
     )
     sync(root)
     deny = settings(root)["permissions"]["deny"]
-    assert "Agent" in deny and "Task" in deny
+    assert {"Agent", "Task", "Workflow"} <= set(deny)
 
 
 def test_the_full_telemetry_tier_adds_the_kill_switches(tmp_path: Path) -> None:

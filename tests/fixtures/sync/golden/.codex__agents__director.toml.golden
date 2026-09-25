@@ -3,7 +3,7 @@
 # https://developers.openai.com/codex/subagents
 
 # The name Codex spawns this agent by: the charter's name.
-# charter-sha256: 98ea21f9dd24be79da6776aba7c034702dc3c764a5dd234060519852ab8dbc81
+# charter-sha256: 14368b67728ebc163e2724f8b3a9fb59d31fc2d518e4351dfebbaaff76d748e5
 name = "director"
 # When to use this agent: the charter's description.
 description = "A board seat: an independent position and one critique round on a decision that loosens policy or touches the checker."

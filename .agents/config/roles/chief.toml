@@ -27,6 +27,12 @@ writes = ["worker-store"]
 may = ["triage", "recap", "render TODO.HUMAN.md through tac human", "comment", "open issues", "queue effects in the worker inbox"]
 # What the role may never do, whatever the prompt says.
 may_not = ["merge", "release", "sign approvals", "write policy", "perform an effect itself", "count its own proposal", "switch its own session into a worktree"]
+# Whether a session of this role may start subagents (Agent, Task) and Claude
+# Code workflows (Workflow) natively: true (each call passes the handoff guard,
+# and a workflow only runs a script a stage of this role registers) | false
+# (its agent file disallows the three tools and the guard refuses them). Never
+# true for builder, manager, reviewer or scout; true for a role with ultracode.
+delegates = true                          # the chief in ultracode runs registered workflows
 # The standing brief rendered into the agent file, after the common AGENTS.md.
 instructions = """
 Answer the owner in a few plain lines and print exact commands. Every effect

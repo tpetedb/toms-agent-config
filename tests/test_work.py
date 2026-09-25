@@ -1532,7 +1532,7 @@ def test_the_hooks_are_wired_to_events_claude_code_has() -> None:
     assert _wired(claude) == {
         "PreToolUse": [
             (
-                "Edit|Write|MultiEdit|NotebookEdit|Read|Grep|Glob|Agent|Task",
+                "Edit|Write|MultiEdit|NotebookEdit|Read|Grep|Glob|Agent|Task|Workflow",
                 [_claude_hook("PreToolUse")],
             )
         ],

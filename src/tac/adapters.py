@@ -53,9 +53,13 @@ CLAUDE_TELEMETRY: dict[str, dict[str, str]] = {
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     },
 }
-# The subagent tool under its current and former names; denied outright when the
-# profile turns native delegation off, so refusal survives a hook failure (C1).
-CLAUDE_SPAWN_TOOLS = ("Agent", "Task")
+# The tools that start agents natively: the subagent tool under its current and
+# former names, and Workflow, which runs a dynamic workflow's script and starts
+# every agent() it calls (https://code.claude.com/docs/en/workflows). Denied
+# outright when the profile turns native delegation off, so refusal survives a
+# hook failure (C1), and listed under disallowedTools in the agent file of a
+# role that does not delegate (https://code.claude.com/docs/en/sub-agents).
+CLAUDE_SPAWN_TOOLS = ("Agent", "Task", "Workflow")
 # Whether the rendered Codex config carries the PreToolUse handoff guard. It does
 # not yet, so a "guarded" profile cannot be honoured there and Codex native
 # delegation renders off in every profile; M2 turns this on once the guard is
@@ -189,6 +193,8 @@ def _role(config: Config, root: Path, name: str, found: Seat) -> dict[str, Any]:
         "model": found.model,
         "effort": found.effort,
         "charter_sha256": charter_sha256(root, name),
+        # Empty for a role that delegates; the handoff guard judges its calls.
+        "disallowed_tools": [] if charter.delegates else list(CLAUDE_SPAWN_TOOLS),
     }
 
 

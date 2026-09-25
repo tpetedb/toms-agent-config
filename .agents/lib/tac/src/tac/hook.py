@@ -13,7 +13,10 @@ CI and the ruleset (DESIGN 9).
 
 from __future__ import annotations
 
+import datetime as dt
 import fnmatch
+import hashlib
+import json
 import os
 import re
 from collections.abc import Callable, Iterator, Mapping
@@ -23,11 +26,12 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, JsonValue
 
 import tac
-from tac import work
-from tac.adapters import CONFIGURED_AS, GUARD_EVENTS, TOOL_EVENTS
-from tac.config import Config, load_config
+from tac import pipelines, work
+from tac.adapters import CLAUDE_SPAWN_TOOLS, CONFIGURED_AS, GUARD_EVENTS, TOOL_EVENTS
+from tac.config import CONFIG_DIR, Config, load_config, ultracode_seats
 from tac.draft07 import draft07
-from tac.sync import generated_paths
+from tac.handoff import worker_store
+from tac.sync import LOCK_FILE, generated_paths, read_lock
 
 CONTRACT = "contracts/hook-verdict.schema.json"
 Client = Literal["claude", "codex"]
@@ -46,6 +50,16 @@ PATCH_TOOL = "apply_patch"
 PATCH_FILE = re.compile(
     r"^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+?)\s*$", re.M
 )
+# Claude's tools that start agents: Agent and Task spawn one subagent, Workflow
+# runs a script that spawns many. Codex's spawn_agent is judged apart.
+SPAWN_TOOLS = frozenset(CLAUDE_SPAWN_TOOLS)
+WORKFLOW_TOOL = "Workflow"
+# A Workflow call carries its script inline or names the file it runs; the
+# guard hashes whichever it is given, and refuses a call that carries both.
+SCRIPT_KEYS = ("script", "scriptPath")
+# Where each allowed Workflow call is recorded, inside the worker store, until
+# the runner's journal and signed receipts take over in M3.
+WORKFLOW_JOURNAL = "journal/workflows.jsonl"
 
 
 class Verdict(BaseModel):
@@ -185,13 +199,139 @@ def check_order(_root: Path, payload: Mapping[str, Any], _config: Config) -> str
     return why if code else None
 
 
+def check_handoff_guard(
+    root: Path, payload: Mapping[str, Any], config: Config
+) -> str | None:
+    """A native spawn the guard cannot vouch for (design sections 4 and 5).
+
+    Every spawn tool is refused under native_delegation = "off" and to a role
+    whose charter does not delegate. A Workflow call is allowed only for a role
+    that delegates and launches with ultracode, running a script that a stage of
+    that role registers with the hash generated.lock records, and only once the
+    call is recorded. Agent and Task from a delegating role pass until the
+    runner's single-use dispatch tokens (M3, C1)."""
+    tool = str(payload.get("tool_name") or "")
+    if tool not in SPAWN_TOOLS:
+        return None
+    profile = config.profile
+    if profile.native_delegation == "off":
+        return (
+            f"{tool} is refused: profiles/{profile.name}.toml sets native_delegation "
+            '= "off", so agents start only through tac run'
+        )
+    given = payload.get("agent_type")
+    role = given if isinstance(given, str) else ""
+    charter = config.roles.get(role)
+    if charter is not None and not charter.delegates:
+        return (
+            f"{tool} is refused: {CONFIG_DIR}/roles/{role}.toml says delegates = "
+            "false; the runner starts every agent this role needs"
+        )
+    if tool != WORKFLOW_TOOL:
+        return None
+    return _check_workflow(root, payload, config, role)
+
+
+def _script_bytes(root: Path, payload: Mapping[str, Any]) -> tuple[bytes, str] | str:
+    """The script a Workflow call runs and its path relative to the checkout
+    (empty when inline), or the reason no single script can be read."""
+    given = payload.get("tool_input")
+    given = given if isinstance(given, Mapping) else {}
+    named = [k for k in SCRIPT_KEYS if isinstance(given.get(k), str) and given[k]]
+    if len(named) != 1:
+        return (
+            "a Workflow call names exactly one script, inline (script) or by "
+            f"file (scriptPath); this one names {len(named)}"
+        )
+    if named[0] == "script":
+        return str(given["script"]).encode("utf-8"), ""
+    raw = str(given["scriptPath"])
+    unresolved = Path(os.path.expanduser(raw))
+    if not unresolved.is_absolute():
+        base = payload.get("cwd")
+        unresolved = (Path(base) if isinstance(base, str) and base else root) / raw
+    path = _absolute(raw, payload, root)
+    rel = _relative(path, root)
+    if rel is None:
+        return f"the script {raw} is outside this checkout"
+    if unresolved.is_symlink() or not path.is_file():
+        return f"the script {raw} is not a plain file"
+    try:
+        return path.read_bytes(), rel
+    except OSError as e:
+        return f"the script {raw} cannot be read ({e.strerror})"
+
+
+def _check_workflow(
+    root: Path, payload: Mapping[str, Any], config: Config, role: str
+) -> str | None:
+    if role not in config.roles:
+        return (
+            "Workflow is refused: a workflow starts only from a role session "
+            "launched with `claude --agent <role>`, and this session names "
+            + (f"{role!r}, not a role" if role else "no role")
+        )
+    if role not in ultracode_seats(config.models):
+        return (
+            f"Workflow is refused: {role} does not launch with ultracode "
+            f"({CONFIG_DIR}/models.toml), and only an ultracode role runs workflows"
+        )
+    found = _script_bytes(root, payload)
+    if isinstance(found, str):
+        return f"Workflow is refused: {found}"
+    body, rel = found
+    digest = hashlib.sha256(body).hexdigest()
+    try:
+        locked = (read_lock(root) or {}).get("workflows", {})
+    except work.Bad as e:
+        return f"Workflow is refused: {e}"
+    enabled = set(config.knobs.pipelines.enabled)
+    matches = [
+        (script, pipeline, stage)
+        for script, entries in sorted(pipelines.registered_workflows(root).items())
+        for pipeline, stage, owner in entries
+        if owner == role
+        and pipeline in enabled
+        and locked.get(script) == digest
+        # A file is run from its registered path, which no agent may write, so
+        # it cannot change between this check and the client reading it.
+        and rel in ("", script)
+    ]
+    if not matches:
+        return (
+            f"Workflow is refused: the script ({rel or 'inline'}, sha256 "
+            f"{digest}) is not registered for {role}; a stage of that role lists "
+            "its path under workflows "
+            f"and {LOCK_FILE} records its hash (run tac sync after registering)"
+        )
+    script, pipeline, stage = matches[0]
+    record = {
+        "at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+        "session_id": payload.get("session_id"),
+        "role": role,
+        "pipeline": pipeline,
+        "stage": stage,
+        "script": script,
+        "sha256": digest,
+        # The runner's single-use token bound to run, stage and script hash
+        # arrives in M3; until then the call is bound only to the registry.
+        "token": None,
+    }
+    try:
+        journal = worker_store(root, config) / WORKFLOW_JOURNAL
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        with journal.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, sort_keys=True) + "\n")
+    except (OSError, work.Bad) as e:
+        return f"Workflow is refused: the call cannot be recorded ({e})"
+    return None
+
+
 def check_not_yet(
     _root: Path, _payload: Mapping[str, Any], _config: Config
 ) -> str | None:
-    """Wired, but its evidence does not exist yet: the handoff guard needs the
-    runner's single-use dispatch tokens (M3, C1), and a subagent start is only
-    recorded once the worker store journal exists. Until then it lets the call
-    through, and the profile's native_delegation setting is what refuses."""
+    """Wired, but its evidence does not exist yet: a subagent start is only
+    recorded once the worker store journal exists (M3)."""
     return None
 
 
@@ -200,7 +340,7 @@ CHECKS: Mapping[str, Check] = {
     "secret-read": check_secret_read,
     "owned-paths": check_owned_paths,
     "order-check": check_order,
-    "handoff-guard": check_not_yet,
+    "handoff-guard": check_handoff_guard,
     "spawn-record": check_not_yet,
 }
 

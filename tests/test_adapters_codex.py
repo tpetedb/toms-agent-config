@@ -17,7 +17,13 @@ from tac.config import load_config
 from tac.doctor import Status, hook_trust_status
 from tac.sync import sync
 from tac.work import Bad
-from tests._syncproject import copy_project, replace_in, synced, toml
+from tests._syncproject import (
+    copy_project,
+    replace_in,
+    synced,
+    toml,
+    ultracode_off,
+)
 
 # Keys Codex ignores in a project-local .codex/config.toml.
 PROJECT_IGNORED = {
@@ -108,6 +114,7 @@ def test_no_profile_enables_codex_delegation_without_a_rendered_guard(
 ) -> None:
     # A native spawn with no guard installed would run without an envelope.
     root = copy_project(tmp_path)
+    ultracode_off(root)
     replace_in(
         root / ".agents/config.toml", 'active = "standard"', f'active = "{profile}"'
     )
@@ -118,6 +125,7 @@ def test_no_profile_enables_codex_delegation_without_a_rendered_guard(
 
 def test_native_delegation_off_removes_the_spawn_tools(tmp_path: Path) -> None:
     root = copy_project(tmp_path)
+    ultracode_off(root)
     replace_in(
         root / ".agents/config/profiles/standard.toml",
         'native_delegation = "guarded"',

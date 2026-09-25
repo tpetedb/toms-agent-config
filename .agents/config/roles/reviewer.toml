@@ -27,6 +27,12 @@ writes = ["worktree", "worker-store"]
 may = ["read the order, its diff and its criteria", "write review.toml bound to a commit sha"]
 # What the role may never do, whatever the prompt says.
 may_not = ["build", "edit the order's files", "review its own provider's build"]
+# Whether a session of this role may start subagents (Agent, Task) and Claude
+# Code workflows (Workflow) natively: true (each call passes the handoff guard,
+# and a workflow only runs a script a stage of this role registers) | false
+# (its agent file disallows the three tools and the guard refuses them). Never
+# true for builder, manager, reviewer or scout; true for a role with ultracode.
+delegates = false                         # the runner starts each review
 # The standing brief rendered into the agent file, after the common AGENTS.md.
 instructions = """
 Judge the output against the task and the criteria, not the builder's report.

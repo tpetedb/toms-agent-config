@@ -410,6 +410,10 @@ class Role(_Model):
     may: Strs
     may_not: Strs
     instructions: Text
+    # Whether a session of this role may start subagents and dynamic workflows
+    # natively, through the handoff guard. False renders its Claude agent file
+    # with Agent, Task and Workflow disallowed, and the guard refuses them too.
+    delegates: bool = False
 
 
 # ---------------------------------------------------------------- gate packs
@@ -648,6 +652,9 @@ ArgSource = Literal["order_id", "run_id", "local_checks"]
 # A gate script other than a just recipe lives in the product's own source.
 GATE_SCRIPT = r"^src/tac/[a-z0-9_/]+\.py$"
 RECIPE = r"^[a-z][a-z0-9_-]*$"
+# A registered Workflow script: a plain file name under .agents/workflows/.
+WORKFLOWS_DIR = ".agents/workflows"
+WORKFLOW_SCRIPT = r"^\.agents/workflows/[a-z0-9][a-z0-9_-]*\.js$"
 
 
 def _no_shell(value: object) -> object:
@@ -725,6 +732,13 @@ class PipelineStage(_Model):
     effects: Annotated[tuple[Name, ...], BeforeValidator(as_tuple)] = ()
     asks: Text | None = None
     owner_actions: Annotated[tuple[Name, ...], BeforeValidator(as_tuple)] = ()
+    # The Claude Code Workflow scripts a session of this stage's role may run,
+    # each under .agents/workflows/; generated.lock records their sha256 and the
+    # handoff guard refuses any other script.
+    workflows: Annotated[
+        tuple[Annotated[str, Field(pattern=WORKFLOW_SCRIPT)], ...],
+        BeforeValidator(as_tuple),
+    ] = ()
 
 
 class PipelineFile(_Model):

@@ -276,6 +276,15 @@
           "default": null,
           "title": "When"
         },
+        "workflows": {
+          "default": [],
+          "items": {
+            "pattern": "^\\.agents/workflows/[a-z0-9][a-z0-9_-]*\\.js$",
+            "type": "string"
+          },
+          "title": "Workflows",
+          "type": "array"
+        },
         "writes": {
           "anyOf": [
             {

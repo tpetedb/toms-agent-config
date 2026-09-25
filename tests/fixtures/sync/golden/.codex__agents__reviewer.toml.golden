@@ -3,7 +3,7 @@
 # https://developers.openai.com/codex/subagents
 
 # The name Codex spawns this agent by: the charter's name.
-# charter-sha256: feb251b0abdf46776bda578da3d0bba3afbe9462515750aca8d3180469a4ad20
+# charter-sha256: 36d3ea200cec9db3aba988286a749094f51dc10e30aebd0369ef5253ea268ced
 name = "reviewer"
 # When to use this agent: the charter's description.
 description = "Reviews a built order from the other provider and writes review.toml bound to the commit it read."
