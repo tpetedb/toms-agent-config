@@ -1,0 +1,1 @@
+`tac doctor` now requires the `verify` and `work` checks from the GitHub Actions app and at least one approving review next to code-owner review, so a ruleset that requires only an unrelated or forgeable status, or no approval, fails.

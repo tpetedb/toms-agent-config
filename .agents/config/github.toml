@@ -1,0 +1,35 @@
+# =============================================================================
+# config/github.toml: the repository on GitHub and how work reaches it.
+# The ruleset itself is built by `tac github apply` from the CI job names, and
+# checked by id by `tac doctor` (section 8). Unknown keys fail loudly.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+
+# ---- repository: which repository and branch this checkout lands on.
+[repository]
+slug = "tpetedb/toms-agent-config"        # owner/name on GitHub
+default_branch = "main"                   # the branch the ruleset guards and orders land on
+
+# ---- merge: the one command handed to the owner.
+[merge]
+method = "squash"                         # squash | merge | rebase; squash keeps main's history linear
+match_head_commit = true                  # true adds --match-head-commit, so the merge fails if the branch moved after review
+
+# ---- labels: the label families synced from .github/labels.yml.
+[labels]
+families = ["type", "team", "state", "priority"]   # label prefixes: type/*, team/*, state/*, priority/*
+# The state/* labels an order moves through, in order.
+states = ["queued", "building", "review", "blocked", "landed"]
+
+# ---- issues: the issue forms under .github/ISSUE_TEMPLATE/.
+[issues]
+forms = ["bug", "feature", "work-order", "decision", "human-question"]   # one <name>.yml each
+blank_issues = false                      # false turns blank issues off in config.yml
+comments_from = "pushers"                 # whose comments automation ingests: pushers (users who can push) only
+
+# ---- diagrams: the inventory tac check holds the docs to.
+[diagrams]
+# The seven lifecycles, one rendered diagram each, plus one per enabled pipeline.
+lifecycles = ["init", "sync", "hook", "memory", "board", "human-loop", "release"]
+per_pipeline = true                       # true adds one diagram per pipeline in [pipelines] enabled

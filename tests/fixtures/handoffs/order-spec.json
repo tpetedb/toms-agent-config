@@ -1,0 +1,20 @@
+{
+  "order_id": "docs-intro",
+  "title": "Intro page",
+  "team": "docs",
+  "owns": [
+    "docs/intro.md"
+  ],
+  "criteria": [
+    {
+      "id": "exists",
+      "text": "The page exists.",
+      "check": "test -f docs/intro.md"
+    }
+  ],
+  "cross_team": [],
+  "skills": [
+    "work-order"
+  ],
+  "notes": null
+}

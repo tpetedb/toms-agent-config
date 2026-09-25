@@ -1,0 +1,262 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "ClaudeProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "allowUnsandboxedCommands": {
+          "title": "Allowunsandboxedcommands",
+          "type": "boolean"
+        },
+        "defaultMode": {
+          "enum": [
+            "default",
+            "acceptEdits",
+            "plan",
+            "bypassPermissions"
+          ],
+          "title": "Defaultmode",
+          "type": "string"
+        },
+        "failIfUnavailable": {
+          "title": "Failifunavailable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "failIfUnavailable",
+        "allowUnsandboxedCommands",
+        "defaultMode"
+      ],
+      "title": "ClaudeProfile",
+      "type": "object"
+    },
+    "CodexProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_policy": {
+          "enum": [
+            "on-request",
+            "never"
+          ],
+          "title": "Approval Policy",
+          "type": "string"
+        },
+        "sandbox_mode": {
+          "enum": [
+            "read-only",
+            "workspace-write",
+            "danger-full-access"
+          ],
+          "title": "Sandbox Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sandbox_mode",
+        "approval_policy"
+      ],
+      "title": "CodexProfile",
+      "type": "object"
+    },
+    "Context": {
+      "additionalProperties": false,
+      "properties": {
+        "agents_md_chain_max_kb": {
+          "maximum": 32,
+          "minimum": 1,
+          "title": "Agents Md Chain Max Kb",
+          "type": "integer"
+        },
+        "digest_max_chars": {
+          "minimum": 1,
+          "title": "Digest Max Chars",
+          "type": "integer"
+        },
+        "read_max_kb": {
+          "minimum": 1,
+          "title": "Read Max Kb",
+          "type": "integer"
+        },
+        "tool_output_max_chars": {
+          "minimum": 1,
+          "title": "Tool Output Max Chars",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "digest_max_chars",
+        "tool_output_max_chars",
+        "read_max_kb",
+        "agents_md_chain_max_kb"
+      ],
+      "title": "Context",
+      "type": "object"
+    },
+    "Loop": {
+      "additionalProperties": false,
+      "properties": {
+        "blocks_max": {
+          "minimum": 1,
+          "title": "Blocks Max",
+          "type": "integer"
+        },
+        "blocks_no_progress": {
+          "minimum": 1,
+          "title": "Blocks No Progress",
+          "type": "integer"
+        },
+        "iterations": {
+          "minimum": 1,
+          "title": "Iterations",
+          "type": "integer"
+        },
+        "wall_minutes": {
+          "minimum": 1,
+          "title": "Wall Minutes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "blocks_no_progress",
+        "blocks_max",
+        "iterations",
+        "wall_minutes"
+      ],
+      "title": "Loop",
+      "type": "object"
+    },
+    "Review": {
+      "additionalProperties": false,
+      "properties": {
+        "cross_provider": {
+          "title": "Cross Provider",
+          "type": "boolean"
+        },
+        "independent": {
+          "minimum": 1,
+          "title": "Independent",
+          "type": "integer"
+        },
+        "second": {
+          "const": "deterministic",
+          "title": "Second",
+          "type": "string"
+        }
+      },
+      "required": [
+        "independent",
+        "second",
+        "cross_provider"
+      ],
+      "title": "Review",
+      "type": "object"
+    }
+  },
+  "description": "A complete profile. It has no gates key, so no profile can drop a gate.",
+  "properties": {
+    "approvals": {
+      "enum": [
+        "external-effects",
+        "none"
+      ],
+      "title": "Approvals",
+      "type": "string"
+    },
+    "claude": {
+      "$ref": "#/definitions/ClaudeProfile"
+    },
+    "codex": {
+      "$ref": "#/definitions/CodexProfile"
+    },
+    "context": {
+      "$ref": "#/definitions/Context"
+    },
+    "effort": {
+      "const": "models",
+      "title": "Effort",
+      "type": "string"
+    },
+    "isolation": {
+      "enum": [
+        "native-sandbox",
+        "container",
+        "disposable-container"
+      ],
+      "title": "Isolation",
+      "type": "string"
+    },
+    "local_checks": {
+      "enum": [
+        "affected-plus-security",
+        "affected",
+        "nearest"
+      ],
+      "title": "Local Checks",
+      "type": "string"
+    },
+    "loop": {
+      "$ref": "#/definitions/Loop"
+    },
+    "mcp_servers": {
+      "enum": [
+        "none",
+        "from-conf"
+      ],
+      "title": "Mcp Servers",
+      "type": "string"
+    },
+    "name": {
+      "enum": [
+        "enterprise",
+        "standard",
+        "yolo"
+      ],
+      "title": "Name",
+      "type": "string"
+    },
+    "native_delegation": {
+      "enum": [
+        "off",
+        "guarded"
+      ],
+      "title": "Native Delegation",
+      "type": "string"
+    },
+    "network": {
+      "enum": [
+        "allowlist",
+        "off"
+      ],
+      "title": "Network",
+      "type": "string"
+    },
+    "review": {
+      "$ref": "#/definitions/Review"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "name",
+    "approvals",
+    "isolation",
+    "network",
+    "native_delegation",
+    "review",
+    "effort",
+    "local_checks",
+    "loop",
+    "context",
+    "mcp_servers",
+    "claude",
+    "codex"
+  ],
+  "title": "Profile",
+  "type": "object"
+}

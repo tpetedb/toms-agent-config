@@ -1,0 +1,25 @@
+{# output: .claude/agents/{role}.md #}
+---
+# {{ note }}
+# charter-sha256: {{ role.charter_sha256 }}
+name: {{ role.name | json }}
+description: {{ role.description | json }}
+model: {{ role.model | json }}
+{% if role.effort is not none %}
+effort: {{ role.effort | json }}
+{% endif %}
+---
+
+{{ role.instructions }}
+
+## You may
+
+{% for item in role.may %}
+- {{ item }}
+{% endfor %}
+
+## You may never
+
+{% for item in role.may_not %}
+- {{ item }}
+{% endfor %}

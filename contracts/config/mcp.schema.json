@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "McpServer": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Args",
+          "type": "array"
+        },
+        "command": {
+          "minLength": 1,
+          "title": "Command",
+          "type": "string"
+        },
+        "env_names": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Env Names",
+          "type": "array"
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "title": "McpServer",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "servers": {
+      "additionalProperties": {
+        "$ref": "#/definitions/McpServer"
+      },
+      "title": "Servers",
+      "type": "object"
+    },
+    "strict": {
+      "title": "Strict",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "strict",
+    "servers"
+  ],
+  "title": "McpFile",
+  "type": "object"
+}

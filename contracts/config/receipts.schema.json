@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "JsonValue": {},
+    "StageExpectation": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "gate",
+            "probe",
+            "dispatch",
+            "effect"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "observed": {
+          "additionalProperties": {
+            "$ref": "#/definitions/JsonValue"
+          },
+          "minProperties": 1,
+          "title": "Observed",
+          "type": "object"
+        }
+      },
+      "required": [
+        "kind",
+        "observed"
+      ],
+      "title": "StageExpectation",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "required": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Required",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "stages": {
+      "additionalProperties": {
+        "$ref": "#/definitions/StageExpectation"
+      },
+      "title": "Stages",
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "stages"
+  ],
+  "title": "ReceiptPolicy",
+  "type": "object"
+}

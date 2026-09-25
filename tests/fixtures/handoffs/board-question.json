@@ -1,0 +1,7 @@
+{
+  "title": "Loosen the line length",
+  "question": "Should the line length go from 88 to 100?",
+  "context": "A builder asked for longer lines in tests.",
+  "trigger": "loosens-policy",
+  "raised_by": "builder"
+}

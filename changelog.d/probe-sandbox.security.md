@@ -1,0 +1,1 @@
+A client probe now starts `claude --version` or `codex --version` under the same Seatbelt profile as a gate, with no write to the checkout, the fixed environment and a scratch HOME, so a client's startup code cannot read the signing key, the store, a socket or a token; where no sandbox exists the runner refuses the probe.

@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {},
+  "description": "One role's charter, rendered into every harness's agent file.",
+  "properties": {
+    "description": {
+      "maxLength": 1024,
+      "minLength": 1,
+      "title": "Description",
+      "type": "string"
+    },
+    "identity": {
+      "enum": [
+        "tac-bot",
+        "none"
+      ],
+      "title": "Identity",
+      "type": "string"
+    },
+    "instructions": {
+      "minLength": 1,
+      "title": "Instructions",
+      "type": "string"
+    },
+    "may": {
+      "items": {
+        "type": "string"
+      },
+      "title": "May",
+      "type": "array"
+    },
+    "may_not": {
+      "items": {
+        "type": "string"
+      },
+      "title": "May Not",
+      "type": "array"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "title": "Name",
+      "type": "string"
+    },
+    "runs": {
+      "enum": [
+        "host-session",
+        "worktree",
+        "headless",
+        "headless-read-only",
+        "fresh-session",
+        "subagent"
+      ],
+      "title": "Runs",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "writes": {
+      "items": {
+        "enum": [
+          "worktree",
+          "worker-store"
+        ],
+        "type": "string"
+      },
+      "title": "Writes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "name",
+    "description",
+    "identity",
+    "runs",
+    "writes",
+    "may",
+    "may_not",
+    "instructions"
+  ],
+  "title": "Role",
+  "type": "object"
+}

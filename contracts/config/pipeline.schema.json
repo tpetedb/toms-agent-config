@@ -1,0 +1,376 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "Budget": {
+      "additionalProperties": false,
+      "properties": {
+        "max_chars": {
+          "minimum": 1,
+          "title": "Max Chars",
+          "type": "integer"
+        },
+        "max_items": {
+          "minimum": 1,
+          "title": "Max Items",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_items",
+        "max_chars"
+      ],
+      "title": "Budget",
+      "type": "object"
+    },
+    "Gate": {
+      "additionalProperties": false,
+      "description": "One deterministic check: argv run without a shell, argv[0] `just` or a\nscript under src/tac/, never text that could reach a shell or a template.",
+      "properties": {
+        "args_from": {
+          "default": [],
+          "items": {
+            "enum": [
+              "order_id",
+              "run_id",
+              "local_checks"
+            ],
+            "type": "string"
+          },
+          "title": "Args From",
+          "type": "array"
+        },
+        "argv": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minLength": 1,
+          "title": "Argv",
+          "type": "array"
+        },
+        "waits_on": {
+          "default": "",
+          "pattern": "^((M|Q)[0-9]+)?$",
+          "title": "Waits On",
+          "type": "string"
+        }
+      },
+      "required": [
+        "argv"
+      ],
+      "title": "Gate",
+      "type": "object"
+    },
+    "PipelineStage": {
+      "additionalProperties": false,
+      "description": "One stage. Which keys a stage may carry depends on its kind; the pipeline\nchecker names each one that does not belong.",
+      "properties": {
+        "asks": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asks"
+        },
+        "bind": {
+          "additionalProperties": {
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "type": "string"
+          },
+          "title": "Bind",
+          "type": "object"
+        },
+        "budget": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Budget"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "effects": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "type": "string"
+          },
+          "title": "Effects",
+          "type": "array"
+        },
+        "gates": {
+          "default": [],
+          "items": {
+            "$ref": "#/definitions/Gate"
+          },
+          "title": "Gates",
+          "type": "array"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "default": "agent",
+          "enum": [
+            "agent",
+            "gate",
+            "effect",
+            "human"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "max_turns": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Turns"
+        },
+        "on_fail": {
+          "anyOf": [
+            {
+              "enum": [
+                "repair-once-then-human",
+                "human",
+                "stop"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "On Fail"
+        },
+        "owner_actions": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "type": "string"
+          },
+          "title": "Owner Actions",
+          "type": "array"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "const": "other",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider"
+        },
+        "reads": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "type": "string"
+          },
+          "title": "Reads",
+          "type": "array"
+        },
+        "retry": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Retry"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "role": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        },
+        "seats": {
+          "anyOf": [
+            {
+              "enum": [
+                "lead",
+                "others"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seats"
+        },
+        "skills": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "type": "string"
+          },
+          "title": "Skills",
+          "type": "array"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Template"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "const": "cross_team",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "When"
+        },
+        "writes": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Writes"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "PipelineStage",
+      "type": "object"
+    },
+    "Retry": {
+      "additionalProperties": false,
+      "properties": {
+        "max": {
+          "maximum": 3,
+          "minimum": 1,
+          "title": "Max",
+          "type": "integer"
+        },
+        "on_failure": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Gate"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "max"
+      ],
+      "title": "Retry",
+      "type": "object"
+    }
+  },
+  "description": "`.agents/config/pipelines/<name>.toml` as written.",
+  "properties": {
+    "description": {
+      "minLength": 1,
+      "title": "Description",
+      "type": "string"
+    },
+    "entry_contracts": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9-]*$",
+        "type": "string"
+      },
+      "title": "Entry Contracts",
+      "type": "array"
+    },
+    "name": {
+      "enum": [
+        "order",
+        "board",
+        "review",
+        "release",
+        "retro"
+      ],
+      "title": "Name",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "stages": {
+      "items": {
+        "$ref": "#/definitions/PipelineStage"
+      },
+      "minLength": 1,
+      "title": "Stages",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "name",
+    "description",
+    "entry_contracts",
+    "stages"
+  ],
+  "title": "PipelineFile",
+  "type": "object"
+}

@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "lessons",
+  "description": "Candidate lessons a retro extracts at a LANDED or DECISION event, reviewed before promotion.",
+  "type": "object",
+  "properties": {
+    "lessons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "The lesson in a few words."
+          },
+          "text": {
+            "type": "string",
+            "description": "What was learned and what to do differently."
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Paths the lesson applies to; empty when it is general."
+          },
+          "topic": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Topic tags for the selector."
+          },
+          "evidence": {
+            "type": "string",
+            "description": "What the lesson rests on: a receipt, a review, a commit."
+          }
+        },
+        "required": [
+          "title",
+          "text",
+          "paths",
+          "topic",
+          "evidence"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Each candidate lesson; empty when there is none."
+    }
+  },
+  "required": [
+    "lessons"
+  ],
+  "additionalProperties": false
+}

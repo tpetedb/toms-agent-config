@@ -1,0 +1,11 @@
+{
+  "title": "Intro page landed",
+  "shipped": [
+    "docs/intro.md"
+  ],
+  "in_flight": [],
+  "decisions": [
+    "The reviewer accepted the page."
+  ],
+  "owner_actions": []
+}

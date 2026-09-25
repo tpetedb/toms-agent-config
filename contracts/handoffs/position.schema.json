@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "position",
+  "description": "A director's position on a board question: the design, or its revision after the critiques.",
+  "type": "object",
+  "properties": {
+    "question": {
+      "type": "string",
+      "description": "The question the board was asked, restated in one sentence."
+    },
+    "decision": {
+      "type": "string",
+      "description": "What the director proposes."
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Why, with the evidence it rests on."
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What could go wrong if the board takes this position."
+    },
+    "alternatives": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Options considered and set aside, each with the reason."
+    },
+    "loosens_policy": {
+      "type": "boolean",
+      "description": "True when the position loosens a policy, the floor or the checker."
+    }
+  },
+  "required": [
+    "question",
+    "decision",
+    "rationale",
+    "risks",
+    "alternatives",
+    "loosens_policy"
+  ],
+  "additionalProperties": false
+}

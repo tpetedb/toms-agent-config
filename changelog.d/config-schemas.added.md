@@ -1,0 +1,1 @@
+Every config file now has a JSON Schema draft-07 in `contracts/config/`, generated from the model it is read through by `tac config schema --write` and kept equal to it by a test, so editors and CI can check a TOML file without Python; the receipt schema is written by the same helper.

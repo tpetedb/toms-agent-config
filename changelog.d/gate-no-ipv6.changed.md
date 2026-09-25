@@ -1,0 +1,1 @@
+Gate children now reach the network over IPv4 only: outbound IPv6 is denied inside the gate sandbox, because it was a route to loopback (::ffff:127.0.0.1). A host reachable only over IPv6 fails inside a gate.

@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "Egress": {
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "items": {
+            "pattern": "^(\\*\\.)?[a-z0-9.-]+$",
+            "type": "string"
+          },
+          "title": "Allow",
+          "type": "array"
+        },
+        "ipv6": {
+          "title": "Ipv6",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "allow",
+        "ipv6"
+      ],
+      "title": "Egress",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "egress": {
+      "$ref": "#/definitions/Egress"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "egress"
+  ],
+  "title": "NetworkFile",
+  "type": "object"
+}

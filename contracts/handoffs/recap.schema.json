@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "recap",
+  "description": "A recap for the owner: shipped first, then in flight, decisions and what the owner must do, under 400 words in all.",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "A short title for the recap."
+    },
+    "shipped": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Artefacts that landed."
+    },
+    "in_flight": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Work under way."
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Decisions taken, each with who took it."
+    },
+    "owner_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What only the owner can do, each an exact action or command."
+    }
+  },
+  "required": [
+    "title",
+    "shipped",
+    "in_flight",
+    "decisions",
+    "owner_actions"
+  ],
+  "additionalProperties": false
+}

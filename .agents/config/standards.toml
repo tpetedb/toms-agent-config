@@ -1,0 +1,63 @@
+# =============================================================================
+# config/standards.toml: the project's registry. The effective value is
+# max(floor, project); CI evaluates the floor from the base revision.
+# The floor is .agents/standards.floor.toml: where it is stricter it wins, key
+# by key, and `tac explain standards.<key>` says which side a value came from.
+# `tac check` runs one checker per line of this file. Unknown keys fail loudly.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+# Must equal [standards] registry in .agents/config.toml.
+name = "default"
+
+# ---- versioning: how the version number moves.
+[versioning]
+scheme = "semver-2.0.0"                  # the versioning scheme: semver-2.0.0 | none (the floor requires semver-2.0.0)
+source = "pyproject.toml"                # where the version lives; the release pipeline bumps it
+
+# ---- changelog: how changes are recorded for a release.
+[changelog]
+format = "keepachangelog-1.1.0"          # the changelog format: keepachangelog-1.1.0 | none (the floor requires keepachangelog-1.1.0)
+fragments = "changelog.d"                # a code change carries a fragment; a release refuses a tag with fragments and no bump
+# The fragment types a file name may carry, as <slug>.<type>.md.
+types = ["added", "changed", "deprecated", "removed", "fixed", "security"]
+tool = "towncrier"                       # what assembles the fragments into CHANGELOG.md at release time
+
+# ---- commits: what a commit message must look like.
+[commits]
+convention = "what-and-why"              # or "conventional-1.0.0"; open decision Q4
+max_subject = 72                         # the longest subject line in characters; the floor's bound wins when it is lower
+trailers_required = ["Co-Authored-By"]   # when an agent commits
+
+# ---- dates: how dates are written in text, frontmatter and file names.
+[dates]
+format = "iso-8601"                      # the date format: iso-8601 | any (the floor requires iso-8601)
+timezone = "UTC"                         # the zone every recorded time is written in
+basic_in_filenames = true                # 20260924T1425Z in file names, the extended form elsewhere
+
+# ---- diagrams: how diagrams are drawn and proved.
+[diagrams]
+tool = "mermaid"                         # the diagram language every diagram is written in
+flowcharts = "iso-5807:1985-house-subset"      # documented in docs/diagrams/README.md; a legend on every diagram
+architecture = "iso-iec-ieee-42010:2022"       # stakeholders, concerns, viewpoints, views; C4 is the presentation, not the conformance
+validate = "mermaid-cli-pinned"                # rendering proves syntax; a semantic checklist is part of review
+
+# ---- code: the formatter, linter and type checker per language.
+[code]
+# Python: formatter and linter ruff, types basedpyright, line_length 88 characters.
+python = { formatter = "ruff", linter = "ruff", types = "basedpyright", line_length = 88 }
+shell = { linter = "shellcheck", dialect = "bash-3.2" }      # shell scripts: linter shellcheck, dialect bash-3.2 so macOS's own bash runs them
+sql = { linter = "sqlfluff" }                                 # SQL files: linter sqlfluff
+markdown = { linter = "rumdl", em_dashes = false }            # Markdown: linter rumdl; em_dashes false refuses the em dash anywhere
+yaml = { linter = "yamllint" }                                # YAML files: linter yamllint
+toml = { formatter = "taplo" }                                # TOML files: formatter taplo
+actions = { linter = "actionlint" }                           # GitHub workflows: linter actionlint
+
+# ---- quality: the gates every change passes.
+[quality]
+tests = "required"                       # required | optional (the floor requires required)
+lint = "required"                        # required | optional (the floor requires required)
+secrets = "gitleaks"                     # the secret scanner: gitleaks | none (the floor requires gitleaks)
+dependencies = "pip-audit"               # the dependency audit run on the resolved lock
+licences = "allowlist"                   # a test over the resolved lock
+data = "soda-v3-optional"                # only when project.kind includes data-pipeline; open decision Q13

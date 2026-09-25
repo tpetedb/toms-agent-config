@@ -1,0 +1,32 @@
+# =============================================================================
+# config/pipelines/review.toml: a delta re-review bound to a commit, the cheap
+# second look after a change to a reviewed order. It starts from the earlier
+# review and the new build report. Stage keys are explained in full in
+# config/pipelines/order.toml. Unknown keys fail loudly.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+# Must equal the file name and be listed in [pipelines] enabled:
+# order | board | review | release | retro.
+name = "review"
+# One line on what a run of this pipeline achieves, printed by tac pipeline plan.
+description = "a delta re-review of a changed order, bound to its commit"
+# The payloads a run starts with, by contract under contracts/handoffs/: the
+# earlier review and the build report of the change.
+entry_contracts = ["review", "build-report"]
+
+# The other provider reviews only what changed since the earlier review.
+[[stages]]
+id = "review"                           # the stage id, unique in the pipeline
+kind = "agent"                          # agent | gate | effect | human
+role = "reviewer"                       # the role charter it runs as
+provider = "other"                      # other: the provider that did not build; only a review stage says so
+reads = ["review", "build-report"]      # the contracts it reads, both from the entry
+writes = "review"                       # the contract its result must pass
+template = "handoffs/delta-review.md.j2"   # the prompt template under templates/
+on_fail = "repair-once-then-human"      # repair-once-then-human | human | stop
+
+# The review is current, by someone else, from the other provider.
+[[stages.gates]]
+argv = ["just", "work-review"]          # the command, run without a shell; argv[0] is just
+args_from = ["order_id"]                # run values appended to argv, any of: order_id | run_id | local_checks

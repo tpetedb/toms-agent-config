@@ -1,0 +1,171 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "Director": {
+      "additionalProperties": false,
+      "properties": {
+        "effort": {
+          "minLength": 1,
+          "title": "Effort",
+          "type": "string"
+        },
+        "launch_effort": {
+          "title": "Launch Effort",
+          "type": "string"
+        },
+        "lead": {
+          "title": "Lead",
+          "type": "boolean"
+        },
+        "model": {
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "provider": {
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "title": "Provider",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "model",
+        "effort",
+        "launch_effort",
+        "lead"
+      ],
+      "title": "Director",
+      "type": "object"
+    },
+    "Provider": {
+      "additionalProperties": false,
+      "properties": {
+        "build": {
+          "minLength": 1,
+          "title": "Build",
+          "type": "string"
+        },
+        "efforts": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minLength": 1,
+          "title": "Efforts",
+          "type": "array"
+        },
+        "harness": {
+          "enum": [
+            "claude",
+            "codex"
+          ],
+          "title": "Harness",
+          "type": "string"
+        }
+      },
+      "required": [
+        "harness",
+        "build",
+        "efforts"
+      ],
+      "title": "Provider",
+      "type": "object"
+    },
+    "RoleModels": {
+      "additionalProperties": {
+        "$ref": "#/definitions/Seat"
+      },
+      "description": "`provider` plus one seat per provider id, keyed by that id.",
+      "properties": {
+        "provider": {
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "title": "Provider",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider"
+      ],
+      "title": "RoleModels",
+      "type": "object"
+    },
+    "Seat": {
+      "additionalProperties": false,
+      "properties": {
+        "effort": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effort"
+        },
+        "model": {
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "ultracode": {
+          "default": false,
+          "title": "Ultracode",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "title": "Seat",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "directors": {
+      "additionalProperties": {
+        "$ref": "#/definitions/Director"
+      },
+      "title": "Directors",
+      "type": "object"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "title": "Name",
+      "type": "string"
+    },
+    "providers": {
+      "additionalProperties": {
+        "$ref": "#/definitions/Provider"
+      },
+      "minProperties": 1,
+      "title": "Providers",
+      "type": "object"
+    },
+    "roles": {
+      "additionalProperties": {
+        "$ref": "#/definitions/RoleModels"
+      },
+      "title": "Roles",
+      "type": "object"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "name",
+    "providers",
+    "roles",
+    "directors"
+  ],
+  "title": "ModelsFile",
+  "type": "object"
+}

@@ -1,0 +1,13 @@
+# =============================================================================
+# config/mcp.toml: the MCP servers a session may load, when the active profile
+# says mcp_servers = "from-conf". Headless stages start with --strict-mcp-config
+# and the file rendered from here, so the owner's own user-level servers never
+# load into a stage. Unknown keys fail loudly.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+strict = true                             # true renders --strict-mcp-config: only the servers below, never the user's
+# One [servers.<name>] table per server, with command (an absolute path), args
+# and env_names (variable names only, injected per step, never values). None is
+# shipped: add one only when a stage needs it.
+servers = {}

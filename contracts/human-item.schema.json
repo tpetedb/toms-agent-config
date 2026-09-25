@@ -1,0 +1,203 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "Finding": {
+      "additionalProperties": false,
+      "description": "One validation finding, in the diagnostic shape the design names.",
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "evidence": {
+          "title": "Evidence",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "error",
+            "warning"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "subject": {
+          "title": "Subject",
+          "type": "string"
+        },
+        "supportedFixes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Supportedfixes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "subject",
+        "evidence",
+        "supportedFixes"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "HumanArguments": {
+      "additionalProperties": false,
+      "properties": {
+        "contract": {
+          "pattern": "^[a-z][a-z0-9-]{0,63}$",
+          "title": "Contract",
+          "type": "string"
+        },
+        "envelope": {
+          "title": "Envelope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "envelope",
+        "contract"
+      ],
+      "title": "HumanArguments",
+      "type": "object"
+    }
+  },
+  "description": "The fixed outcome of a result that failed its contract after the repair:\na pending item in the approval shape of design section 7, which `tac human`\nrenders into TODO.HUMAN.md. Its question and options never carry model text;\nthe findings travel as data.",
+  "properties": {
+    "agent": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Agent"
+    },
+    "arguments": {
+      "$ref": "#/definitions/HumanArguments"
+    },
+    "asked_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "title": "Asked At",
+      "type": "string"
+    },
+    "decided_at": {
+      "default": null,
+      "title": "Decided At",
+      "type": "null"
+    },
+    "decided_by": {
+      "default": null,
+      "title": "Decided By",
+      "type": "null"
+    },
+    "errors": {
+      "items": {
+        "$ref": "#/definitions/Finding"
+      },
+      "title": "Errors",
+      "type": "array"
+    },
+    "id": {
+      "pattern": "^handoff-[A-Za-z0-9._:-]{1,160}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "item_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Item Version",
+      "type": "integer"
+    },
+    "kind": {
+      "const": "handoff-escalation",
+      "default": "handoff-escalation",
+      "title": "Kind",
+      "type": "string"
+    },
+    "options": {
+      "items": {
+        "enum": [
+          "rerun",
+          "amend-contract",
+          "cancel"
+        ],
+        "type": "string"
+      },
+      "title": "Options",
+      "type": "array"
+    },
+    "order_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z0-9][a-z0-9-]{2,48}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Order Id"
+    },
+    "question": {
+      "title": "Question",
+      "type": "string"
+    },
+    "recommendation": {
+      "enum": [
+        "rerun",
+        "amend-contract",
+        "cancel"
+      ],
+      "title": "Recommendation",
+      "type": "string"
+    },
+    "run_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "stage": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+      "title": "Stage",
+      "type": "string"
+    },
+    "status": {
+      "const": "pending",
+      "default": "pending",
+      "title": "Status",
+      "type": "string"
+    },
+    "tool": {
+      "const": "tac handoff validate",
+      "default": "tac handoff validate",
+      "title": "Tool",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "run_id",
+    "stage",
+    "arguments",
+    "question",
+    "options",
+    "recommendation",
+    "asked_at",
+    "errors"
+  ],
+  "title": "HumanItem",
+  "type": "object"
+}

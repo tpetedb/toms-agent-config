@@ -1,0 +1,1 @@
+The private scan's term list takes no comments: a line that is neither blank nor an encoded entry fails the list, and in any tree the scan reads scripts/private_terms.txt like any other file less its entry lines, so a term in a comment there is found.

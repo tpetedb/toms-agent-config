@@ -1,0 +1,16 @@
+{
+  "title": "Keep the line length",
+  "summary": "The board keeps 88.",
+  "human_items": [
+    {
+      "id": "Q21",
+      "question": "Keep the line length at 88?",
+      "options": [
+        "yes",
+        "no"
+      ],
+      "recommendation": "yes",
+      "waits": "nothing"
+    }
+  ]
+}

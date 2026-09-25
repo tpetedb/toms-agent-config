@@ -1,0 +1,24 @@
+# =============================================================================
+# config/network.toml: where agent commands may connect when the active profile
+# says network = "allowlist". This is command egress (package installs, git),
+# not the client's own model traffic. Codex gets features.network_proxy with a
+# tested proxy, else command networking off; Claude gets sandbox.enabled
+# rendered explicitly. Gate children keep their own Seatbelt rules (section 10).
+# Unknown keys fail loudly.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+
+# ---- egress: the hosts agent commands may reach.
+[egress]
+# Host names, exact; a leading "*." allows every subdomain. Package indexes and GitHub only.
+allow = [
+  "pypi.org",
+  "files.pythonhosted.org",
+  "github.com",
+  "api.github.com",
+  "codeload.github.com",
+  "objects.githubusercontent.com",
+  "registry.npmjs.org",
+]
+ipv6 = false                              # false denies outbound IPv6 to commands, as the gate sandbox does
