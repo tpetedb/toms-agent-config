@@ -6,9 +6,12 @@ JSON Schema, so a schema outside it fails at the API on the first cross-provider
 review. Every such contract lives under contracts/handoffs/ and is held here to
 that subset: an object root that is not anyOf, every property required,
 `additionalProperties: false` on every object, nullable written as
-`[type, "null"]`, only the keywords the subset lists, and a depth of at most 10.
-The lint walks every place a subschema can sit, refused keywords included, so a
-loose object hidden under one is named too.
+`[type, "null"]`, only the keywords the subset lists, a depth of at most 10, and
+the documented size limits: at most 5000 object properties in all, 120,000
+characters across every property name, definition name, enum value and const
+value, 1000 enum values in all, and 15,000 characters in one string enum of more
+than 250 values. The lint walks every place a subschema can sit, refused
+keywords included, so a loose object hidden under one is named too.
 
 Config and receipt schemas are not model-facing: they keep optional keys and
 defaults, and this lint never reads them.
@@ -28,10 +31,20 @@ from tac.draft07 import DRAFT_07, later_keywords
 
 MODEL_FACING_DIR = "contracts/handoffs"
 MAX_DEPTH = 10
-# The keywords the strict subset lists: the types, enum and anyOf, the string,
-# number and array constraints, $defs and $ref, plus annotations and the object
-# keywords. Anything else is refused at any depth, since the API errors on an
-# unsupported keyword rather than ignoring it.
+# The size limits the Structured Outputs guide documents; past any of them the
+# API refuses the schema, so the lint refuses it first.
+# https://developers.openai.com/api/docs/guides/structured-outputs#supported-schemas
+MAX_PROPERTIES = 5000
+MAX_STRING_TOTAL = 120_000
+MAX_ENUM_VALUES = 1000
+# A string enum of more than LARGE_ENUM values may hold at most this many characters.
+LARGE_ENUM = 250
+MAX_LARGE_ENUM_CHARS = 15_000
+# The keywords the strict subset lists: the types, enum, const and anyOf, the
+# string, number and array constraints, $defs and $ref, plus annotations and the
+# object keywords; the guide counts const values in its size limit. Anything else
+# is refused at any depth, since the API errors on an unsupported keyword rather
+# than ignoring it.
 # https://developers.openai.com/api/docs/guides/structured-outputs#supported-schemas
 SUPPORTED = frozenset(
     {
@@ -43,6 +56,7 @@ SUPPORTED = frozenset(
         "description",
         "type",
         "enum",
+        "const",
         "anyOf",
         "properties",
         "required",
@@ -110,6 +124,51 @@ def _is_object(schema: dict[str, Any]) -> bool:
     return kind == "object" or (isinstance(kind, list) and "object" in kind)
 
 
+def _text_length(value: Any) -> int:
+    # A string counts its characters; any other enum or const value its JSON text.
+    return len(value) if isinstance(value, str) else len(json.dumps(value))
+
+
+def _size_problems(subs: list[tuple[str, dict[str, Any]]]) -> list[str]:
+    """The documented totals, summed over every subschema the walk reached."""
+    problems = []
+    properties = strings = enum_values = 0
+    for at, sub in subs:
+        props = sub.get("properties")
+        names = list(props) if isinstance(props, dict) else []
+        properties += len(names)
+        strings += sum(len(n) for n in names)
+        for key in ("definitions", "$defs"):
+            defs = sub.get(key)
+            strings += sum(len(n) for n in defs) if isinstance(defs, dict) else 0
+        if "const" in sub:
+            strings += _text_length(sub["const"])
+        enum = sub.get("enum")
+        if not isinstance(enum, list):
+            continue
+        enum_values += len(enum)
+        chars = sum(_text_length(v) for v in enum)
+        strings += chars
+        text_chars = sum(len(v) for v in enum if isinstance(v, str))
+        if len(enum) > LARGE_ENUM and text_chars > MAX_LARGE_ENUM_CHARS:
+            problems.append(
+                f"{at}: an enum of more than {LARGE_ENUM} values holds "
+                f"{text_chars} characters, over {MAX_LARGE_ENUM_CHARS}"
+            )
+    if properties > MAX_PROPERTIES:
+        problems.append(
+            f"/: {properties} object properties, over {MAX_PROPERTIES} in all"
+        )
+    if strings > MAX_STRING_TOTAL:
+        problems.append(
+            f"/: names, enum and const values hold {strings} characters, "
+            f"over {MAX_STRING_TOTAL}"
+        )
+    if enum_values > MAX_ENUM_VALUES:
+        problems.append(f"/: {enum_values} enum values, over {MAX_ENUM_VALUES} in all")
+    return problems
+
+
 def strict_subset_problems(schema: Any) -> list[str]:
     """Each place `schema` leaves the OpenAI strict subset, as `path: reason`."""
     if not isinstance(schema, dict) or schema.get("type") != "object":
@@ -117,8 +176,10 @@ def strict_subset_problems(schema: Any) -> list[str]:
     problems = []
     if "anyOf" in schema:
         problems.append("/: the root may not be anyOf")
+    reached = []
     for where, depth, sub in _walk(schema, "", 1):
         at = where or "/"
+        reached.append((at, sub))
         if depth > MAX_DEPTH:
             problems.append(f"{at}: nested deeper than {MAX_DEPTH}")
         for key in sorted(set(sub) - SUPPORTED):
@@ -135,7 +196,7 @@ def strict_subset_problems(schema: Any) -> list[str]:
                 problems.append(f"{at}: property {name} must be required")
             if sub.get("additionalProperties") is not False:
                 problems.append(f"{at}: additionalProperties must be false")
-    return problems
+    return problems + _size_problems(reached)
 
 
 def draft07_problems(schema: Any) -> list[str]:

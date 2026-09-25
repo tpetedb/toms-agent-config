@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from tac.codeowners import ci_gaps, ci_paths, location
 from tac.config import load_config
 from tac.github import (
     AnonymousTransport,
@@ -248,6 +249,21 @@ def check_runner_pub(root: Path) -> tuple[Status, str]:
     return Status.PASS, f"{RUNNER_PUB} holds runner key {key_id(public)}"
 
 
+def check_codeowners_ci(root: Path) -> tuple[Status, str]:
+    """The workflow and the gate scripts are the candidate's on pull_request, so
+    the owner's required review is what guards them, and it reaches only the
+    paths CODEOWNERS names (section 8)."""
+    gaps = ci_gaps(root, agent_identity(root))
+    if gaps:
+        return Status.FAIL, (
+            f"CODEOWNERS leaves what CI runs open: {'; '.join(gaps)}; name the "
+            "owner on each so a change to it needs the owner's review"
+        )
+    found = location(root) or "CODEOWNERS"
+    count = len(ci_paths(root, found))
+    return Status.PASS, f"{found} names an owner on the {count} paths CI runs from"
+
+
 def ruleset_transport(environ: Mapping[str, str]) -> tuple[Transport, str]:
     """The owner's gh on the host; no credential at all inside an agent session."""
     reason = agent_session(environ)
@@ -368,6 +384,7 @@ CHECKS: tuple[Check, ...] = (
     Check("agents-config", check_agents_config),
     Check("generated-lock", check_generated_lock),
     Check("runner-pub", check_runner_pub),
+    Check("codeowners-ci", check_codeowners_ci),
     Check("github-ruleset", check_github_ruleset),
     Check("session-identity", lambda root: session_identity_status(root, os.environ)),
     *(check for h in CLIENTS for check in (client_check(h), trust_check(h))),

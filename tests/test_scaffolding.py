@@ -43,12 +43,13 @@ def test_ci_runs_every_gate(repo: Path) -> None:
         "ruff format --check",
         "basedpyright",
         "pytest",
-        "scripts/private_scan.sh",
+        "gates/private_scan.sh",
         "--no-editable --project .agents",
         "actionlint",
         "shellcheck bootstrap.sh scripts/*.sh",
-        "scripts/ci_work_from_base.sh",
-        "scripts/ci_verify_receipts.sh",
+        "gates/ci_work_from_base.sh",
+        "gates/ci_config_from_base.sh",
+        "gates/ci_verify_receipts.sh",
     ):
         assert gate in script, gate
 
@@ -87,6 +88,13 @@ def test_codeowners_names_the_owner_on_the_guarded_paths(repo: Path) -> None:
         "/templates/",
         "/contracts/",
         "/.github/",
+        # What CI runs from, named on their own so narrowing a folder rule
+        # above cannot leave them open (tac doctor's codeowners-ci check).
+        "/.github/workflows/",
+        "/.github/CODEOWNERS",
+        "/scripts/ci_*.sh",
+        "/scripts/private_scan.sh",
+        ".gitattributes",
         # Run on the host or in CI, or pin what does, or hold the test guards.
         "/scripts/",
         "/tests/conftest.py",
