@@ -81,12 +81,19 @@ def test_a_refused_tool_call_exits_2_with_the_documented_deny(
     assert "AGENTS.md is generated" in done.stderr
 
 
-def test_a_reminder_before_a_tool_call_lets_it_through(fx: Fixture) -> None:
+@pytest.mark.parametrize("client", ["claude", "codex"])
+def test_a_reminder_before_a_tool_call_lets_it_through_as_context(
+    fx: Fixture, client: str
+) -> None:
+    """Stderr at exit 0 reaches only a debug log on both clients, so the
+    reminder travels as additionalContext, which the model reads."""
     fx.stub(verdict="remind", reason="mind the order")
-    done = run_guard(fx, "claude", "PreToolUse", tool_event("PreToolUse"))
+    done = run_guard(fx, client, "PreToolUse", tool_event("PreToolUse"))
     assert done.returncode == 0
-    assert "mind the order" in done.stderr
-    assert done.stdout == ""
+    assert emitted(done)["hookSpecificOutput"] == {
+        "hookEventName": "PreToolUse",
+        "additionalContext": "tac guard: [stub] mind the order",
+    }
 
 
 @pytest.mark.parametrize(
@@ -124,6 +131,16 @@ def test_after_a_tool_codex_gets_the_reason_in_place_of_the_result(
     assert "that file is generated" in done.stderr
 
 
+def test_after_a_tool_a_codex_reminder_keeps_the_result(fx: Fixture) -> None:
+    """Only a refusal replaces the tool result; a reminder, or the guard's own
+    failure, is context next to it."""
+    fx.stub(verdict="remind", reason="mind the order")
+    done = run_guard(fx, "codex", "PostToolUse", tool_event("PostToolUse"))
+    assert done.returncode == 0
+    context = emitted(done)["hookSpecificOutput"]["additionalContext"]
+    assert context == "tac guard: [stub] mind the order"
+
+
 @pytest.mark.parametrize("client", ["claude", "codex"])
 def test_a_session_start_carries_the_checker_s_note_as_context(
     fx: Fixture, client: str
@@ -152,7 +169,7 @@ def test_an_unreadable_event_fails_closed_before_a_tool(fx: Fixture, body: str) 
     assert run_guard(fx, "claude", "PreToolUse", body).returncode == 2
     stop = run_guard(fx, "claude", "Stop", body)
     assert stop.returncode == 0
-    assert "stdin" in stop.stderr
+    assert "stdin" in emitted(stop)["systemMessage"]
 
 
 # ---------------------------------------------------------------- tampering
@@ -167,6 +184,7 @@ def refuses(fx: Fixture, why: str, **kwargs: Any) -> None:
     stop = run_guard(fx, "codex", "Stop", event("Stop"), **kwargs)
     assert stop.returncode == 0
     assert why in stop.stderr
+    assert why in emitted(stop)["systemMessage"]
 
 
 def test_an_edited_guard_is_refused(fx: Fixture) -> None:

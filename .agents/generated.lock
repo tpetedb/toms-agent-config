@@ -55,8 +55,8 @@ schema_version = 1
 ".agents/standards.floor.toml" = "8dd34fed96143523901f0f7bdfb05bb7ba25e260a5a480e1de19f17271f8b089"
 
 [hooks]
-".agents/hooks/run.py" = "a1c8df9a92f2f3d21c9b24296bae3eefb5d673d3d2d743b7fb671e7825648436"
-"hooks/run.py" = "a1c8df9a92f2f3d21c9b24296bae3eefb5d673d3d2d743b7fb671e7825648436"
+".agents/hooks/run.py" = "0f2056af525c3bbeb16a11fdfc158dcf39802f223cad84f6a15081eaf3a84c18"
+"hooks/run.py" = "0f2056af525c3bbeb16a11fdfc158dcf39802f223cad84f6a15081eaf3a84c18"
 
 [outputs]
 ".claude/agents/builder.md" = "28d82025701c5e48cdc158303be306b7f456ff341d0a776d8b4404157d008a8c"

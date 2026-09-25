@@ -271,16 +271,19 @@ def _context(event: str, text: str) -> None:
 def answer(
     client: str, event: str, verdict: str, reason: str, payload: dict[str, object]
 ) -> int:
-    """Say the verdict the way the client reads it; the exit code."""
+    """Say the verdict the way the client reads it; the exit code.
+
+    Both clients read JSON on stdout at exit 0 and 2 and show stderr at exit 0
+    only in a debug log, so what the model must hear goes into JSON or rides
+    on exit 2 (https://code.claude.com/docs/en/hooks#exit-code-output and
+    https://developers.openai.com/codex/hooks)."""
     if verdict == "allow":
         if reason and event == "SessionStart":
             _context(event, reason)
         return 0
     message = "tac guard: " + reason
-    if event == "PreToolUse":
-        if verdict == "remind":
-            sys.stderr.write(message + "\n")
-            return 0
+    sys.stderr.write(message + "\n")
+    if event == "PreToolUse" and verdict == "deny":
         # Exit 2 refuses on both clients whatever stdout says; the JSON is the
         # structured form each documents, for a client that reads it.
         _emit(
@@ -292,20 +295,16 @@ def answer(
                 }
             }
         )
-        sys.stderr.write(message + "\n")
         return 2
     if event in STOPS:
-        sys.stderr.write(message + "\n")
         # Sent back once: a stop that is already a continuation always ends.
         return 0 if payload.get("stop_hook_active") else 2
-    if event == "PostToolUse" and client == "codex":
+    if event == "PostToolUse" and client == "codex" and verdict == "deny":
         # Codex feeds the reason to the model in place of the tool result.
-        sys.stderr.write(message + "\n")
         return 2
-    # Claude's PostToolUse and both clients' SessionStart cannot refuse; the
-    # reason goes into the model's context instead.
+    # A reminder before or after a tool, and anything at a session start,
+    # cannot refuse; the reason goes into the model's context instead.
     _context(event, message)
-    sys.stderr.write(message + "\n")
     return 0
 
 
@@ -315,7 +314,12 @@ def fail(client: str, event: str, why: str, payload: dict[str, object]) -> int:
     if event in DENY_CLASS:
         return answer(client, event, "deny", why, payload)
     if event in STOPS:
-        sys.stderr.write("tac guard: " + why + "\n")
+        # Never sent back for the guard's own failure, or a checker that cannot
+        # answer in time would hold every stop. systemMessage shows it to the
+        # person on both clients, and Codex takes only JSON on a stop's stdout.
+        message = "tac guard: " + why
+        _emit({"systemMessage": message})
+        sys.stderr.write(message + "\n")
         return 0
     return answer(client, event, "remind", why, payload)
 
