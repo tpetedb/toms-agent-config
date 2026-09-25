@@ -35,6 +35,8 @@ line-length = 88
 target-version = "py312"
 # The stamped copy is generated from src/tac and judged there, not twice.
 extend-exclude = [".agents/lib"]
+# The hook guard runs on the system interpreter, which is 3.9 on macOS.
+per-file-target-version = { "hooks/run.py" = "py39", ".agents/hooks/run.py" = "py39" }
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
@@ -42,8 +44,10 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 [tool.basedpyright]
 typeCheckingMode = "basic"
 pythonVersion = "3.12"
-include = ["src", "tests", "scripts"]
+include = ["src", "tests", "scripts", "hooks"]
 exclude = [".agents", "**/.venv", "**/__pycache__"]
+# The hook guard is typed against the 3.9 standard library it runs on.
+executionEnvironments = [{ root = "hooks", pythonVersion = "3.9" }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

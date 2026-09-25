@@ -146,6 +146,24 @@ def check_agents_lib_current(root: Path) -> tuple[Status, str]:
     return Status.PASS, f"{AGENTS}/{LIB_SOURCE} matches src/tac"
 
 
+def check_hook_guard(root: Path) -> tuple[Status, str]:
+    """Every rendered hook runs the stamped guard, so a hooks/run.py change that
+    was never stamped leaves sessions guarded by the old one."""
+    stamped = root / AGENTS / "hooks" / "run.py"
+    if not stamped.is_file():
+        return Status.FAIL, f"no stamped guard at {AGENTS}/hooks/run.py"
+    source = root / "hooks" / "run.py"
+    if not source.is_file():
+        return Status.PASS, "no hooks/run.py here; the stamp is the pinned release"
+    if source.read_bytes() != stamped.read_bytes():
+        return (
+            Status.FAIL,
+            f"{AGENTS}/hooks/run.py differs from hooks/run.py; "
+            "run just stamp-lib on the host, then tac sync",
+        )
+    return Status.PASS, f"{AGENTS}/hooks/run.py matches hooks/run.py"
+
+
 def check_agents_venv(root: Path) -> tuple[Status, str]:
     if venv_python(root).is_file():
         return Status.PASS, f"{AGENTS}/.venv has an interpreter"
@@ -344,6 +362,7 @@ CHECKS: tuple[Check, ...] = (
     Check("agents-project", check_agents_project),
     Check("agents-lib", check_agents_lib),
     Check("agents-lib-current", check_agents_lib_current),
+    Check("hook-guard-current", check_hook_guard),
     Check("agents-venv", check_agents_venv),
     Check("tac-import", check_tac_import),
     Check("agents-config", check_agents_config),

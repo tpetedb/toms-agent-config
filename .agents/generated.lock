@@ -1,6 +1,7 @@
 # Written by `tac sync`, never by hand: the sha256 of every input, template,
-# the policy, the floor and every generated output. `tac check` fails when a
-# generated file or an input no longer matches what is recorded here.
+# the policy, the floor, the hook guard and every generated output. `tac check`
+# fails when a generated file or an input no longer matches what is recorded
+# here, and the guard refuses to run when a file beside it does not.
 
 schema_version = 1
 
@@ -52,6 +53,10 @@ schema_version = 1
 
 [floor]
 ".agents/standards.floor.toml" = "8dd34fed96143523901f0f7bdfb05bb7ba25e260a5a480e1de19f17271f8b089"
+
+[hooks]
+".agents/hooks/run.py" = "a1c8df9a92f2f3d21c9b24296bae3eefb5d673d3d2d743b7fb671e7825648436"
+"hooks/run.py" = "a1c8df9a92f2f3d21c9b24296bae3eefb5d673d3d2d743b7fb671e7825648436"
 
 [outputs]
 ".claude/agents/builder.md" = "28d82025701c5e48cdc158303be306b7f456ff341d0a776d8b4404157d008a8c"
