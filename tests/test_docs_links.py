@@ -87,3 +87,24 @@ def test_a_broken_link_is_caught(tmp_path: Path) -> None:
         "#title",
     ]
     assert "title" in anchors(page)
+
+
+def test_the_harness_page_says_what_bootstrap_does() -> None:
+    """Step 3 of "How to try it on another machine" and the init diagram claim
+    only what bootstrap.sh runs: it installs uv, never mise, builds the runner
+    venv, runs tac doctor, and skips tac init until it exists."""
+    script = (REPO / "bootstrap.sh").read_text(encoding="utf-8")
+    page = (REPO / "docs/HARNESS.md").read_text(encoding="utf-8")
+    diagram = (REPO / "docs/diagrams/lifecycle-init.mmd").read_text(encoding="utf-8")
+    step = next(line for line in page.splitlines() if line.startswith("3. "))
+    assert "bootstrap.sh" in step
+    installs_mise = re.search(r"^\s*(curl|brew|sh)\b.*mise", script, re.MULTILINE)
+    if not installs_mise:
+        for text in (step, diagram):
+            assert "uv and mise when absent" not in text
+    if 'note "skipped: tac init' in script:
+        assert "runs `tac init`" not in step
+        assert "`tac init` does not run yet" in step
+    for runs in ("tac doctor", "tac runner install"):
+        assert runs in script
+        assert f"`{runs}`" in step, f"step 3 leaves out {runs}"

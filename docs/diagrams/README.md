@@ -66,7 +66,7 @@ Legend: green terminator, blue process, yellow decision, orange input or output,
 
 The rules `tac diagrams check` holds every `.mmd` here to:
 
-- **Six shapes only.** A node drawn with any other bracket (a circle, a hexagon, a subroutine, an asymmetric flag) is refused, and so is a shape with the wrong class for it.
+- **Six shapes only.** A node drawn with any other bracket (a circle, a hexagon, a subroutine, an asymmetric flag) or with the `id@{ shape: ... }` syntax is refused, and so is a shape with the wrong class for it. Every node is drawn once with its shape and label; an id that edges only refer to is refused, and so is a line the lint cannot read as nodes and edges.
 - **Every node has a class**, and every classDef is the palette's, character for character. No inline `style`.
 - **Labels are quoted**, line breaks are `<br/>`, `<` and `>` are written `&lt;` and `&gt;`.
 - **The dotted edge.** A dotted edge (`-.->`) means read-only access: the node at its tail is read and never written. Every other relation is a solid edge.

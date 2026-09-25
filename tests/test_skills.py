@@ -31,6 +31,7 @@ client ever cuts one of ours.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -66,6 +67,15 @@ LISTING_BUDGET_CHARS = min(
 )
 CLAUDE_ENTRY_CAP = 1536
 EM_DASH = "\u2014"
+# Box drawing (U+2500 to U+257F) is the one Symbol, Other block a skill may use:
+# the directory trees the shipped skills print.
+BOX_DRAWING = range(0x2500, 0x2580)
+# Emoji that are not Symbol, Other: the variation selector, the zero-width joiner
+# and the skin tone modifiers.
+EMOJI_PARTS = frozenset({0xFE0F, 0x200D, *range(0x1F3FB, 0x1F400)})
+# Examples a skill documents and never runs: vendored verbatim, they drive a
+# browser at import, so they must not be executable either.
+EXAMPLES_DIR = "examples"
 # The skills section 12 of docs/DESIGN.md ships.
 SHIPPED = frozenset(
     {
@@ -102,6 +112,22 @@ REVIEW_STAGES = frozenset({"review", "signoff"})
 REVIEW_ROLES = frozenset({"reviewer", "manager"})
 
 
+class UniqueKeyLoader(yaml.SafeLoader):
+    """safe_load that refuses a key given twice in one mapping, which plain YAML
+    loading resolves silently to the last value."""
+
+    def construct_mapping(
+        self, node: yaml.MappingNode, deep: bool = False
+    ) -> dict[Any, Any]:
+        seen: set[Any] = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            if key in seen:
+                raise ValueError(f"the key {key!r} is given twice")
+            seen.add(key)
+        return super().construct_mapping(node, deep=deep)
+
+
 def split_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     """The YAML between the opening `---` and the next `---` line, and the body."""
     if not text.startswith("---\n"):
@@ -109,23 +135,56 @@ def split_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     head, found, body = text[4:].partition("\n---\n")
     if not found:
         raise ValueError("the frontmatter is never closed with a --- line")
-    data = yaml.safe_load(head)
+    data = yaml.load(head, Loader=UniqueKeyLoader)
     if not isinstance(data, dict):
         raise ValueError("the frontmatter is not a mapping")
     return data, body
 
 
 def pictographs(text: str) -> list[str]:
-    """Emoji and other pictographs: the Symbol, Other characters of the emoji
-    blocks, and the emoji variation selector."""
+    """Emoji and other pictographs: every Symbol, Other character outside box
+    drawing, wherever its block, and the parts emoji are joined from."""
     found = []
     for ch in text:
         code = ord(ch)
-        if code == 0xFE0F or (
-            unicodedata.category(ch) == "So"
-            and (0x2600 <= code <= 0x27BF or 0x1F000 <= code <= 0x1FAFF)
+        if code in EMOJI_PARTS or (
+            unicodedata.category(ch) == "So" and code not in BOX_DRAWING
         ):
             found.append(f"U+{code:04X}")
+    return found
+
+
+def text_files(root: Path) -> list[tuple[Path, str]]:
+    """Every file under root that reads as UTF-8, whatever its suffix."""
+    found = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or "__pycache__" in path.parts:
+            continue
+        try:
+            found.append((path, path.read_text(encoding="utf-8")))
+        except UnicodeDecodeError:
+            continue
+    return found
+
+
+def caveman_mentions(root: Path) -> list[Path]:
+    """The text files under root that mention caveman, in any case."""
+    return [path for path, text in text_files(root) if "caveman" in text.lower()]
+
+
+def skill_scripts(root: Path) -> list[Path]:
+    """Every script a skill under root bundles, at any depth: a .py or .sh file,
+    or any executable file. Only a non-executable file under an `examples/`
+    folder is left out; it is documentation, not a tool."""
+    found = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or "__pycache__" in path.parts:
+            continue
+        executable = os.access(path, os.X_OK)
+        if EXAMPLES_DIR in path.relative_to(root).parts[:-1] and not executable:
+            continue
+        if executable or path.suffix in (".py", ".sh"):
+            found.append(path)
     return found
 
 
@@ -187,14 +246,8 @@ def lint_skill(folder: Path) -> list[str]:
         and not (folder / "LICENSE").is_file()
     ):
         problems.append(f"{where}: license names LICENSE, which is not there")
-    for path in sorted(folder.rglob("*")):
-        if not path.is_file() or "__pycache__" in path.parts:
-            continue
+    for path, text in text_files(folder):
         rel = path.relative_to(folder.parent).as_posix()
-        try:
-            text = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            continue
         if EM_DASH in text:
             problems.append(f"{rel}: an em dash")
         found = pictographs(text)
@@ -221,11 +274,7 @@ def opt_in_names() -> set[str]:
 
 
 def bundled_scripts() -> list[Path]:
-    return sorted(
-        p
-        for p in SKILLS.glob("*/scripts/*")
-        if p.is_file() and p.suffix in (".py", ".sh")
-    )
+    return skill_scripts(SKILLS)
 
 
 def write_skill(root: Path, name: str, metadata: str = "") -> Path:
@@ -314,7 +363,7 @@ def test_the_descriptions_fit_the_smaller_listing_budget() -> None:
 
 @pytest.mark.parametrize("script", bundled_scripts(), ids=lambda p: p.name)
 def test_every_bundled_script_answers_help(script: Path) -> None:
-    runner = [sys.executable] if script.suffix == ".py" else ["bash"]
+    runner = {".py": [sys.executable], ".sh": ["bash"]}.get(script.suffix, [])
     done = subprocess.run(
         [*runner, str(script), "--help"],
         capture_output=True,
@@ -376,9 +425,7 @@ def test_product_only_and_caveman_skills_are_absent() -> None:
     present = {p.name for p in SKILLS.iterdir()}
     assert not present & set(PRODUCT_ONLY)
     assert not [n for n in present if n.startswith("caveman")]
-    for path in SKILLS.rglob("*"):
-        if path.is_file() and path.suffix in (".md", ".py", ".sh", ".toml"):
-            assert "caveman" not in path.read_text(encoding="utf-8").lower(), path
+    assert caveman_mentions(SKILLS) == []
 
 
 # ---------------------------------------------------------------- the lint's teeth
@@ -430,6 +477,10 @@ def test_a_clean_skill_passes(tmp_path: Path) -> None:
         ("big", "name: big\n" + GOOD, "x\n" * 500, "body is"),
         ("dash", "name: dash\n" + GOOD, "a \u2014 b\n", "an em dash"),
         ("pict", "name: pict\n" + GOOD, "ok \u2705\n", "pictographs"),
+        ("star", "name: star\n" + GOOD, "\u2b50 ok\n", "pictographs"),
+        ("watch", "name: watch\n" + GOOD, "\u231a ok\n", "pictographs"),
+        ("joined", "name: joined\n" + GOOD, "a\u200db\n", "pictographs"),
+        ("twice", "name: evil\nname: twice\n" + GOOD, "x\n", "given twice"),
         ("lic", "name: lic\nlicense: see LICENSE\n" + GOOD, "x\n", "LICENSE"),
     ],
 )
@@ -448,3 +499,34 @@ def test_the_lint_refuses_a_linked_folder_and_a_missing_skill_md(
     assert "may not be a link" in lint_skill(tmp_path / "alias")[0]
     (tmp_path / "empty").mkdir()
     assert lint_skill(tmp_path / "empty") == ["empty: no SKILL.md"]
+
+
+def test_box_drawing_is_not_a_pictograph() -> None:
+    assert pictographs("\u251c\u2500\u2500 a\n\u2514\u2500\u2500 b") == []
+
+
+def test_caveman_is_found_in_any_text_file(tmp_path: Path) -> None:
+    folder = skill_at(tmp_path, "adr", "name: adr\n" + GOOD)
+    (folder / "notes.yaml").write_text("style: Caveman\n", encoding="utf-8")
+    (folder / "data.json").write_text('{"a": "caveman"}\n', encoding="utf-8")
+    (folder / "blob.bin").write_bytes(b"\xff\xfecaveman")
+    found = {p.name for p in caveman_mentions(tmp_path)}
+    assert found == {"notes.yaml", "data.json"}
+
+
+def test_every_script_at_any_depth_is_found(tmp_path: Path) -> None:
+    folder = skill_at(tmp_path, "tools", "name: tools\n" + GOOD)
+    for rel in ("scripts/sub/deep.py", "bin/tool", "run.sh", "examples/demo.py"):
+        (folder / rel).parent.mkdir(parents=True, exist_ok=True)
+        (folder / rel).write_text("x\n", encoding="utf-8")
+    (folder / "bin/tool").chmod(0o755)
+    (folder / "examples/run_me").write_text("x\n", encoding="utf-8")
+    (folder / "examples/run_me").chmod(0o755)
+    (folder / "notes.md").write_text("x\n", encoding="utf-8")
+    found = {p.relative_to(folder).as_posix() for p in skill_scripts(tmp_path)}
+    assert found == {"scripts/sub/deep.py", "bin/tool", "run.sh", "examples/run_me"}
+
+
+def test_no_shipped_example_is_executable() -> None:
+    examples = [p for p in SKILLS.glob(f"*/**/{EXAMPLES_DIR}/*") if p.is_file()]
+    assert [p for p in examples if os.access(p, os.X_OK)] == []

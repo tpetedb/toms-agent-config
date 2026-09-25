@@ -66,14 +66,94 @@ SHAPES = {
     "{": ("rhombus", ("dec",)),
     "[": ("rectangle", ("proc",)),
 }
-NODE = re.compile(
-    r"(?<![\w-])(?P<id>[A-Za-z_][\w-]*)"
-    r"(?P<open>\(\[|\[\(|\[/|\[\\|\[\[|\(\(|\{\{|\(|\[|\{|>)\""
+# Every opening bracket Mermaid gives a flowchart node, longest first, with the
+# closings that end it. `@{` is the newer `id@{ shape: ... }` syntax.
+OPENERS = {
+    "@{": ("}",),
+    "(((": (")))",),
+    "([": ("])",),
+    "[(": (")]",),
+    "[/": ("/]", "\\]"),
+    "[\\": ("\\]", "/]"),
+    "[[": ("]]",),
+    "((": ("))",),
+    "{{": ("}}",),
+    "(": (")",),
+    "[": ("]",),
+    "{": ("}",),
+    ">": ("]",),
+}
+QUOTED = re.compile(r'"[^"]*"')
+NODE_ID = re.compile(r"[A-Za-z0-9_]\w*(?:-\w+)*")
+EDGE = re.compile(
+    r"\s*(?:<?(?:-{2,}|={2,}|-\.+-)(?:>|[ox](?!\w)|-)?|~~~)(?:\s*\|[^|]*\|)?"
 )
+INLINE_CLASS = re.compile(r":::(?P<cls>[\w-]+)")
 CLASS_LINE = re.compile(r"^\s*class\s+(?P<ids>[\w,\s-]+?)\s+(?P<cls>[\w-]+)\s*;?\s*$")
 CLASS_DEF = re.compile(r"^\s*classDef\s+(?P<cls>[\w-]+)\s+(?P<style>\S+)\s*;?\s*$")
-INLINE_CLASS = re.compile(r"(?P<id>[A-Za-z_][\w-]*)[^\s]*?:::(?P<cls>[\w-]+)")
+STYLE_LINE = re.compile(r"^\s*(style|linkStyle)\b")
 SKIP_LINE = re.compile(r"^\s*(%%|subgraph\b|end\b|direction\b|flowchart\b|graph\b)")
+
+
+@dataclass(frozen=True, slots=True)
+class Node:
+    """One node as a line names it: its id, the opening bracket of its shape
+    (None when the line only refers to it), whether its label is one quoted
+    string, and the class a `:::` suffix gives it."""
+
+    id: str
+    opener: str | None
+    quoted: bool
+    cls: str | None
+
+
+def read_nodes(line: str) -> tuple[list[Node], str | None]:
+    """The nodes of one statement line (`a["x"] --> b & c:::cls`), and why the
+    line cannot be read as nodes and edges, or None. Quoted text is blanked
+    first, so a bracket inside a label is never taken for a shape."""
+    text = QUOTED.sub('""', line).rstrip()
+    nodes: list[Node] = []
+    i = 0
+    want_node = True
+    while i < len(text):
+        if text[i].isspace():
+            i += 1
+            continue
+        if want_node:
+            found = NODE_ID.match(text, i)
+            if not found:
+                return nodes, f"cannot read {text[i:].strip()!r} as a node"
+            node_id, i = found.group(), found.end()
+            opener = next((o for o in OPENERS if text.startswith(o, i)), None)
+            quoted = False
+            if opener is not None:
+                start = i + len(opener)
+                ends = [
+                    (at, close)
+                    for close in OPENERS[opener]
+                    if (at := text.find(close, start)) >= 0
+                ]
+                if not ends:
+                    return nodes, f"node {node_id} opens {opener!r} and never closes"
+                at, close = min(ends)
+                quoted = text[start:at].strip() == '""'
+                i = at + len(close)
+            cls = None
+            if inline := INLINE_CLASS.match(text, i):
+                cls, i = inline["cls"], inline.end()
+            nodes.append(Node(node_id, opener, quoted, cls))
+            want_node = False
+        elif text[i] in "&;":
+            want_node = text[i] == "&"
+            i += 1
+        elif edge := EDGE.match(text, i):
+            i = edge.end()
+            want_node = True
+        else:
+            return nodes, f"cannot read {text[i:].strip()!r} as an edge"
+    if want_node and nodes:
+        return nodes, "the line ends in an edge or '&' with no node after it"
+    return nodes, None
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,12 +236,16 @@ def sources(root: Path) -> list[Source]:
 
 
 def house_problems(source: Source) -> list[str]:
-    """Where a source leaves the house subset: a shape outside the six, a node
-    without a class or with the wrong one for its shape, a classDef that is not
-    the palette's, no legend comment naming each class used, an em dash."""
+    """Where a source leaves the house subset: a line that is not nodes and
+    edges, a shape outside the six, an unquoted label, a node that is only ever
+    referred to, a node without a class or with the wrong one for its shape, an
+    inline style, a classDef that is not the palette's, no legend comment
+    naming each class used, an em dash."""
     where = source.id
     problems: list[str] = []
     shapes: dict[str, str] = {}
+    drawn: set[str] = set()
+    named: set[str] = set()
     classes: dict[str, str] = {}
     defs: dict[str, str] = {}
     legend = ""
@@ -170,7 +254,7 @@ def house_problems(source: Source) -> list[str]:
             problems.append(f"{where}:{number}: an em dash")
         if line.strip().startswith("%% Legend:"):
             legend = line
-        if SKIP_LINE.match(line):
+        if not line.strip() or SKIP_LINE.match(line):
             continue
         if m := CLASS_DEF.match(line):
             defs[m["cls"]] = m["style"]
@@ -179,29 +263,50 @@ def house_problems(source: Source) -> list[str]:
             for node in re.split(r"[,\s]+", m["ids"].strip()):
                 classes[node] = m["cls"]
             continue
-        for m in INLINE_CLASS.finditer(line):
-            classes[m["id"]] = m["cls"]
-        for m in NODE.finditer(line):
-            if m["open"] not in SHAPES:
+        if STYLE_LINE.match(line):
+            problems.append(f"{where}:{number}: an inline style; use a class")
+            continue
+        nodes, unread = read_nodes(line)
+        if unread:
+            problems.append(f"{where}:{number}: {unread}")
+        for node in nodes:
+            named.add(node.id)
+            if node.cls is not None:
+                classes[node.id] = node.cls
+            if node.opener is None:
+                continue
+            drawn.add(node.id)
+            if node.opener not in SHAPES:
                 problems.append(
-                    f"{where}:{number}: node {m['id']} uses {m['open']!r}, "
+                    f"{where}:{number}: node {node.id} uses {node.opener!r}, "
                     "a shape outside the house subset"
                 )
                 continue
-            shapes.setdefault(m["id"], m["open"])
+            if not node.quoted:
+                problems.append(
+                    f"{where}:{number}: node {node.id} has an unquoted label"
+                )
+            shapes.setdefault(node.id, node.opener)
     for cls, style in sorted(defs.items()):
         if CLASS_DEFS.get(cls) != style:
             problems.append(f"{where}: classDef {cls} is not the house palette's")
-    for node, opener in sorted(shapes.items()):
-        shape, allowed = SHAPES[opener]
+    for node in sorted(named - drawn):
+        problems.append(
+            f"{where}: node {node} is never drawn with a shape and a quoted label"
+        )
+    for node in sorted(named):
         cls = classes.get(node)
         if cls is None:
             problems.append(f"{where}: node {node} has no class")
-        elif cls not in allowed:
+            continue
+        if node not in shapes:
+            continue
+        shape, allowed = SHAPES[shapes[node]]
+        if cls not in allowed:
             problems.append(f"{where}: node {node} is a {shape} with class {cls}")
         elif cls not in defs:
             problems.append(f"{where}: class {cls} is used but has no classDef")
-    for node in sorted(set(classes) - set(shapes)):
+    for node in sorted(set(classes) - named):
         problems.append(f"{where}: class names {node}, which no line draws")
     if not legend:
         problems.append(f"{where}: no %% Legend: comment line")
