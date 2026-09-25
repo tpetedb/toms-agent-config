@@ -307,6 +307,7 @@ def test_a_clean_source_passes() -> None:
         (TAIL, TAIL + "    new --> other\n", "node new is never drawn"),
         (TAIL, TAIL + "    new --> other\n", "node other has no class"),
         (TAIL, TAIL + '    s@{ shape: doc, label: "d" }\n', "node s uses '@{'"),
+        (TAIL, TAIL + '    TZ[/"t"\\]:::io\n', "node TZ uses '[/...\\]'"),
         (TAIL, TAIL + "    style b fill:#FFFFFF\n", "an inline style"),
         (TAIL, TAIL + "    b --> ?\n", "cannot read"),
         (TAIL, TAIL + "    b -->\n", "no node after it"),

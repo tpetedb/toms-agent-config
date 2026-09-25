@@ -137,6 +137,10 @@ def read_nodes(line: str) -> tuple[list[Node], str | None]:
                     return nodes, f"node {node_id} opens {opener!r} and never closes"
                 at, close = min(ends)
                 quoted = text[start:at].strip() == '""'
+                # `[/x\]` is Mermaid's trapezoid, not the parallelogram: a
+                # closing other than the first names a shape of its own.
+                if close != OPENERS[opener][0]:
+                    opener = f"{opener}...{close}"
                 i = at + len(close)
             cls = None
             if inline := INLINE_CLASS.match(text, i):
@@ -278,7 +282,7 @@ def house_problems(source: Source) -> list[str]:
             drawn.add(node.id)
             if node.opener not in SHAPES:
                 problems.append(
-                    f"{where}:{number}: node {node.id} uses {node.opener!r}, "
+                    f"{where}:{number}: node {node.id} uses '{node.opener}', "
                     "a shape outside the house subset"
                 )
                 continue
