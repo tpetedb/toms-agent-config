@@ -410,6 +410,11 @@ class Role(_Model):
     may: Strs
     may_not: Strs
     instructions: Text
+    # Whether a session of this role may start subagents and dynamic workflows
+    # natively, through the handoff guard (M2). Accepted before anything reads
+    # it: CI judges a pull request's configuration with the base's checker, so
+    # the checker learns a key one pull request before the configuration sets it.
+    delegates: bool = False
 
 
 # ---------------------------------------------------------------- gate packs

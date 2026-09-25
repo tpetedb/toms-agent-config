@@ -1,0 +1,1 @@
+A role charter accepts `delegates` (default `false`). Nothing reads it yet; the handoff guard in M2 does. It lands first because CI judges a pull request's configuration with the base revision's checker, which refuses a key it does not know.

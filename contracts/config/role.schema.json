@@ -4,6 +4,11 @@
   "definitions": {},
   "description": "One role's charter, rendered into every harness's agent file.",
   "properties": {
+    "delegates": {
+      "default": false,
+      "title": "Delegates",
+      "type": "boolean"
+    },
     "description": {
       "maxLength": 1024,
       "minLength": 1,
