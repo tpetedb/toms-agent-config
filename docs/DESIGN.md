@@ -951,6 +951,8 @@ Every skill passes the portable subset lint of the [Agent Skills specification](
 | pi | `enableInstallTelemetry = false` and `enableAnalytics = false` | the former does not stop update checks |
 | Gemini CLI | `privacy.usageStatisticsEnabled = false` and `telemetry.enabled = false` | plus controlled environment overrides |
 
+**As built in M4.** Seventeen skills ship under `.agents/skills/`, each with `metadata.source`, `metadata.author`, `metadata.licence` and `metadata.changes` in its frontmatter, and `THIRD_PARTY.md` carries the notice of the three that are not the owner's (ponytail, verification-before-completion, webapp-testing). `tests/test_skills.py` is the lint: name equals folder and is at most 64 characters, description at most 1,024, body under 500 lines, only specification fields, provenance present, the sum of descriptions under the listing budget the test derives and cites, and no em dash. `ponytail` carries `metadata.opt_in: true`: `tac sync` links every other skill into `.claude/skills/` and skips an opt-in one, and the lint refuses an opt-in skill in any team's `skills` list or in a review stage. Nothing names it yet: adding it to the `build` stage of `order.toml`, and the new skills to the teams' `skills` lists, is follow-up config. `skills/_index/` is not generated yet; the lint computes the budget from the folders, and the index waits for a release where the base checker knows the output. No caveman skill, package or seed ships.
+
 ## 13. CLI, init, validation, dev/
 
 **Languages.** Python 3.12 for `tac` (click for the CLI, pydantic models with `extra = "forbid"` for every config file, jinja2, jsonschema); bash 3.2 for `bootstrap.sh`; TOML for everything authored; JSON Schema for contracts; YAML only where a tool demands it (GitHub, compose, SodaCL, pre-commit). The hook guard is stdlib and Python 3.9 compatible (section 9).
@@ -1095,6 +1097,8 @@ flowchart TB
 ```
 
 Legend: blue process, yellow decision, orange input or output, dim red data store.
+
+**As built in M4.** `docs/diagrams/` holds twelve sources, `lifecycle-<name>.mmd` for the seven lifecycles and `pipeline-<name>.mmd` for the five enabled pipelines, plus the README with the house subset and the 42010 review checklist. `tac diagrams render` runs `npx --yes @mermaid-js/mermaid-cli@<pinned>` with the version `mise.toml` pins under `[tools]`, renders every source and every fenced mermaid block under `docs/` into a scratch folder, exits non-zero on any failure, and writes `docs/diagrams/render.lock` (the mermaid-cli version and the sha256 of every source and block). No SVG is committed: renders are not byte-stable across versions, so the lock binds the sources to the last successful render, `tac diagrams check` and `tests/test_diagrams.py` judge it without node, and `tac check` refuses an inventory that does not match `github.toml`. CI renders on every pull request.
 
 ## 15. The toolchain
 
