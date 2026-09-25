@@ -272,7 +272,11 @@ def test_a_hook_timeout_answers_deny_before_the_client_gives_up(
     denied(done, "no answer within 1s")
 
 
-def test_the_enterprise_profile_takes_the_spawn_tools_away(tmp_path: Path) -> None:
+def test_the_enterprise_profile_takes_the_spawn_tools_away(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A container profile renders only inside a container, so the test says so.
+    monkeypatch.setattr("tac.config.container_evidence", lambda *_: "/.dockerenv")
     root = copy_project(tmp_path / "project")
     ultracode_off(root)
     replace_in(

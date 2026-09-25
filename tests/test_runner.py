@@ -641,6 +641,20 @@ def test_an_external_effect_needs_one_signed_approval_used_once(
     other = [push[0].model_copy(update={"run_id": "r2"})]
     with pytest.raises(EffectError, match="used before"):
         effects.authorize(other, item, sha)
+    # Bound to the stage as well as the run: another stage of the same run, or
+    # the inbox stage naming the same run id, may not spend it again.
+    for stage in ("other", inbox.INBOX_STAGE):
+        again = [push[0].model_copy(update={"stage": stage})]
+        with pytest.raises(EffectError, match="used before"):
+            effects.authorize(again, item, sha)
+    # A consumed record that names no run or stage is spent for every stage.
+    record = json.loads(consumed.splitlines()[0])
+    bare = {k: v for k, v in record.items() if k not in ("run_id", "stage")}
+    (effects.runner.store / "approvals" / "consumed.jsonl").write_text(
+        json.dumps(bare) + "\n"
+    )
+    with pytest.raises(EffectError, match="used before"):
+        effects.authorize(push, item, sha)
 
 
 # ---------------------------------------------------------------- the inbox
