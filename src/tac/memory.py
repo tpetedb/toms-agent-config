@@ -170,6 +170,18 @@ def parse_utc(text: str) -> dt.datetime:
         raise Bad(f"{text!r} is not a UTC time like 2026-09-24T14:25:00Z") from None
 
 
+def real_utc(text: str | None) -> str | None:
+    """The reason `text` is not a real UTC time, or None. The pattern alone lets
+    2026-02-30 through, and the selector parses every valid_from it ranks."""
+    if text is None:
+        return None
+    try:
+        dt.datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return f"{text!r} is not a real UTC time like 2026-09-24T14:25:00Z"
+    return None
+
+
 def utc_now() -> dt.datetime:
     return dt.datetime.now(dt.UTC).replace(microsecond=0)
 
@@ -256,6 +268,10 @@ class Record(_Model):
             parts = path.split("/")
             if not path or path.startswith("/") or ".." in parts:
                 raise ValueError(f"path {path!r} is not relative to the checkout")
+        for name in ("created", "valid_from", "valid_to"):
+            why = real_utc(getattr(self, name))
+            if why:
+                raise ValueError(f"{name}: {why}")
         if self.supersedes == self.id:
             raise ValueError("a record cannot supersede itself")
         if self.valid_to is not None and self.valid_to <= self.valid_from:
@@ -289,6 +305,9 @@ class Event(_Model):
 
     @model_validator(mode="after")
     def _sound(self) -> Self:
+        why = real_utc(self.at)
+        if why:
+            raise ValueError(f"at: {why}")
         if self.kind in PAIRED:
             if self.supersedes_with is None:
                 raise ValueError(f"a {self.kind} event names the other record")
@@ -702,11 +721,10 @@ def known(stores: Stores) -> Known:
     return Known(records, events, live, promoted)
 
 
-def _refuse_secrets(record_like: Mapping[str, Any], what: str) -> None:
-    text = "\n".join(
-        [str(record_like.get("statement") or "")]
-        + [str(s) for s in record_like.get("source_refs") or ()]
-    )
+def _refuse_secrets(text: str, what: str) -> None:
+    """Refuse by pattern name, never echoing the value. The whole line is
+    scanned, since paths, topics, repository and an event's `by` reach the
+    promoted store as surely as the statement does."""
     hit = secrets_scan.names(text)
     if hit:
         raise Bad(
@@ -765,7 +783,10 @@ def add(
     if stores.live is None:
         raise Bad("no worker store: set memory.runtime_store or run inside git")
     body, notes = _check_draft(draft)
-    _refuse_secrets(body, "the record")
+    _refuse_secrets(
+        json.dumps(body, sort_keys=True, ensure_ascii=False, default=str),
+        "the record",
+    )
     stamp = utc_text(now)
     with locked(stores.live):
         seen = known(stores)
@@ -801,6 +822,7 @@ def add(
             record = Record.model_validate(fields)
         except ValidationError as e:
             raise Bad(f"the record is refused: {_first(e)}") from None
+        _refuse_secrets(record.line(), "the record")
         if record.supersedes is not None and record.supersedes not in seen.records:
             raise Bad(f"supersedes {record.supersedes}, which no store holds")
         derived = seen.derived
@@ -858,10 +880,6 @@ def append_event(
     """Append one event to the live journal, naming a record either store holds."""
     if stores.live is None:
         raise Bad("no worker store: set memory.runtime_store or run inside git")
-    if note:
-        hit = secrets_scan.names(note)
-        if hit:
-            raise Bad(f"the note is refused: the secrets scan found {', '.join(hit)}")
     with locked(stores.live):
         seen = known(stores)
         quarantine(stores.live, seen.live.torn, now)
@@ -883,6 +901,7 @@ def append_event(
             )
         except ValidationError as e:
             raise Bad(f"the event is refused: {_first(e)}") from None
+        _refuse_secrets(event.line(), "the event")
         append_line(stores.live / EVENTS_FILE, event.line())
     return event
 
@@ -1103,22 +1122,26 @@ def promote(
                     else ""
                 )
             )
-        _refuse_secrets(record.model_dump(), "promotion")
+        _refuse_secrets(record.line(), "promotion")
+        promoted_ids = {r.id for r in seen.promoted.records} | {record_id}
+        have = {e.id for e in seen.promoted.events}
+        carried = [
+            e
+            for e in _ordered([*seen.live.events, review])
+            if e.id not in have
+            and e.record in promoted_ids
+            and record_id in (e.record, e.supersedes_with)
+        ]
+        for one in carried:
+            _refuse_secrets(one.line(), f"promotion (event {one.id})")
         append_line(stores.live / EVENTS_FILE, review.line())
         target = stores.promoted / RECORDS_DIR / f"{_file_id(record_id)}.json"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(record_text(record), encoding="utf-8")
-        promoted_ids = {r.id for r in seen.promoted.records} | {record_id}
-        have = {e.id for e in seen.promoted.events}
         copied: list[Event] = []
         sequence = _next(seen.promoted.events)
         day = stores.promoted / EVENTS_DIR / f"{now.astimezone(dt.UTC):%Y-%m-%d}.jsonl"
-        for event in _ordered([*seen.live.events, review]):
-            touches = event.record == record_id or (
-                event.supersedes_with == record_id and event.record in promoted_ids
-            )
-            if not touches or event.id in have or event.record not in promoted_ids:
-                continue
+        for event in carried:
             moved = event.model_copy(update={"sequence": sequence})
             append_line(day, moved.line())
             copied.append(moved)
@@ -1273,16 +1296,21 @@ def _sequence_problems(name: str, items: Sequence[Record | Event]) -> list[str]:
     return problems
 
 
-def _secret_problems(name: str, record: Record) -> list[str]:
-    text = "\n".join([record.statement, *record.source_refs])
-    hit = secrets_scan.names(text)
-    return [f"{name}: {record.id} looks like it holds a {h}" for h in hit]
+def _secret_problems(name: str, item: Record | Event) -> list[str]:
+    hit = secrets_scan.names(item.line())
+    return [f"{name}: {item.id} looks like it holds a {h}" for h in hit]
 
 
 def lint(stores: Stores) -> list[str]:
     """Every finding, one line each; empty means both stores are clean."""
     problems: list[str] = []
     live = Store()
+    try:
+        promoted = read_promoted(stores.promoted)
+    except Bad as e:
+        promoted, promoted_error = Store(), str(e)
+    else:
+        promoted_error = None
     if stores.live is not None:
         try:
             live = read_live(stores.live)
@@ -1297,20 +1325,21 @@ def lint(stores: Stores) -> list[str]:
                 )
         problems += _sequence_problems(f"live/{RECORDS_FILE}", live.records)
         problems += _sequence_problems(f"live/{EVENTS_FILE}", live.events)
-        live_ids = {r.id for r in live.records}
+        # add and append_event write events against a record either store
+        # holds, and a fresh clone's live journal lacks the promoted ones.
+        either = {r.id for r in live.records} | {r.id for r in promoted.records}
         for event in live.events:
             for rid in (event.record, event.supersedes_with):
-                if rid is not None and rid not in live_ids:
+                if rid is not None and rid not in either:
                     problems.append(
                         f"live/{EVENTS_FILE}: event {event.id} names {rid}, which "
-                        "the live journal does not hold"
+                        "neither store holds"
                     )
+            problems += _secret_problems(f"live/{EVENTS_FILE}", event)
         for record in live.records:
             problems += _secret_problems(f"live/{RECORDS_FILE}", record)
-    try:
-        promoted = read_promoted(stores.promoted)
-    except Bad as e:
-        return [*problems, str(e)]
+    if promoted_error is not None:
+        return [*problems, promoted_error]
     problems += promoted.problems
     problems += [
         f"{t.file}:{t.line}: does not parse ({t.reason})" for t in promoted.torn
@@ -1334,6 +1363,7 @@ def lint(stores: Stores) -> list[str]:
                 f"{PROMOTED_DIR}/{EVENTS_DIR}: event {event.id} names {event.record}, "
                 "which is not promoted"
             )
+        problems += _secret_problems(f"{PROMOTED_DIR}/{EVENTS_DIR}", event)
     # A checkout that has never promoted anything has no store to index yet.
     if not promoted.torn and stores.promoted.is_dir():
         problems += index_problems(stores.promoted)

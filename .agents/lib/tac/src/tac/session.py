@@ -16,6 +16,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -180,6 +181,33 @@ def write_day_index(day: Path) -> Path:
     return path
 
 
+def check_session_id(session_id: str) -> None:
+    """Refuse an id the journal could not have written. The id becomes part of a
+    path, so a slash, `..` or a glob character would reach files that are not
+    sessions, such as the memory journal next to them."""
+    if not re.fullmatch(SESSION_ID, session_id) or ".." in session_id:
+        raise Bad(
+            f"{session_id!r} is not a session id: letters, digits, '.', '_' and "
+            "'-', starting with a letter or digit, and no '..'"
+        )
+
+
+def _session_files(root: Path, session_id: str) -> list[Path]:
+    """The session's file in each dated folder, built by name rather than by a
+    glob, and kept only when it resolves to a file directly under that folder."""
+    if not root.is_dir():
+        return []
+    found = []
+    for day in sorted(root.iterdir()):
+        if not day.is_dir() or not re.fullmatch(DAY, day.name):
+            continue
+        path = day / f"{session_id}.jsonl"
+        real = path.is_file() and not path.is_symlink()
+        if real and path.resolve().parent == day.resolve():
+            found.append(path)
+    return found
+
+
 @dataclass(frozen=True, slots=True)
 class Purge:
     session_id: str
@@ -197,12 +225,9 @@ def purge(
     hit = secrets_scan.names(reason)
     if hit:
         raise Bad(f"the reason is refused: the secrets scan found {', '.join(hit)}")
+    check_session_id(session_id)
     root = sessions_dir(worker_store)
-    found = sorted(
-        p
-        for p in root.glob(f"*/{session_id}.jsonl")
-        if p.parent.name != PURGED_DIR and p.parent.name[:1] != "_"
-    )
+    found = _session_files(root, session_id)
     if not found:
         raise Bad(f"no session {session_id} in the journal")
     moved, entries = [], []

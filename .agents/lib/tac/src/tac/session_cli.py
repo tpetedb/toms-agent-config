@@ -109,6 +109,8 @@ def purge_command(
     """The one audited purge: move the session under sessions/_purged/ and
     record who, when, why and the sha256 of what moved. Nothing is deleted."""
     try:
+        # Checked before the worker store is resolved, so a bad id costs nothing.
+        session.check_session_id(session_id)
         done = session.purge(
             _store(root),
             session_id,
