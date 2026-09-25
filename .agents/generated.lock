@@ -26,6 +26,7 @@ schema_version = 1
 ".agents/config/profiles/enterprise.toml" = "ca948dbaeb257e3a275ffdbbf2ce0ca8da314d62d4e4887e71c0ca676617b453"
 ".agents/config/profiles/standard.toml" = "3dd4c8d625b6920aef25fb99be1c5f4424215a4f9ab29436892897e76e729269"
 ".agents/config/profiles/yolo.toml" = "f9e6d1e3fc1cdbbd1805f1dd8d5eb0408d0461436fa1a4b80d546e1c62457c33"
+".agents/config/receipts.toml" = "050a2e56e4ba695c689aa3956e2094d0cd19c90320eb937397cb03d317e0324a"
 ".agents/config/roles/builder.toml" = "545031efc9af107e76ca0460459c47723a80c19a498a9eca71e19833cacd110a"
 ".agents/config/roles/chief.toml" = "e45745f3bb92a920de1c18fe46ee659c85b9485db94c8161c24aa9df5a5bfe97"
 ".agents/config/roles/director.toml" = "5b05ede1519e0a3010c768cc1bf9823be7efa8fed1fefd74f20fb49f6630c6fd"

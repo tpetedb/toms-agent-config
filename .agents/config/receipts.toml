@@ -1,11 +1,15 @@
-# What the acceptance gate expects of a committed receipt. CI reads this file as
-# committed at the base revision, never the candidate's, the way it reads
-# runner.pub, so a pull request cannot loosen what its own receipts are held to.
+# =============================================================================
+# config/receipts.toml: what the acceptance gate expects of a committed receipt.
+# CI reads this file as committed at the base revision, never the candidate's,
+# the way it reads runner.pub, so a pull request cannot loosen what its own
+# receipts are held to. Unknown keys fail loudly.
 #
 # Every receipt committed under work/orders/<id>/receipts/ is taken with the
 # order id as its run id, names a revision whose tree is the pull request's head
 # less its receipts, and shows, under its stage below, exactly the command and
 # the passing result listed. "{order}" stands for the order id.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
 schema_version = 1
 
 # The stages every order a pull request changes must carry a receipt for.
@@ -13,18 +17,22 @@ schema_version = 1
 # (TODO.HUMAN.md), no receipt can verify, so none can be required.
 required = []
 
+# ---- stages.verify: the full gate, run by the runner on the judged revision.
 [stages.verify]
-kind = "gate"
-observed = { argv = ["just", "verify"], exit = 0 }
+kind = "gate"                             # the receipt kind this stage takes: gate | probe | dispatch | effect
+observed = { argv = ["just", "verify"], exit = 0 }   # the receipt must hold exactly: argv, the command run; exit, the passing status
 
+# ---- stages.work-check: the order's own acceptance, run for that order.
 [stages.work-check]
-kind = "gate"
-observed = { argv = ["just", "work-check", "{order}"], exit = 0 }
+kind = "gate"                             # the receipt kind this stage takes: gate | probe | dispatch | effect
+observed = { argv = ["just", "work-check", "{order}"], exit = 0 }   # the receipt must hold exactly: argv, the command run; exit, the passing status
 
+# ---- stages."probe.version": the client is installed, per probes.toml [probes.version].
 [stages."probe.version"]
-kind = "probe"
-observed = { probe = "version", matched = true }
+kind = "probe"                            # the receipt kind this stage takes: gate | probe | dispatch | effect
+observed = { probe = "version", matched = true }   # the receipt must hold exactly: probe, the probe run; matched, true when it saw what it expects
 
+# ---- stages."probe.trust": the client trusts this checkout, per probes.toml [probes.trust].
 [stages."probe.trust"]
-kind = "probe"
-observed = { probe = "trust", matched = true }
+kind = "probe"                            # the receipt kind this stage takes: gate | probe | dispatch | effect
+observed = { probe = "trust", matched = true }   # the receipt must hold exactly: probe, the probe run; matched, true when it saw what it expects

@@ -183,6 +183,39 @@ def test_tuple_items_and_a_root_anyof_are_named() -> None:
     assert "/: the root may not be anyOf" in strict_subset_problems(root)
 
 
+def _nested(levels: int) -> tuple[dict, str]:
+    """A string `levels` containers below `p`, alternating array items and an
+    object's additionalProperties, and the path of that innermost string."""
+    schema: dict = {"type": "string"}
+    steps: list[str] = []
+    for i in range(levels):
+        if i % 2:
+            schema = {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": schema,
+            }
+            steps.append("additionalProperties")
+        else:
+            schema = {"type": "array", "items": schema}
+            steps.append("items")
+    return schema, "/properties/p/" + "/".join(reversed(steps))
+
+
+def test_depth_counts_through_array_items_and_additional_properties() -> None:
+    # The root is depth 1 and p is depth 2, so nine containers under p put the
+    # innermost string at 11, one past the limit, and eight put it at 10.
+    deep, at = _nested(9)
+    assert "/items/" in at and "/additionalProperties/" in at
+    problems = strict_subset_problems(_root(deep))
+    too_deep = [p for p in problems if "nested deeper" in p]
+    assert too_deep == [f"{at}: nested deeper than 10"], problems
+    at_limit, _ = _nested(8)
+    problems = strict_subset_problems(_root(at_limit))
+    assert not [p for p in problems if "nested deeper" in p], problems
+
+
 def test_a_contract_hiding_a_loose_object_under_one_of_fails_the_check(
     tmp_path: Path,
 ) -> None:

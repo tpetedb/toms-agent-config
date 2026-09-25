@@ -191,7 +191,7 @@ toms-agent-config/
     config.toml                  # the knob file (section 3)
     config/                      # profiles/, models.toml, roles/, teams.toml, pipelines/, standards.toml, gates/<kind>.toml,
                                  # hooks.toml, policy.toml, mcp.toml, network.toml, runtime.toml, github.toml, probes.toml,
-                                 # capabilities.toml, jobs.toml, runner.pub
+                                 # receipts.toml, capabilities.toml, jobs.toml, runner.pub
     standards.floor.toml         # read-only, lock-hashed; effective = max(floor, project); [[waivers]] with an expiry
     skills/<name>/SKILL.md       # Agent Skills standard; skills/_index/ generated
     memory/                      # README, records/ (promoted, committed), events/ (append-only supersession, review, decay), seed.jsonl, _index/

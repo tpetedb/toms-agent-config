@@ -42,6 +42,7 @@ from tac.config_schema import (
     RuntimeFile,
 )
 from tac.draft07 import draft07
+from tac.receipts import ReceiptPolicy
 from tac.runner import ProbesFile
 from tac.standards import FLOOR_FILE, Floor, Registry
 from tac.tomldoc import KeyDoc, document, join
@@ -72,6 +73,7 @@ KNOWN_FILES = frozenset(
         "runtime.toml",
         "github.toml",
         "probes.toml",
+        "receipts.toml",
         "runner.pub",
     }
 )
@@ -394,6 +396,7 @@ def load_config(
         ("runtime", RuntimeFile),
         ("github", GitHubFile),
         ("probes", ProbesFile),
+        ("receipts", ReceiptPolicy),
     ):
         rel = f"{CONFIG_DIR}/{stem}.toml"
         singles[stem] = _parse(model, rel, read(rel), problems)
@@ -462,6 +465,10 @@ def load_config(
     # probes.toml already nests everything under [probes.<name>].
     probes_rel = f"{CONFIG_DIR}/probes.toml"
     tree.mount(probes_rel, texts[probes_rel], (), frozenset({"schema_version"}))
+    receipts_rel = f"{CONFIG_DIR}/receipts.toml"
+    tree.mount(
+        receipts_rel, texts[receipts_rel], ("receipts",), frozenset({"schema_version"})
+    )
     notes = _apply_standards(tree, applied, texts[FLOOR_FILE])
     for i, waiver in enumerate(floor.waivers):
         for path in [p for p in tree.entries if p.startswith(f"waivers[{i}].")]:
@@ -727,6 +734,7 @@ CONFIG_SCHEMAS: dict[str, type[BaseModel]] = {
     "runtime": RuntimeFile,
     "github": GitHubFile,
     "probes": ProbesFile,
+    "receipts": ReceiptPolicy,
     "pipeline": PipelineFile,
 }
 CONTRACTS_DIR = "contracts/config"
