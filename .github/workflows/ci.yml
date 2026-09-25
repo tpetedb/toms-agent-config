@@ -56,37 +56,12 @@ jobs:
         run: uv run --frozen --no-sync --project .agents tac pipeline check
       - name: Labels, issue forms and the pull request template hold
         run: uv run --frozen --no-sync --project .agents tac github lint
-      - name: Diagrams render with the pinned mermaid-cli
-        # Rendering proves syntax (docs/diagrams/README.md). just is installed
-        # pinned by version and checksum, as macos.yml does it; node comes from
-        # the runner image and must be 22.13 or later, the engine mermaid-cli 12
-        # needs, and npx fetches mermaid-cli and its headless Chromium. The job
-        # fails when a render fails or when render.lock would change.
-        env:
-          JUST_VERSION: "1.58.0"
-          JUST_SHA256: 4a5cc2f53e6f0f8c59092a6cc38291eb729d46a7dd95d3ae582008881b84931d
-        run: |
-          asset="just-$JUST_VERSION-x86_64-unknown-linux-musl.tar.gz"
-          dest="$RUNNER_TEMP/just"
-          mkdir -p "$dest"
-          curl --fail --silent --show-error --location --proto '=https' \
-            --output "$dest/$asset" \
-            "https://github.com/casey/just/releases/download/$JUST_VERSION/$asset"
-          (cd "$dest" && echo "$JUST_SHA256  $asset" | sha256sum -c -)
-          tar -xzf "$dest/$asset" -C "$dest" just
-          export PATH="$dest:$PATH"
-          version="$(node --version)"
-          version="${version#v}"
-          major="${version%%.*}"
-          rest="${version#*.}"
-          minor="${rest%%.*}"
-          if [ "$major" -lt 22 ] || { [ "$major" -eq 22 ] && [ "$minor" -lt 13 ]; }; then
-            echo "::error::node $version is older than 22.13, which mermaid-cli 12 needs"
-            exit 1
-          fi
-          echo "node $version"
-          just diagrams-render
-          git diff --exit-code -- docs/diagrams/render.lock
+      - name: Diagrams match their render lock
+        # The inventory and render.lock hold for the sources, without node or a
+        # browser. The pinned render itself (just diagrams-render) runs on the
+        # developer's machine: headless Chromium cannot start its sandbox on this
+        # runner image, and how CI should run it is the owner's decision.
+        run: uv run --frozen tac diagrams check
 
   # No step here runs the candidate's code: no uv sync of its project, no test,
   # no script from its checkout. tests/test_ci_gates.py holds every step to that.

@@ -20,8 +20,8 @@ We will pin mermaid-cli in `mise.toml` as `"npm:@mermaid-js/mermaid-cli" = "12.0
 
 ## Consequences
 
-- A diagram cannot change without a render that proves it still parses: the lock names every source edited since the last render, and CI renders it again.
+- A diagram cannot change without a render that proves it still parses: the lock names every source edited since the last render, and CI checks the lock against the sources on every pull request.
 - The lock proves syntax and freshness only. Whether a diagram says what its source says is the reviewer's, against the checklist; until the other provider reviews again, a Claude reviewer records it and the cross-provider review of the twelve diagrams is pending.
-- Rendering needs node 22.13 or later and the network on the first run; a machine without them can still check, but not render. The CI step asserts the node version of the runner image, and its Chromium download on ubuntu is proven only when the pull request runs.
+- Rendering needs node 22.13 or later and the network on the first run; a machine without them can still check, but not render. CI does not render yet: on the ubuntu runner image headless Chromium cannot start its sandbox, since Ubuntu 23.10 and later restrict unprivileged user namespaces through AppArmor, and each way around that loosens a security control, so how CI renders is the owner's decision (TODO.HUMAN.md). Until then the render runs on the developer's machine.
 - Any fenced mermaid block added to a Markdown file under `docs/` becomes a source, so a pull request that adds one must carry a refreshed lock. Two branches that both add blocks to the same file will conflict in the lock and are resolved by rendering again.
 - Nothing rendered is published. A reader who wants a picture renders it, or relies on GitHub's own Mermaid rendering of the Markdown files.
