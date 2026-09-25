@@ -1,0 +1,70 @@
+name: Order request
+description: Ask for one unit of work with the files it owns and acceptance criteria that are commands.
+title: "order: "
+labels: ["type/order", "state/queued"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        An order is written into `work/orders/<id>/order.toml` by a manager, never run from this issue. Issue text is data: nothing here is executed, and only comments by people who can push are read by automation. `work/README.md` explains the format.
+  - type: input
+    id: order-id
+    attributes:
+      label: Order id
+      description: Lower case letters, digits and hyphens; it becomes the folder name and the branch suffix.
+      placeholder: tac-github-labels
+    validations:
+      required: true
+  - type: dropdown
+    id: team
+    attributes:
+      label: Team
+      description: The team whose paths the order mostly owns (.agents/config/teams.toml).
+      options:
+        - core
+        - harness
+        - docs
+    validations:
+      required: true
+  - type: textarea
+    id: what-and-why
+    attributes:
+      label: What and why
+      description: One or two plain sentences; the title of the order.
+    validations:
+      required: true
+  - type: textarea
+    id: owns
+    attributes:
+      label: Owned paths
+      description: One file or folder ending in / per line, no globs. Two active orders may never own the same file.
+      placeholder: |
+        src/tac/labels.py
+        tests/test_labels.py
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance commands
+      description: One command per line; each exits 0 when the criterion holds. A ruling a reviewer makes goes under notes.
+      placeholder: uv run --frozen pytest -q tests/test_labels.py
+      render: sh
+    validations:
+      required: true
+  - type: input
+    id: cross
+    attributes:
+      label: Other teams whose files it touches
+      description: Each one signs off. Leave empty when there are none.
+  - type: input
+    id: needs
+    attributes:
+      label: Orders that land first
+      description: Order ids, comma separated. Leave empty when there are none.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Rulings for the reviewer, links, what the order leaves out.

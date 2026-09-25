@@ -6,7 +6,7 @@ A ticked box is a hint, never consent. An approval counts only as your own appro
 
 Credential handover convention: every secret goes into `agents.env`, outside the repository (Q17), under the env var named in the item. Never put a secret in chat or in the repository. Agents never receive what a step does not need; the runtime injects it.
 
-Rendered by `tac human render` from 26 items in `.human/approvals/` and `.human/todo.toml`, 26 open, as of 2026-09-24. Never edit this file by hand: `tac human render --check` fails on any difference.
+Rendered by `tac human render` from 27 items in `.human/approvals/` and `.human/todo.toml`, 27 open, as of 2026-09-25. Never edit this file by hand: `tac human render --check` fails on any difference.
 
 ## Agent identity (first: milestone M0 cannot pass without it)
 
@@ -78,3 +78,8 @@ Rendered by `tac human render` from 26 items in `.human/approvals/` and `.human/
 - [ ] S6 After bootstrap: run `mise trust` once, then `just doctor` until it is green.
 - [ ] S7 Install the git hooks once, in your own terminal in the main checkout: `just hooks-install`. Agents never write the shared `.git/hooks`. From then on every commit there is held to Q4's subject length.
 - [ ] S8 Once pi is enabled (1.1): trust the project in pi once.
+- [ ] S9 Apply the labels of `.github/labels.yml` once, then again whenever the file changes.
+      In your own terminal on the host, logged in to `gh` as yourself (never in an agent session), from the main checkout:
+      `just github-labels --dry-run` reads the public label list with no credential and prints what would be created or updated;
+      `just github-labels --apply` creates and updates them with your own `gh`, reads them back, and never deletes a label the file does not declare.
+      Waits: M2 (the issue forms name these labels; GitHub drops a label that does not exist).

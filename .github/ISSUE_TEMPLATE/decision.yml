@@ -1,0 +1,52 @@
+name: Decision record
+description: A question with its options and a recommendation, recorded once it is decided.
+title: "decision: "
+labels: ["type/decision"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A decision that loosens policy convenes the board and needs the owner's own answer; one that only tightens it may be taken by the chief. Once decided, the outcome becomes an ADR under `docs/adr/`.
+  - type: textarea
+    id: question
+    attributes:
+      label: The question
+      description: One sentence that can be answered by picking an option.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What forces the choice now, with links to the evidence.
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options
+      description: One per line, each with its main cost.
+    validations:
+      required: true
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: Recommendation
+      description: The option you recommend and why, and who recommends it.
+    validations:
+      required: true
+  - type: dropdown
+    id: loosens-policy
+    attributes:
+      label: Does it loosen a policy, a profile or the floor?
+      description: A yes means the board convenes and only the owner decides.
+      options:
+        - "no"
+        - "yes"
+    validations:
+      required: true
+  - type: textarea
+    id: consequences
+    attributes:
+      label: Consequences
+      description: What becomes easier and what becomes harder once it is decided.

@@ -1,0 +1,10 @@
+# Every issue starts from a form, so automation can read its fields by id.
+# github.toml [issues] blank_issues = false is the setting this mirrors.
+blank_issues_enabled: false
+contact_links:
+  - name: How work reaches this repository
+    url: https://github.com/tpetedb/toms-agent-config/blob/main/docs/DESIGN.md#8-the-github-gate
+    about: Section 8 of the design says what each form is for and how an order lands.
+  - name: What only the owner can do
+    url: https://github.com/tpetedb/toms-agent-config/blob/main/TODO.HUMAN.md
+    about: Read the open questions before asking one; the answer may be waiting there.

@@ -43,6 +43,8 @@ jobs:
         run: uv run --frozen --no-sync --project .agents tac check
       - name: Pipelines are sound, judged by the deployed checker
         run: uv run --frozen --no-sync --project .agents tac pipeline check
+      - name: Labels, issue forms and the pull request template hold
+        run: uv run --frozen --no-sync --project .agents tac github lint
       - name: Private scan
         run: bash scripts/private_scan.sh
 
@@ -68,6 +70,12 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
           HEAD_REF: ${{ github.head_ref }}
         run: bash scripts/ci_work_from_base.sh "origin/$BASE_REF" "$HEAD_REF"
+      - name: The floor only tightens and generated files match, by the base revision's checker
+        # The verify job asked the candidate's own checker; this one comes from
+        # the base commit, so a pull request cannot change how it is judged.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/ci_check_from_base.sh "origin/$BASE_REF"
       - name: Committed receipts verify with the base revision's verifier and key
         # The verifier and runner.pub both come from the base commit, never the
         # candidate tree, so a pull request can bring neither the key nor the

@@ -1,0 +1,64 @@
+# The repository's labels, declared once. Four families, named in
+# .agents/config/github.toml [labels]: type/*, team/*, state/* and priority/*.
+# The format is the one EndBug/label-sync reads (name, color, description), so
+# the file needs no rewrite if that action is ever used. Today the owner applies
+# it from the host: `tac github labels --dry-run` shows the plan without a
+# credential, `tac github labels --apply` creates and updates, never deletes.
+# Colours are the palette of the diagrams in docs/DESIGN.md, without the "#".
+# A description is at most 100 characters, which is GitHub's limit.
+
+# ---- type/*: what kind of issue or pull request this is; each form sets one.
+- name: type/bug
+  color: "D32F2F"
+  description: Something does not do what its docs or its test say
+- name: type/feature
+  color: "0067A5"
+  description: A new capability, before it is specified as an order
+- name: type/order
+  color: "0088CC"
+  description: One unit of work with owned paths and acceptance commands
+- name: type/decision
+  color: "FFBF00"
+  description: A question, its options and a recommendation; recorded once decided
+- name: type/human
+  color: "FF8C1A"
+  description: Only the owner can answer or do this; mirrors a TODO.HUMAN.md item
+
+# ---- team/*: who answers for it; one per team in .agents/config/teams.toml.
+- name: team/core
+  color: "0067A5"
+  description: The tac package, the runner, the hook guard, templates and contracts
+- name: team/harness
+  color: "0088CC"
+  description: The agent tree, CI, scripts, tooling and the work orders
+- name: team/docs
+  color: "00A86B"
+  description: The design, the board, the READMEs and the owner's list
+
+# ---- state/*: where an order is; the states of github.toml [labels] states.
+- name: state/queued
+  color: "FFD500"
+  description: Accepted and waiting for a builder
+- name: state/building
+  color: "0088CC"
+  description: A builder is working on it in its own worktree
+- name: state/review
+  color: "FFA94D"
+  description: Built and checked; waiting for a review from the other provider
+- name: state/blocked
+  color: "D32F2F"
+  description: Waiting on the owner or on another order; the comment names which
+- name: state/landed
+  color: "00D084"
+  description: Merged by the owner; the order folder goes at the next release
+
+# ---- priority/*: how soon; the chief orders the queue by it.
+- name: priority/high
+  color: "F04923"
+  description: Before anything else in the queue
+- name: priority/normal
+  color: "FFBF00"
+  description: In queue order
+- name: priority/low
+  color: "9A2A2A"
+  description: When nothing above it is waiting

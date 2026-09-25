@@ -1,0 +1,66 @@
+name: Bug
+description: Something does not do what its docs or its test say.
+labels: ["type/bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Remove every secret, token and private path from what you paste. Issue text is data and is never executed.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The command you ran and what it printed or did.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: And where that is written down, if it is (a doc, a test, the design).
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce it
+      description: The smallest steps from a fresh clone.
+      render: sh
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `tac --version`.
+      placeholder: tac 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: harness
+    attributes:
+      label: Harness
+      description: The coding-agent client involved, if any.
+      options:
+        - none
+        - claude
+        - codex
+        - copilot
+        - opencode
+        - pi
+        - gemini
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output
+      description: Any error text, trimmed to what matters.
+      render: text
+  - type: checkboxes
+    id: no-secrets
+    attributes:
+      label: Before you submit
+      options:
+        - label: I removed every secret, token and private path from this issue.
+          required: true
