@@ -176,6 +176,16 @@ def test_the_cap_keeps_whole_lines_and_counts_them() -> None:
     assert chosen.text.count("\n") == 3
 
 
+def test_a_record_that_does_not_fit_is_skipped_and_filling_goes_on() -> None:
+    long = record(1, kind="decision", statement="l" * 200)
+    short = record(2, kind="lesson", statement="Short.")
+    room = len(render_line(short, "reviewed"))
+    assert len(render_line(long, "reviewed")) > room
+    chosen = run([long, short], confirmed(long, short), cap=room)
+    # The decision ranks first but does not fit; the lesson after it still does.
+    assert chosen.ids == (short.id,)
+
+
 def test_the_text_is_one_line_per_record_with_its_id_and_basis() -> None:
     one = record(1, kind="decision", statement="The knob file\nis config.toml.")
     chosen = run([one], [review(10, one.id, "test-receipt")])

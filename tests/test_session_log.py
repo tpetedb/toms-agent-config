@@ -141,6 +141,55 @@ def test_purge_moves_the_file_and_leaves_an_audit_line(tmp_path: Path) -> None:
         purge(store, "s2", reason=" ", by="owner", now=NOW)
 
 
+@pytest.mark.parametrize(
+    "session_id", ["../../memory/records", "*", "s?", "[s]1", "a/b", "..", "a..b"]
+)
+def test_purge_refuses_an_id_that_is_not_a_session_id(
+    tmp_path: Path, session_id: str
+) -> None:
+    store = tmp_path / "store"
+    log(store, ev("s1", 1))
+    journal = store / "memory" / "records.jsonl"
+    journal.parent.mkdir(parents=True)
+    journal.write_text('{"sequence": 1}\n', encoding="utf-8")
+    with pytest.raises(Bad, match="is not a session id"):
+        purge(store, session_id, reason="cleanup", by="agent", now=NOW)
+    assert journal.read_text("utf-8") == '{"sequence": 1}\n'
+    assert (store / SESSIONS_DIR / DAY / "s1.jsonl").is_file()
+    assert not (store / SESSIONS_DIR / PURGED_DIR).exists()
+    assert not (store / SESSIONS_DIR / PURGES_FILE).exists()
+
+
+def test_purge_reads_only_dated_folders(tmp_path: Path) -> None:
+    store = tmp_path / "store"
+    odd = store / SESSIONS_DIR / "not-a-day" / "s1.jsonl"
+    odd.parent.mkdir(parents=True)
+    odd.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(Bad, match="no session s1"):
+        purge(store, "s1", reason="cleanup", by="agent", now=NOW)
+    assert odd.is_file()
+
+
+def test_the_cli_refuses_a_purge_that_walks_out_of_the_journal(
+    tmp_path: Path,
+) -> None:
+    root = copy_project(tmp_path / "proj")
+    result = CliRunner().invoke(
+        cli,
+        [
+            "session",
+            "purge",
+            "../../memory/records",
+            "--root",
+            str(root),
+            "--reason",
+            "cleanup",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "is not a session id" in result.output
+
+
 def test_the_cli_logs_from_stdin_and_flags_into_the_redirected_store(
     tmp_path: Path,
 ) -> None:

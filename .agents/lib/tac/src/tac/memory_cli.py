@@ -115,12 +115,7 @@ def add_command(
             if value not in (None, ()):
                 draft[name] = list(value) if isinstance(value, tuple) else value
         if not repository and "repository" not in draft:
-            from tac.runner import RunnerError, origin_repository
-
-            try:
-                repository = origin_repository(base)
-            except RunnerError as e:
-                raise Bad(f"{e}; pass --repository owner/name") from None
+            repository = _repository(base, None)
         added = memory.add(
             _stores(base, needed=True),
             draft,
@@ -136,6 +131,18 @@ def add_command(
     click.echo(f"added {added.record.id} (sequence {added.record.sequence})")
     for event in added.events:
         click.echo(f"event {event.kind}: {event.record} with {event.supersedes_with}")
+
+
+def _repository(base: Path, given: str | None) -> str:
+    """owner/name: the one given, else the origin remote's."""
+    if given:
+        return given
+    from tac.runner import RunnerError, origin_repository
+
+    try:
+        return origin_repository(base)
+    except RunnerError as e:
+        raise Bad(f"{e}; pass --repository owner/name") from None
 
 
 def _payload(source: str | None) -> dict[str, Any]:
@@ -412,6 +419,11 @@ def order_scope(root: Path, order_id: str | None) -> tuple[str, ...]:
 @click.option("--order", "order_id", default=None, help="The order, if any.")
 @click.option("--topic", "topics", multiple=True, help="Limit to these topics.")
 @click.option("--at", default=None, help="Select as of this UTC time.")
+@click.option(
+    "--repository",
+    default=None,
+    help="owner/name whose records are selected; defaults to origin.",
+)
 @click.option("--json", "as_json", is_flag=True, help="Print the whole selection.")
 def select_command(
     root: Path | None,
@@ -419,11 +431,12 @@ def select_command(
     order_id: str | None,
     topics: tuple[str, ...],
     at: str | None,
+    repository: str | None,
     as_json: bool,
 ) -> None:
     """What a stage prompt receives from the promoted memory, deterministic,
-    capped at memory.select_cap_chars; a mandatory policy record that does not
-    fit is a refusal."""
+    capped at memory.select_cap_chars and limited to this repository's records;
+    a mandatory policy record that does not fit is a refusal."""
     from tac.config import load_config
 
     base = _root(root)
@@ -431,6 +444,9 @@ def select_command(
         now = _now(at)
         memory.parse_utc(now)
         cap = load_config(base).knobs.memory.select_cap_chars
+        # Without a repository the filter would be off, and the promoted store
+        # takes records naming any repository; so no repository is a refusal.
+        repository = _repository(base, repository)
         store = memory.read_promoted(base / memory.PROMOTED_DIR)
         chosen = memory.select(
             store.records,
@@ -441,6 +457,7 @@ def select_command(
             cap_chars=cap,
             now=now,
             topics=topics,
+            repository=repository,
         )
     except Bad as e:
         _fail(str(e))

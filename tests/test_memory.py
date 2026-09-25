@@ -425,9 +425,13 @@ def repo(tmp_path: Path, runner_key: Ed25519PrivateKey) -> Path:
 
 
 def receipt_file(
-    root: Path, key: Ed25519PrivateKey, target: Path, exit_code: int = 0
+    root: Path,
+    key: Ed25519PrivateKey,
+    target: Path,
+    exit_code: int = 0,
+    revision: str = "HEAD",
 ) -> Path:
-    head = git(root, "rev-parse", "HEAD")
+    head = git(root, "rev-parse", revision)
     signed = sign(
         key,
         "gate",
@@ -492,6 +496,36 @@ def test_a_receipt_from_another_key_or_a_failing_run_earns_nothing(
     good = receipt_file(repo, runner_key, tmp_path / "g.json")
     with pytest.raises(Bad, match="bound elsewhere"):
         promote_here(stores, other.record.id, [f"receipt:{good}"])
+    assert not (repo / PROMOTED_DIR / RECORDS_DIR).exists()
+
+
+def test_a_receipt_taken_at_a_revision_outside_head_earns_nothing(
+    repo: Path, runner_key: Ed25519PrivateKey, tmp_path: Path
+) -> None:
+    git(repo, "checkout", "-q", "-b", "side")
+    (repo / "src" / "side.py").write_text("print('side')\n", encoding="utf-8")
+    commit_all(repo, "work that never reached main")
+    side = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-q", "main")
+    stores = Stores.at(repo, tmp_path / "store")
+    got = put(stores, order_id="demo").record
+    receipt = receipt_file(repo, runner_key, tmp_path / "side.json", revision=side)
+    with pytest.raises(Bad, match=f"revision {side[:12]} is not in HEAD"):
+        promote_here(stores, got.id, [f"receipt:{receipt}"])
+    assert not (repo / PROMOTED_DIR / RECORDS_DIR).exists()
+
+
+def test_a_receipt_at_another_commit_than_the_record_names_earns_nothing(
+    repo: Path, runner_key: Ed25519PrivateKey, tmp_path: Path
+) -> None:
+    first = git(repo, "rev-list", "--max-parents=0", "HEAD")
+    head = git(repo, "rev-parse", "HEAD")
+    assert first != head
+    stores = Stores.at(repo, tmp_path / "store")
+    got = put(stores, order_id="demo", commit_sha=first).record
+    receipt = receipt_file(repo, runner_key, tmp_path / "head.json")
+    with pytest.raises(Bad, match=f"taken at {head[:12]}, the record is about"):
+        promote_here(stores, got.id, [f"receipt:{receipt}"])
     assert not (repo / PROMOTED_DIR / RECORDS_DIR).exists()
 
 
@@ -590,6 +624,25 @@ def test_lint_names_gaps_repeats_and_dangling_events(stores: Stores) -> None:
     assert any("names mem:20200101T000000Z:ffff" in p for p in problems)
 
 
+def test_add_against_a_promoted_only_record_leaves_lint_clean(
+    stores: Stores,
+) -> None:
+    # A fresh clone: the promoted store holds a confirmed decision the local
+    # live journal never saw.
+    first = record(1, kind="decision", topic=["x"], statement="Use A.")
+    folder = stores.promoted
+    (folder / RECORDS_DIR).mkdir(parents=True)
+    name = f"{first.id.replace(':', '_')}.json"
+    (folder / RECORDS_DIR / name).write_text(record_text(first), encoding="utf-8")
+    write_lines(folder / EVENTS_DIR / "2026-09-02.jsonl", [review(1, first.id)])
+    write_index(folder)
+    assert lint(stores) == []
+    added = put(stores, kind="decision", topic=["x"], statement="Use B.")
+    [conflict] = added.events
+    assert (conflict.kind, conflict.supersedes_with) == ("conflict", first.id)
+    assert lint(stores) == []
+
+
 def test_lint_names_a_record_over_the_cap_and_a_stale_index(tmp_path: Path) -> None:
     folder = tmp_path / PROMOTED_DIR
     promoted_fixture(folder)
@@ -672,6 +725,136 @@ def test_a_write_that_trips_the_scan_is_refused_by_name_only(stores: Stores) -> 
     assert not (live(stores) / RECORDS_FILE).exists()
 
 
+def test_a_secret_in_any_field_of_a_record_is_refused(stores: Stores) -> None:
+    changes: list[dict[str, Any]] = [
+        {"paths": [f"notes/{FAKE_GITHUB}.md"]},
+        {"repository": f"x/{FAKE_GITHUB}"},
+    ]
+    for change in changes:
+        with pytest.raises(Bad) as refused:
+            put(stores, **change)
+        assert "github-token" in str(refused.value)
+        assert FAKE_GITHUB not in str(refused.value)
+    assert not (live(stores) / RECORDS_FILE).exists()
+
+
+def test_a_secret_in_an_events_by_or_note_is_refused(stores: Stores) -> None:
+    got = put(stores).record
+    for by, note in ((FAKE_GITHUB, None), ("test", f"see {FAKE_OPENAI}")):
+        with pytest.raises(Bad) as refused:
+            append_event(
+                stores,
+                kind="decay",
+                record=got.id,
+                other=None,
+                note=note,
+                by=by,
+                basis=None,
+                now=NOW,
+                suffix=suffixes(0x50),
+            )
+        assert "the secrets scan found" in str(refused.value)
+        assert FAKE_GITHUB not in str(refused.value)
+        assert FAKE_OPENAI not in str(refused.value)
+    assert not (live(stores) / EVENTS_FILE).exists()
+
+
+def test_promote_and_lint_scan_paths_and_event_fields(
+    stores: Stores, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Written around `add` and `append_event`, which would have refused them.
+    planted = record(1, paths=[f"notes/{FAKE_GITHUB}.md"])
+    clean = record(2)
+    write_lines(live(stores) / RECORDS_FILE, [planted, clean])
+    write_lines(
+        live(stores) / EVENTS_FILE,
+        [event(1, "decay", clean.id, by=FAKE_GITHUB)],
+    )
+    stub_evidence(monkeypatch, "owner")
+    for rid in (planted.id, clean.id):
+        with pytest.raises(Bad) as refused:
+            promote_here(stores, rid, ["approval:Q1"])
+        assert "github-token" in str(refused.value)
+        assert FAKE_GITHUB not in str(refused.value)
+    assert not (stores.promoted / RECORDS_DIR).exists()
+    problems = lint(stores)
+    assert any(planted.id in p and "github-token" in p for p in problems)
+    assert any(event(1, "decay", clean.id).id in p for p in problems)
+    assert not any(FAKE_GITHUB in p for p in problems)
+
+
+def test_the_cli_refuses_an_event_note_holding_a_secret(
+    project: Path, tmp_path: Path
+) -> None:
+    runner = CliRunner()
+    base = ["--root", str(project)]
+    added = runner.invoke(
+        cli,
+        [
+            "memory",
+            "add",
+            *base,
+            "--repository",
+            REPOSITORY,
+            "--kind",
+            "observation",
+            "--scope",
+            "project",
+            "--statement",
+            "A plain claim.",
+        ],
+    )
+    assert added.exit_code == 0, added.output
+    [row] = lines(tmp_path / "store" / memory.LIVE_DIR / RECORDS_FILE)
+    result = runner.invoke(
+        cli,
+        [
+            "memory",
+            "event",
+            "decay",
+            *base,
+            "--record",
+            row["id"],
+            "--note",
+            f"token {FAKE_OPENAI}",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "openai-key" in result.output
+    assert FAKE_OPENAI not in result.output
+    assert not (tmp_path / "store" / memory.LIVE_DIR / EVENTS_FILE).exists()
+
+
+# ---------------------------------------------------------------- time fields
+
+
+@pytest.mark.parametrize("name", ["valid_from", "valid_to"])
+def test_an_impossible_date_is_refused_on_add(stores: Stores, name: str) -> None:
+    with pytest.raises(Bad, match=f"{name}: '2026-02-30T00:00:00Z' is not a real"):
+        put(stores, **{name: "2026-02-30T00:00:00Z"})
+    assert not (live(stores) / RECORDS_FILE).exists()
+
+
+def test_an_impossible_date_is_refused_on_a_record_and_an_event() -> None:
+    with pytest.raises(ValueError, match=r"created: .* is not a real UTC time"):
+        record(1, created="2026-13-01T00:00:00Z")
+    with pytest.raises(ValueError, match=r"at: .* is not a real UTC time"):
+        event(1, "decay", record(1).id, at="2026-09-31T00:00:00Z")
+
+
+def test_lint_names_a_promoted_record_with_an_impossible_date(tmp_path: Path) -> None:
+    folder = tmp_path / PROMOTED_DIR
+    promoted_fixture(folder)
+    write_index(folder)
+    stores = Stores(folder, None)
+    assert lint(stores) == []
+    bad = record(5).model_dump(mode="json")
+    bad["valid_from"] = "2026-02-30T00:00:00Z"
+    name = f"{bad['id'].replace(':', '_')}.json"
+    (folder / RECORDS_DIR / name).write_text(json.dumps(bad), encoding="utf-8")
+    assert any("is not a real UTC time" in p for p in lint(stores))
+
+
 # ---------------------------------------------------------------- contracts
 
 
@@ -750,11 +933,40 @@ def test_the_cli_adds_searches_and_lints_in_the_redirected_store(
     assert none.output == ""
     linted = runner.invoke(cli, ["memory", "lint", *base])
     assert linted.exit_code == 0, linted.output
-    chosen = runner.invoke(cli, ["select", *base, "--stage", "build", "--json"])
+    chosen = runner.invoke(
+        cli,
+        ["select", *base, "--stage", "build", "--repository", REPOSITORY, "--json"],
+    )
     assert chosen.exit_code == 0, chosen.output
     body = json.loads(chosen.output)
     assert body["selector_version"] == 1 and body["cap_chars"] == 6000
     assert body["ids"] == []
+
+
+def test_the_cli_selects_only_this_repositorys_records(project: Path) -> None:
+    mine = record(1, kind="decision")
+    foreign = record(2, kind="decision", repository="someone/else")
+    folder = project / PROMOTED_DIR
+    (folder / RECORDS_DIR).mkdir(parents=True, exist_ok=True)
+    for one in (mine, foreign):
+        name = f"{one.id.replace(':', '_')}.json"
+        (folder / RECORDS_DIR / name).write_text(record_text(one), encoding="utf-8")
+    write_lines(
+        folder / EVENTS_DIR / "2026-09-02.jsonl",
+        [review(1, mine.id), review(2, foreign.id)],
+    )
+    write_index(folder)
+    runner = CliRunner()
+    base = ["select", "--root", str(project), "--stage", "build", "--json"]
+    chosen = runner.invoke(cli, [*base, "--repository", REPOSITORY])
+    assert chosen.exit_code == 0, chosen.output
+    assert json.loads(chosen.output)["ids"] == [mine.id]
+    theirs = runner.invoke(cli, [*base, "--repository", "someone/else"])
+    assert json.loads(theirs.output)["ids"] == [foreign.id]
+    # No origin remote and no --repository: a refusal, never an unfiltered pick.
+    bare = runner.invoke(cli, base)
+    assert bare.exit_code == 1
+    assert "pass --repository owner/name" in bare.output
 
 
 def test_the_cli_refuses_a_secret_and_never_prints_it(project: Path) -> None:
