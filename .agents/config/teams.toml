@@ -57,7 +57,19 @@ tests = ["tests/test_cli.py", "tests/test_doctor_exit.py", "tests/test_work.py"]
 manager = "core-manager"                  # the manager who splits its goals and signs off cross-team changes
 max_workers = 2                           # builders at once, never above [teams] max_local_agents
 models = {}                               # role = model id overrides for this team; empty uses config/models.toml
-skills = ["work-order"]                   # skills under .agents/skills/ its workers are given
+# Skills under .agents/skills/ its workers are given: the package's code style,
+# hook checks, config keys read from the vendor docs, the changelog fragment,
+# decisions a newcomer would ask about, and evidence before claiming done.
+skills = [
+  "work-order",
+  "house-style",
+  "hooks-authoring",
+  "research-first",
+  "changelog",
+  "adr",
+  "shared-memory",
+  "verification-before-completion",
+]
 budget_usd = 20.0                         # the cost cap handed to one headless turn of this team
 
 # How the work is done here.
@@ -84,7 +96,20 @@ tests = ["tests/test_scaffolding.py", "tests/test_work.py"]   # the test files t
 manager = "harness-manager"               # the manager who splits its goals and signs off cross-team changes
 max_workers = 2                           # builders at once, never above [teams] max_local_agents
 models = {}                               # role = model id overrides for this team; empty uses config/models.toml
-skills = ["work-order"]                   # skills under .agents/skills/ its workers are given
+# Skills under .agents/skills/ its workers are given: the justfile, CI and
+# hooks.toml, the release (changelog and version), shell and TOML style, the
+# vendor docs before a new tool, and evidence before claiming done.
+skills = [
+  "work-order",
+  "house-style",
+  "justfile",
+  "hooks-authoring",
+  "research-first",
+  "changelog",
+  "semver",
+  "shared-memory",
+  "verification-before-completion",
+]
 budget_usd = 20.0                         # the cost cap handed to one headless turn of this team
 
 # What a reader is told.
@@ -95,5 +120,16 @@ tests = ["tests/test_scaffolding.py"]     # the test files that cover its paths
 manager = "docs-manager"                  # the manager who splits its goals and signs off cross-team changes
 max_workers = 1                           # builders at once, never above [teams] max_local_agents
 models = {}                               # role = model id overrides for this team; empty uses config/models.toml
-skills = ["work-order"]                   # skills under .agents/skills/ its workers are given
+# Skills under .agents/skills/ its workers are given: the design's decisions,
+# the README and QUICKSTART, diagrams, the owner's reports from .human/, and
+# the Markdown style.
+skills = [
+  "work-order",
+  "house-style",
+  "adr",
+  "readme-quickstart",
+  "mermaid-diagrams",
+  "owner-report",
+  "shared-memory",
+]
 budget_usd = 5.0                          # the cost cap handed to one headless turn of this team

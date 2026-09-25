@@ -49,7 +49,8 @@ id = "build"                            # the stage id, unique in the pipeline
 kind = "agent"                          # agent | gate | effect | human
 role = "builder"                        # the role charter it runs as
 depends_on = ["specify"]                # the stages that finish first
-skills = ["work-order"]                 # skills injected into the prompt
+# Skills injected into the prompt; ponytail is opt-in and reaches only a builder.
+skills = ["work-order", "ponytail"]
 reads = ["order-spec"]                  # the contracts it reads
 writes = "build-report"                 # the contract its result must pass
 template = "handoffs/build.md.j2"       # the prompt template under templates/
