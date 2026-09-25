@@ -319,6 +319,23 @@ def test_the_chief_s_subagents_still_pass_until_the_tokens_of_m3(
     assert spawn(project, "chief").verdict == "allow"
 
 
+@pytest.mark.parametrize("tool", ["Agent", "Task"])
+def test_a_session_with_no_role_keeps_agent_and_task_but_not_workflow(
+    project: Path, tool: str
+) -> None:
+    """Decided, not an accident: the owner's own plain claude session names no
+    role and keeps its subagents, as does a name no charter has; a worker seat
+    is named by --agent, so its role is known and refused; Workflow stays
+    fail-closed for a session with no role or an unknown one (DESIGN 4)."""
+    assert spawn(project, None, tool).verdict == "allow"
+    assert spawn(project, "not-a-role", tool).verdict == "allow"
+    worker = spawn(project, "builder", tool)
+    assert (worker.verdict, worker.check) == ("deny", "handoff-guard")
+    for role in (None, "not-a-role"):
+        verdict = workflow(project, role)
+        assert (verdict.verdict, verdict.check) == ("deny", "handoff-guard"), role
+
+
 def test_codex_spawn_agent_is_judged_as_before(project: Path) -> None:
     payload = {
         "hook_event_name": "PreToolUse",

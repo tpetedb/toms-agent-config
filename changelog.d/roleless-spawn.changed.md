@@ -1,0 +1,1 @@
+A session that names no role, such as the owner's own plain `claude` session, keeps Agent and Task while Workflow stays refused to it; this is now a recorded decision in docs/DESIGN.md with a test, not a side effect of the guard.

@@ -20,10 +20,10 @@ from typing import Any
 import pytest
 from jsonschema import Draft7Validator
 
-from tac import hook, work
+from tac import adapters, hook, work
 from tac.config import load_config
 from tac.doctor import Status, check_hook_guard
-from tac.sync import check_tree, read_lock, sync
+from tac.sync import check_tree, locked_outputs, read_lock, sync
 from tests._guard import (
     REPO,
     SOURCE_GUARD,
@@ -461,6 +461,78 @@ def test_a_glob_or_grep_for_secrets_is_refused(project: Path) -> None:
         tool_input={"path": str(Path.home() / ".config/gh")},
     )
     assert glob.check == grep.check == "secret-read"
+
+
+def _secrets_folder(root: Path) -> str:
+    return str(Path(load_config(root).knobs.secrets.env_file).parent)
+
+
+@pytest.mark.parametrize("where", ["store", "secrets"])
+@pytest.mark.parametrize(("tool", "key"), [("Read", "file_path"), ("Grep", "path")])
+def test_a_read_of_the_controller_store_or_the_secrets_folder_is_refused(
+    project: Path, where: str, tool: str, key: str
+) -> None:
+    """The rendered client rules deny both folders though policy.toml names
+    neither; the guard reads the same list, so it refuses them too."""
+    folder = "~/.local/state/tac" if where == "store" else _secrets_folder(project)
+    for raw in (f"{folder}/runner.key", os.path.expanduser(f"{folder}/runner.key")):
+        verdict = judge(
+            project, "claude", "PreToolUse", tool_name=tool, tool_input={key: raw}
+        )
+        assert (verdict.verdict, verdict.check) == ("deny", "secret-read"), raw
+
+
+def test_an_edit_in_the_controller_store_is_refused(project: Path) -> None:
+    raw = str(Path.home() / ".local/state/tac/runs/r-1.json")
+    verdict = judge(
+        project,
+        "claude",
+        "PreToolUse",
+        tool_name="Write",
+        tool_input={"file_path": raw},
+    )
+    assert (verdict.verdict, verdict.check) == ("deny", "generated-paths")
+    assert "~/.local/state/tac/**" in verdict.reason
+
+
+def _a_path_under(glob: str) -> str:
+    return glob.replace("**", "x").replace("*", "x")
+
+
+def test_the_guard_denies_what_the_rendered_client_rules_deny(project: Path) -> None:
+    """One list for layer 1 and layer 2: the Read denies and the sandbox's
+    denyRead and denyWrite in .claude/settings.json are made from the lists the
+    guard checks, and the guard refuses a path under every one of them."""
+    config = load_config(project)
+    settings = json.loads((project / ".claude/settings.json").read_text("utf-8"))
+    reads = hook.denied_reads(config)
+    writes = hook.denied_writes(config, locked_outputs(project))
+    rules = settings["permissions"]["deny"]
+    assert [f"Read({g})" for g in reads] == [r for r in rules if r.startswith("Read(")]
+    sandbox = settings["sandbox"]["filesystem"]
+    assert [adapters._sandbox_path(g) for g in reads] == sandbox["denyRead"]
+    assert [adapters._sandbox_path(g) for g in writes] == sandbox["denyWrite"]
+    for glob in reads:
+        raw = _a_path_under(glob)
+        verdict = judge(
+            project,
+            "claude",
+            "PreToolUse",
+            tool_name="Read",
+            tool_input={"file_path": raw},
+        )
+        assert (verdict.verdict, verdict.check) == ("deny", "secret-read"), glob
+    for glob in writes:
+        raw = _a_path_under(glob)
+        target = raw if raw.startswith("~") else str(project / raw)
+        verdict = judge(
+            project,
+            "claude",
+            "PreToolUse",
+            tool_name="Edit",
+            tool_input={"file_path": target},
+        )
+        assert (verdict.verdict, verdict.check) == ("deny", "generated-paths"), glob
 
 
 def test_an_edit_under_the_policy_s_deny_write_is_refused(project: Path) -> None:

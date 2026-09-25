@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import re
 import shlex
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -208,6 +209,45 @@ def roles_for(config: Config, root: Path, harness: str) -> list[dict[str, Any]]:
     return out
 
 
+# ---------------------------------------------------------------- deny sets
+
+
+def denied_reads(config: Config) -> list[str]:
+    """Every glob no agent reads, in render order: the policy's deny_read, each
+    credential folder, the folder of the secrets env file and the controller
+    store. The one list the rendered Claude rules (the Read denies and
+    sandbox.filesystem.denyRead) and the hook guard's secret-read check both
+    take, so layer 1 and layer 2 refuse the same paths. Never .agents/: a Read
+    deny there would also break the skill links."""
+    env_file_dir = str(Path(config.knobs.secrets.env_file).parent)
+    return list(
+        dict.fromkeys(
+            [
+                *config.policy.paths.deny_read,
+                *(f"{d}/**" for d in CREDENTIAL_DIRS),
+                f"{env_file_dir}/**",
+                f"{CONTROLLER_STORE}/**",
+            ]
+        )
+    )
+
+
+def denied_writes(config: Config, generated: Iterable[str]) -> list[str]:
+    """Every path no agent writes, in render order: the policy's deny_write
+    (the authored tree), each generated path, then the controller store. The
+    rendered sandbox.filesystem.denyWrite and the hook guard's generated-paths
+    check both take it."""
+    return list(
+        dict.fromkeys(
+            [
+                *config.policy.paths.deny_write,
+                *generated,
+                f"{CONTROLLER_STORE}/**",
+            ]
+        )
+    )
+
+
 # ---------------------------------------------------------------- Claude Code
 
 
@@ -234,19 +274,13 @@ def _edit_rule(path: str) -> str:
 def claude(config: Config, root: Path, outputs: list[str]) -> dict[str, Any]:
     """The values `.claude/settings.json` and the agent files take."""
     policy, profile, runtime = config.policy, config.profile, config.runtime
-    env_file_dir = str(Path(config.knobs.secrets.env_file).parent)
-    deny_read_globs = [
-        *policy.paths.deny_read,
-        *(f"{d}/**" for d in CREDENTIAL_DIRS),
-        f"{env_file_dir}/**",
-        f"{CONTROLLER_STORE}/**",
-    ]
-    deny_read_globs = list(dict.fromkeys(deny_read_globs))
-    # Write denies: the authored tree and every generated path the lock lists.
-    # Never a Read deny on .agents/: that would also break the skill links.
-    write_paths = list(dict.fromkeys([*policy.paths.deny_write, *outputs]))
+    deny_read_globs = denied_reads(config)
+    write_paths = denied_writes(config, outputs)
     deny_rules = [f"Read({g})" for g in deny_read_globs]
-    deny_rules += [_edit_rule(p) for p in write_paths]
+    # Edit rules anchor at the project root, so they take the paths inside the
+    # checkout; the controller store outside it is held by the sandbox's
+    # denyWrite for commands and by the guard's generated-paths check for edits.
+    deny_rules += [_edit_rule(p) for p in write_paths if not p.startswith("~/")]
     if profile.native_delegation == "off":
         deny_rules += list(CLAUDE_SPAWN_TOOLS)
     env = dict(CLAUDE_TELEMETRY[config.knobs.telemetry.host_tier])
@@ -268,14 +302,7 @@ def claude(config: Config, root: Path, outputs: list[str]) -> dict[str, Any]:
         "fail_if_unavailable": profile.claude.failIfUnavailable,
         "allow_unsandboxed": profile.claude.allowUnsandboxedCommands,
         "deny_read": [_sandbox_path(g) for g in deny_read_globs],
-        "deny_write": list(
-            dict.fromkeys(
-                [
-                    *(_sandbox_path(p) for p in write_paths),
-                    CONTROLLER_STORE,
-                ]
-            )
-        ),
+        "deny_write": [_sandbox_path(p) for p in write_paths],
         "allowed_domains": allowed,
         "env": env,
         "extras": _read(root, CLAUDE_EXTRAS_FILE),
