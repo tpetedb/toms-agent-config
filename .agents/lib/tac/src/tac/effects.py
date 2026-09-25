@@ -7,8 +7,11 @@ in policy.toml `runner_only` and never in `owner_only`, and where the active
 profile says `approvals = "external-effects"`, an effect that leaves the machine
 names an approval item whose host-signed record `approvals.verify_signed`
 accepts, with the ids already acted on read from the controller store, where
-this one is then appended (the M2 hand-off, section 7). So an approval is used
-once.
+this one is then appended with the run and the stage it was spent for (the M2
+hand-off, section 7). So an approval is used once: another run or stage that
+presents it is refused, while the stage it was spent for may present it again
+to finish effects a failure interrupted, which the journal keeps from running
+twice.
 
 Every effect is journaled before it runs, under an idempotency key over the
 repository, the run, the stage, the effect and its arguments, then marked done
@@ -205,17 +208,28 @@ class Effects:
         path.parent.mkdir(parents=True, exist_ok=True, mode=UNIX_PERMS_STORE)
         return path
 
-    def consumed(self) -> set[str]:
+    def _consumed_records(self) -> list[dict[str, str]]:
         path = self.consumed_path()
         if not path.is_file():
-            return set()
-        found: set[str] = set()
+            return []
+        found: list[dict[str, str]] = []
         for line in path.read_text(encoding="utf-8").splitlines():
             try:
-                found.add(str(json.loads(line)["approval_id"]))
-            except (ValueError, KeyError, TypeError):
+                record = json.loads(line)
+                found.append({k: str(v) for k, v in record.items()})
+            except (ValueError, AttributeError):
                 continue
-        return found
+        return [r for r in found if "approval_id" in r]
+
+    def consumed(self, spent_for: tuple[str, str] | None = None) -> set[str]:
+        """Approval ids already acted on; with `spent_for` (a run and a stage),
+        less the ones spent for exactly that stage of that run, which it may
+        present again to finish what they authorised."""
+        return {
+            r["approval_id"]
+            for r in self._consumed_records()
+            if spent_for is None or (r.get("run_id"), r.get("stage")) != spent_for
+        }
 
     def needs_approval(self, requests: Sequence[EffectRequest]) -> bool:
         return self.config.profile.approvals == "external-effects" and any(
@@ -228,8 +242,10 @@ class Effects:
         approval_id: str | None,
         head: str | None,
     ) -> None:
-        """Policy for each effect, then, where the profile asks, one verified,
-        unused approval for all of them; the approval is marked used here."""
+        """Policy for each effect, then, where the profile asks, one verified
+        approval for all of them, unused or spent for this same run and stage;
+        it is marked used here, before the effects run, so no other run or
+        stage can present it while they do."""
         for request in requests:
             self.check_policy(request.effect)
         if not self.needs_approval(requests):
@@ -250,7 +266,11 @@ class Effects:
                 f"approval {approval_id} is for {item.tool}, not for these effects "
                 "with these arguments"
             )
-        seen = self.consumed()
+        bindings = {(r.run_id, r.stage) for r in requests}
+        spent_for = next(iter(bindings)) if len(bindings) == 1 else None
+        seen = self.consumed(spent_for)
+        # Read before the verdict, which adds the id it judged to `seen`.
+        mine = self.consumed() - seen
         verdict = verify_signed(
             item,
             self.runner.private.public_key(),
@@ -265,12 +285,18 @@ class Effects:
                 f"approval {approval_id}: {verdict.state}, {verdict.reason}"
             )
         assert item.approval is not None
+        approval = item.approval.approval.approval_id
+        if approval in mine:
+            # Spent for this stage already: a resume after a failure.
+            return
         with self.consumed_path().open("a", encoding="utf-8") as handle:
             record = {
-                "approval_id": item.approval.approval.approval_id,
+                "approval_id": approval,
                 "item_id": item.id,
                 "at": utc_text(),
             }
+            if spent_for is not None:
+                record["run_id"], record["stage"] = spent_for
             handle.write(json.dumps(record, sort_keys=True) + "\n")
 
     # -- performing

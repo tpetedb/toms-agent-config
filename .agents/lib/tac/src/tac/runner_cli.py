@@ -243,8 +243,20 @@ def keychain_import(repo: Path, security: str, token_stdin: bool) -> None:
 @click.argument("operation")
 def runner_credential(slug: str, security: str, operation: str) -> None:
     """A git credential helper for the runner's own git: the tac-bot token for
-    https://github.com, read from the keychain, answered on `get` only."""
+    https://github.com, read from the keychain, answered on `get` only. The
+    runner's git is its one consumer, so an agent session or a sandboxed
+    process asking for it is refused before the keychain is read."""
     if operation != "get":
+        return
+    try:
+        refuse_agent_parent(os.environ)
+        if inside_sandbox():
+            raise RunnerError(
+                "this process runs inside a sandbox; the tac-bot token goes only "
+                "to the runner's own git on the host"
+            )
+    except RunnerError as exc:
+        fail(str(exc))
         return
     fields = dict(
         line.split("=", 1) for line in sys.stdin.read().splitlines() if "=" in line

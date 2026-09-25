@@ -233,10 +233,17 @@ def test_keychain_import_refuses_an_agent_session_and_a_sandbox(
     ],
 )
 def test_the_credential_helper_answers_github_only(
-    bin_dir: Path, given: str, answered: bool
+    bin_dir: Path, given: str, answered: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     keychain(bin_dir).write(BOT_TOKEN, TOKEN)
-    done = CliRunner().invoke(
+    monkeypatch.setattr("tac.runner_cli.inside_sandbox", lambda: False)
+    done = credential(bin_dir / "security", given)
+    assert done.exit_code == 0
+    assert (f"password={TOKEN}" in done.output) is answered
+
+
+def credential(security: Path, given: str, **extra: str | None) -> Any:
+    return CliRunner().invoke(
         cli,
         [
             "runner",
@@ -244,13 +251,27 @@ def test_the_credential_helper_answers_github_only(
             "--slug",
             "demo-0123456789",
             "--security",
-            str(bin_dir / "security"),
+            str(security),
             "get",
         ],
         input=given,
+        env={**NO_AGENT, **extra},
     )
-    assert done.exit_code == 0
-    assert (f"password={TOKEN}" in done.output) is answered
+
+
+def test_the_credential_helper_refuses_an_agent_session_and_a_sandbox(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    trap = fakes.never(tmp_path / "trap", "security")
+    given = "protocol=https\nhost=github.com\n\n"
+    monkeypatch.setattr("tac.runner_cli.inside_sandbox", lambda: False)
+    done = credential(trap, given, CLAUDECODE="1")
+    assert done.exit_code == 1 and "agent session" in done.output
+    monkeypatch.setattr("tac.runner_cli.inside_sandbox", lambda: True)
+    done = credential(trap, given)
+    assert done.exit_code == 1 and "sandbox" in done.output
+    assert "password=" not in done.output
+    assert not (trap.parent / "called").exists()
 
 
 # ---------------------------------------------------------------- dispatch tokens (C1)
@@ -279,7 +300,7 @@ def consume(runner: Runner, token: str, **over: str) -> dict[str, Any]:
 
 def test_a_token_is_bound_and_spent_once(runner: Runner) -> None:
     digest = hashlib.sha256(b"prompt").hexdigest()
-    token = runner.issue_token("r1", "build", digest, "agent")
+    token = runner.issue_token("r1", "build", digest, "agent", "s-1")
     assert consume(runner, token)["ok"] is True
     again = consume(runner, token)
     assert again["ok"] is False and "already used" in again["error"]
@@ -295,13 +316,15 @@ def test_a_token_is_bound_and_spent_once(runner: Runner) -> None:
         {"stage": "review"},
         {"sha256": hashlib.sha256(b"other").hexdigest()},
         {"kind": "workflow"},
+        # Another dispatched session that copied this one's record.
+        {"session_id": "another-session-entirely"},
     ],
 )
 def test_a_wrong_binding_is_refused_and_burns_the_token(
     runner: Runner, over: dict[str, str]
 ) -> None:
     token = runner.issue_token(
-        "r1", "build", hashlib.sha256(b"prompt").hexdigest(), "agent"
+        "r1", "build", hashlib.sha256(b"prompt").hexdigest(), "agent", "s-1"
     )
     refused = consume(runner, token, **over)
     assert refused["ok"] is False and "burned" in refused["error"]
@@ -466,6 +489,65 @@ def test_a_pending_commit_already_made_is_reconciled(
     assert settled.observed["sha"] == observed["sha"]
 
 
+class Crash(BaseException):
+    """The runner dies mid-effect: nothing in the runner catches this."""
+
+
+def test_the_journal_holds_a_pending_entry_before_the_effect_runs(
+    effects: Effects, worktree: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sha = git(worktree, "rev-parse", "HEAD")
+    push = request("push", {"branch": fakes.ORDER_BRANCH, "sha": sha})
+    key = effects.key(push)
+    real_run, real_push = Effects._run, Effects.push  # pyright: ignore[reportPrivateUsage]
+    seen: list[str | None] = []
+
+    def crash_after_pushing(self: Effects, given: EffectRequest, at: str) -> Any:
+        found = self.entry(at)
+        seen.append(found.state if found else None)
+        real_run(self, given, at)
+        raise Crash
+
+    monkeypatch.setattr(Effects, "_run", crash_after_pushing)
+    with pytest.raises(Crash):
+        effects.perform(push)
+    # Journaled before the push ran, and still pending after the crash.
+    assert seen == ["pending"]
+    left = effects.entry(key)
+    assert left is not None and left.state == "pending"
+    # The retry finds the sha on the remote and pushes nothing.
+    monkeypatch.setattr(Effects, "_run", real_run)
+    pushes: list[str] = []
+
+    def counted(self: Effects, branch: str, sha_: str) -> Any:
+        pushes.append(branch)
+        return real_push(self, branch, sha_)
+
+    monkeypatch.setattr(Effects, "push", counted)
+    observed = effects.perform(push)
+    assert observed["reconciled"] is True and pushes == []
+    done = effects.entry(key)
+    assert done is not None and done.state == "done"
+
+
+def test_an_effect_that_fails_is_journaled_failed(
+    effects: Effects, worktree: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sha = git(worktree, "rev-parse", "HEAD")
+    push = request("push", {"branch": fakes.ORDER_BRANCH, "sha": sha})
+
+    def refused(self: Effects, branch: str, sha_: str) -> Any:
+        found = self.entry(self.key(push))
+        assert found is not None and found.state == "pending"
+        raise EffectError("git push failed: the remote hung up")
+
+    monkeypatch.setattr(Effects, "push", refused)
+    with pytest.raises(EffectError, match="hung up"):
+        effects.perform(push)
+    entry_ = effects.entry(effects.key(push))
+    assert entry_ is not None and entry_.state == "failed"
+
+
 def test_open_pr_hands_the_token_to_gh_alone_and_never_opens_twice(
     effects: Effects, worktree: Path, bin_dir: Path
 ) -> None:
@@ -550,8 +632,15 @@ def test_an_external_effect_needs_one_signed_approval_used_once(
     effects.authorize(push, item, sha)
     consumed = (effects.runner.store / "approvals" / "consumed.jsonl").read_text()
     assert item in consumed
+    # The stage it was spent for may present it again to finish its effects,
+    # which the journal keeps from running twice; it is recorded once.
+    effects.authorize(push, item, sha)
+    assert (effects.runner.store / "approvals" / "consumed.jsonl").read_text() == (
+        consumed
+    )
+    other = [push[0].model_copy(update={"run_id": "r2"})]
     with pytest.raises(EffectError, match="used before"):
-        effects.authorize(push, item, sha)
+        effects.authorize(other, item, sha)
 
 
 # ---------------------------------------------------------------- the inbox
@@ -883,6 +972,101 @@ def test_an_order_runs_to_the_owner_s_approval_then_to_the_merge_command(
     assert command in (ready / "TODO.HUMAN.md").read_text()
     # The checkpoint on disk is the state the loop returned.
     assert run.load(ctx.runner.store, first.run_id) == second
+
+
+def to_publish(
+    ready: Path, state: Path, bin_dir: Path, tmp_path: Path
+) -> tuple[run.Context, run.RunState]:
+    """A run of the order pipeline stopped at publish, its approval signed."""
+    ctx = context(ready, state, bin_dir, fakes.demo_order(ready), [])
+    first = run.advance(
+        ctx, run.fresh(ctx, "claude", entry(tmp_path), fakes.ORDER_BRANCH)
+    )
+    assert first.stages["publish"].state == "waiting-human"
+    approvals.approve(
+        human.human_paths(ready),
+        first.stages["publish"].approval_item or "",
+        private=ctx.runner.private,
+        store=ctx.runner.store,
+        repository="example/demo",
+        decided_by="example",
+        agent_identity="tac-bot",
+        decision="approved",
+        now=human.utc_now(),
+    )
+    return ctx, first
+
+
+def published(ctx: run.Context, ready: Path, run_id: str) -> run.RunState:
+    after = run.advance(ctx, run.resume(ctx, run_id))
+    assert after.stages["publish"].state == "complete", after.stages["publish"]
+    push = after.stages["publish"].observed["push"]
+    assert isinstance(push, dict)
+    remote = git(ready, "ls-remote", "origin", fakes.ORDER_BRANCH).split()[0]
+    assert remote == push["sha"]
+    return after
+
+
+def test_a_publish_whose_push_failed_after_approval_resumes_to_complete(
+    ready: Path,
+    state: Path,
+    bin_dir: Path,
+    tmp_path: Path,
+    gates: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx, first = to_publish(ready, state, bin_dir, tmp_path)
+    real = Effects.push
+
+    def flaky(self: Effects, branch: str, sha: str) -> Any:
+        raise EffectError("git push failed: the remote hung up")
+
+    monkeypatch.setattr(Effects, "push", flaky)
+    failed = run.advance(ctx, run.resume(ctx, first.run_id))
+    assert failed.stages["publish"].state == "failed"
+    assert "hung up" in failed.stages["publish"].reason
+    monkeypatch.setattr(Effects, "push", real)
+    # The same approval finishes what it authorised; the owner is not asked again.
+    published(ctx, ready, first.run_id)
+
+
+def test_a_publish_whose_pull_request_failed_after_the_push_resumes(
+    ready: Path, state: Path, bin_dir: Path, tmp_path: Path, gates: dict[str, Any]
+) -> None:
+    ctx, first = to_publish(ready, state, bin_dir, tmp_path)
+    (bin_dir / "gh.json").write_text(
+        json.dumps({"prs": [], "fail_create": 1}), encoding="utf-8"
+    )
+    failed = run.advance(ctx, run.resume(ctx, first.run_id))
+    assert failed.stages["publish"].state == "failed"
+    assert "push" in failed.stages["publish"].observed
+    after = published(ctx, ready, first.run_id)
+    pr = after.stages["publish"].observed["open-pr"]
+    assert isinstance(pr, dict) and pr["number"] == 1
+
+
+def test_a_crash_between_push_and_pull_request_resumes_to_complete(
+    ready: Path,
+    state: Path,
+    bin_dir: Path,
+    tmp_path: Path,
+    gates: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx, first = to_publish(ready, state, bin_dir, tmp_path)
+    real = Effects.open_pr
+
+    def crash(self: Effects, *args: str) -> Any:
+        raise Crash
+
+    monkeypatch.setattr(Effects, "open_pr", crash)
+    with pytest.raises(Crash):
+        run.advance(ctx, run.resume(ctx, first.run_id))
+    monkeypatch.setattr(Effects, "open_pr", real)
+    after = published(ctx, ready, first.run_id)
+    assert after.stages["recap"].state == "complete"
+    consumed = (ctx.runner.store / "approvals" / "consumed.jsonl").read_text()
+    assert len(consumed.splitlines()) == 1
 
 
 def test_the_merge_command_is_squash_pinned_to_the_head_commit() -> None:

@@ -140,6 +140,13 @@ if args[:2] == ["pr", "list"]:
     print(json.dumps([p for p in state["prs"] if p["head"] == value("--head")]))
     sys.exit(0)
 if args[:2] == ["pr", "create"]:
+    # A flake the test asks for: fail this many creates before one succeeds.
+    if state.get("fail_create"):
+        state["fail_create"] -= 1
+        with open(state_file, "w") as handle:
+            json.dump(state, handle)
+        print("HTTP 502: flake", file=sys.stderr)
+        sys.exit(1)
     number = len(state["prs"]) + 1
     url = "https://github.com/" + value("--repo") + "/pull/" + str(number)
     state["prs"].append({"number": number, "url": url, "head": value("--head")})

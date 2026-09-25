@@ -349,7 +349,35 @@ def _dispatch_record(
         raise TokenRefused(
             "the dispatch record is not in the shape the launcher writes"
         )
+    marked = _marker(root, session)
+    if marked is not None and marked != (data["run_id"], data["stage"]):
+        # The worker store is agent-writable; the marker is not, so the record
+        # names the run and stage the runner started this session for or none.
+        raise TokenRefused(
+            "the dispatch record names another run or stage than the runner "
+            "dispatched this session for"
+        )
     return data
+
+
+def _marker(root: Path, session: str) -> tuple[str, str] | None:
+    """The run and stage the runner wrote into the controller store when it
+    dispatched this session, or None when there is no marker to read."""
+    try:
+        path = controller_store(root, os.environ) / DISPATCHED_DIR / session
+    except RunnerError:
+        return None
+    if not path.is_file():
+        return None
+    try:
+        words = path.read_text(encoding="utf-8").split()
+    except OSError as e:
+        raise TokenRefused(
+            f"the runner's dispatch marker cannot be read ({e})"
+        ) from None
+    if len(words) != 2:
+        raise TokenRefused("the runner's dispatch marker is not a run and a stage")
+    return words[0], words[1]
 
 
 def _runner_token(

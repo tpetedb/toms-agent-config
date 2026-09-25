@@ -367,7 +367,7 @@ def dispatch(
         digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
         kind = "agent"
     session = str(uuid.uuid4())
-    token = ctx.runner.issue_token(state.run_id, stage.id, digest, kind)
+    token = ctx.runner.issue_token(state.run_id, stage.id, digest, kind, session)
     headless = launch.Headless(
         contract=stage.writes,
         prompt_file=prompt_file,
@@ -718,11 +718,13 @@ def effect_stage(ctx: Context, state: RunState, stage: PipelineStage) -> RunStat
             if isinstance(commit, dict) and isinstance(commit.get("sha"), str)
             else resolve(ctx.root, f"refs/heads/{branch}")
         )
-        rest = [e for e in stage.effects if e != "commit" and e not in observed]
-        if not rest:
+        rest = [e for e in stage.effects if e != "commit"]
+        if all(e in observed for e in rest):
             return set_stage(
                 state, stage.id, state="complete", observed=observed, reason=""
             )
+        # Every effect of the stage each time, the done ones too: the approval
+        # binds them all, and the journal answers a done one without acting.
         requests = [
             EffectRequest(
                 effect=effect,

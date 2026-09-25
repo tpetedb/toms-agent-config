@@ -143,7 +143,9 @@ def denied(done: subprocess.CompletedProcess[str], why: str) -> None:
 
 
 def test_a_valid_token_lets_one_spawn_through(served: Served) -> None:
-    served.dispatch(served.runner.issue_token("r1", "specify", DIGEST, "agent"))
+    served.dispatch(
+        served.runner.issue_token("r1", "specify", DIGEST, "agent", SESSION)
+    )
     done = served.spawn()
     assert done.returncode == 0, done.stdout + done.stderr
 
@@ -160,7 +162,7 @@ def test_a_missing_token_is_a_deny(served: Served) -> None:
 
 
 def test_an_altered_token_is_a_deny_and_burns_nothing_else(served: Served) -> None:
-    token = served.runner.issue_token("r1", "specify", DIGEST, "agent")
+    token = served.runner.issue_token("r1", "specify", DIGEST, "agent", SESSION)
     altered = ("0" if token[0] != "0" else "1") + token[1:]
     served.dispatch(altered)
     before = served.live_tokens()
@@ -171,10 +173,38 @@ def test_an_altered_token_is_a_deny_and_burns_nothing_else(served: Served) -> No
     assert served.spawn().returncode == 0
 
 
+OTHER = "0f3c2a8e-7d41-4b0c-8c55-2e9d6b1a4f70"
+
+
+def test_a_session_presenting_another_session_s_token_is_a_deny(
+    served: Served,
+) -> None:
+    # The runner dispatched OTHER for specify and this session for review; this
+    # session copied OTHER's run, stage and token into its own record.
+    stolen = served.runner.issue_token("r1", "specify", DIGEST, "agent", OTHER)
+    marker = served.runner.store / "dispatched"
+    marker.mkdir(exist_ok=True)
+    (marker / SESSION).write_text("r1 review\n", encoding="utf-8")
+    served.dispatch(stolen)
+    before = served.live_tokens()
+    try:
+        denied(served.spawn(), "another run or stage")
+        # Refused before the runner was asked: OTHER's token is still live.
+        assert served.live_tokens() == before
+    finally:
+        (marker / SESSION).unlink()
+    # With no marker to compare, the runner holds the session binding itself,
+    # and the copied token is burned rather than spent.
+    denied(served.spawn(), "session_id")
+    assert len(served.live_tokens()) == len(before) - 1
+
+
 def test_a_token_reused_by_two_concurrent_spawns_lets_exactly_one_through(
     served: Served,
 ) -> None:
-    served.dispatch(served.runner.issue_token("r1", "specify", DIGEST, "agent"))
+    served.dispatch(
+        served.runner.issue_token("r1", "specify", DIGEST, "agent", SESSION)
+    )
     start = threading.Barrier(2)
     results: list[subprocess.CompletedProcess[str]] = []
     lock = threading.Lock()
@@ -199,7 +229,9 @@ def test_a_token_reused_by_two_concurrent_spawns_lets_exactly_one_through(
 def test_the_runner_lost_mid_check_is_a_deny(
     served: Served, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    served.dispatch(served.runner.issue_token("r1", "specify", DIGEST, "agent"))
+    served.dispatch(
+        served.runner.issue_token("r1", "specify", DIGEST, "agent", SESSION)
+    )
     reached = threading.Event()
     release = threading.Event()
 

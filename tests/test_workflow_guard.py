@@ -380,7 +380,7 @@ def test_a_dispatched_session_spends_a_token_bound_to_the_prompt(
 ) -> None:
     prompt = "Draft the order spec from the request."
     digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-    dispatched(project, runner.issue_token("r1", "specify", digest, "agent"))
+    dispatched(project, runner.issue_token("r1", "specify", digest, "agent", "s-1"))
     assert spawn(project, "chief", prompt=prompt).verdict == "allow"
     # Spent: the same record cannot start a second agent.
     again = spawn(project, "chief", prompt=prompt)
@@ -393,7 +393,7 @@ def test_a_dispatched_session_without_a_matching_token_is_refused(
     project: Path, runner: Runner, tool: str
 ) -> None:
     digest = hashlib.sha256(b"the rendered prompt").hexdigest()
-    dispatched(project, runner.issue_token("r1", "specify", digest, "agent"))
+    dispatched(project, runner.issue_token("r1", "specify", digest, "agent", "s-1"))
     verdict = spawn(project, "chief", tool, prompt="some other prompt")
     assert (verdict.verdict, verdict.check) == ("deny", "handoff-guard")
     assert "burned" in verdict.reason
@@ -435,7 +435,7 @@ def test_a_registered_script_with_the_runner_s_token_is_allowed(
     project: Path, runner: Runner
 ) -> None:
     digest = hashlib.sha256(BODY.encode("utf-8")).hexdigest()
-    token = runner.issue_token("r1", "specify", digest, "workflow")
+    token = runner.issue_token("r1", "specify", digest, "workflow", "s-1")
     dispatched(project, token)
     record = project / ".git" / "agents" / "dispatch" / "s-1.json"
     data = json.loads(record.read_text("utf-8"))

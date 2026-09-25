@@ -925,14 +925,18 @@ class Runner:
         (folder / USED).mkdir(parents=True, exist_ok=True, mode=UNIX_PERMS_STORE)
         return folder
 
-    def issue_token(self, run_id: str, stage: str, sha256: str, kind: TokenKind) -> str:
-        """A single-use token bound to the run, the stage and the sha256 of the
-        exact bytes it authorises (a prompt or a Workflow script). Called by the
-        run loop in this process only; the store keeps its hash, never the token."""
+    def issue_token(
+        self, run_id: str, stage: str, sha256: str, kind: TokenKind, session_id: str
+    ) -> str:
+        """A single-use token bound to the run, the stage, the session the run
+        loop starts for it and the sha256 of the exact bytes it authorises (a
+        prompt or a Workflow script). Called by the run loop in this process
+        only; the store keeps its hash, never the token."""
         for label, value, pattern in (
             ("run id", run_id, ID_PATTERN),
             ("stage", stage, ID_PATTERN),
             ("sha256", sha256, SHA256_HEX),
+            ("session id", session_id, SESSION_PATTERN),
         ):
             if not re.match(pattern, value):
                 raise RunnerError(f"{label} {value!r} does not match {pattern}")
@@ -942,6 +946,7 @@ class Runner:
             "stage": stage,
             "sha256": sha256,
             "kind": kind,
+            "session_id": session_id,
             "issued": utc_text(),
         }
         path = self.tokens() / f"{hashlib.sha256(token.encode()).hexdigest()}.json"
@@ -954,7 +959,9 @@ class Runner:
         """Spend a token once. The rename is atomic, so of two consumers of the
         same token one wins and the other finds nothing; a token presented with
         the wrong binding is moved to used all the same, so a guessed hash
-        cannot be retried."""
+        cannot be retried. The session is part of the binding: every dispatched
+        session can read the others' records in the worker store, so a token
+        copied into another session's record is burned, never spent."""
         folder = self.tokens()
         name = f"{hashlib.sha256(request.token.encode()).hexdigest()}.json"
         used = folder / USED / name
@@ -972,7 +979,7 @@ class Runner:
             ) from exc
         wrong = [
             f"{key} {getattr(request, key)!r} is not the {key} it was issued for"
-            for key in ("run_id", "stage", "sha256", "kind")
+            for key in ("run_id", "stage", "sha256", "kind", "session_id")
             if record.get(key) != getattr(request, key)
         ]
         spent = {
