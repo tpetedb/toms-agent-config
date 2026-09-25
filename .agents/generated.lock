@@ -20,7 +20,7 @@ schema_version = 1
 ".agents/config/models.toml" = "3c67467b3ef3a4a5a18e44085349b04d6820a179b9c7c6f5152539121c84ff62"
 ".agents/config/network.toml" = "74b9a81741b4ef613a2297625d817d1c85a36864734fe987cb20b0629d7b9bd9"
 ".agents/config/pipelines/board.toml" = "1204ac9c21eb18d102a3e0baf6975f1829fa67242d9512f34565c90b23dfd9ff"
-".agents/config/pipelines/order.toml" = "dee066f8954e9091bf4e92b6f7d5326d619d62f746e7818734766cc4ac13740b"
+".agents/config/pipelines/order.toml" = "4aab6b151bab2a8b4d1b4fc1d84b55e2055f0b7eac80c743b67efbb56683bdb4"
 ".agents/config/pipelines/release.toml" = "809ab24d77092a2db9b6017dfd6d142bff26e7bfd840a7ce4b9a3f021df88548"
 ".agents/config/pipelines/retro.toml" = "1d5b8b602f80d56b4af355b4fba4198f24f2465dd15e0d6f367f522e1be35c6c"
 ".agents/config/pipelines/review.toml" = "4fd733f3d97ab40a5ff7a23f575fffb5ea30ee84284e658569635abd3ea368d3"
@@ -37,7 +37,7 @@ schema_version = 1
 ".agents/config/roles/scout.toml" = "9bdaf08792159950ce3c4907770ff1852c05c15e400a0c9d66b7056e770b614b"
 ".agents/config/runtime.toml" = "42f91290afea8a3c6c450bdb288f5a7ba17543a1c0a26421ea6282baa5441821"
 ".agents/config/standards.toml" = "62936d92098c954ead3c87ab2a1cc2dc9e2694a4b0934dea75de08aa874b34aa"
-".agents/config/teams.toml" = "2560ec12358ab295c581502d90620989110cca66caf50a5c907a1f364c567245"
+".agents/config/teams.toml" = "13aa0a4d9b653dc7f364cef8bc6076859ff25d1b5d76fea968cffdaa47d45dbd"
 ".agents/context/brief.md" = "a528bc9c81526f63124a818202fd1ffa4b6f4a6c5421f0d2d786da3bfe96bc16"
 ".agents/context/claude.md" = "cff1c2de685136f7e1a078c1287cb2438537ea3618832f9825e7944d02b300c5"
 

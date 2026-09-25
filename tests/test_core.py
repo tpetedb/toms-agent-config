@@ -362,7 +362,7 @@ def test_a_team_cannot_outgrow_the_host_budget(camp: Path) -> None:
 
 
 def test_a_team_skill_must_exist(camp: Path) -> None:
-    edit(camp, TEAMS_FILE, 'skills = ["work-order"]', 'skills = ["no-such-skill"]')
+    edit(camp, TEAMS_FILE, '"work-order",', '"no-such-skill",')
     refused(camp, "skill 'no-such-skill'")
 
 
