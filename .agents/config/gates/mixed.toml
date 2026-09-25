@@ -1,0 +1,20 @@
+# =============================================================================
+# config/gates/mixed.toml: the gate pack for project.kind = "mixed".
+# Several kinds at once: the packs named in includes all apply.
+# The pack is the minimum the project promises on top of the standards
+# registry, not a certificate of production readiness. Each check is an argv
+# run without a shell; argv[0] is `just`, and the project's justfile provides
+# the recipe. A pack never requires a deferred tool: such a check is written
+# with enabled = false and the open question it waits on. Unknown keys fail loudly.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+# Must equal the file name; [project] kind in .agents/config.toml picks the pack:
+# app | tool | library | data-pipeline | document | mixed.
+kind = "mixed"
+# One line on what a project of this kind ships.
+description = "A repository that ships more than one kind of artefact."
+# Other packs whose checks also apply, by kind: app | tool | library | data-pipeline | document.
+includes = ["app", "tool", "library", "data-pipeline", "document"]
+# The checks of this pack's own; mixed has none beyond its includes.
+checks = {}

@@ -1,0 +1,31 @@
+{# output: .claude/settings.json #}
+# Parsed and written as JSON by tac sync. Keys are Claude Code's own:
+# https://code.claude.com/docs/en/settings-reference
+"$schema" = "https://json.schemastore.org/claude-code-settings.json"
+
+[env]
+{% for name, value in claude.env.items() %}
+{{ name }} = {{ value | toml }}
+{% endfor %}
+
+[permissions]
+defaultMode = {{ claude.default_mode | toml }}
+{% if claude.disable_bypass %}
+disableBypassPermissionsMode = "disable"
+{% endif %}
+deny = {{ claude.deny_rules | toml }}
+
+[sandbox]
+enabled = {{ claude.sandbox_enabled | toml }}
+failIfUnavailable = {{ claude.fail_if_unavailable | toml }}
+allowUnsandboxedCommands = {{ claude.allow_unsandboxed | toml }}
+
+[sandbox.filesystem]
+denyRead = {{ claude.deny_read | toml }}
+denyWrite = {{ claude.deny_write | toml }}
+
+[sandbox.network]
+allowedDomains = {{ claude.allowed_domains | toml }}
+
+# The guard's wiring arrives with order 3, tac-hooks (M2).
+[hooks]

@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "DISABLE_ERROR_REPORTING": "1",
+    "DISABLE_FEEDBACK_COMMAND": "1",
+    "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1",
+    "GH_TELEMETRY": "false"
+  },
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "disableBypassPermissionsMode": "disable",
+    "deny": [
+      "Read(*.env)",
+      "Read(**/secrets/**)",
+      "Read(*.pem)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.config/gh/**)",
+      "Read(~/.config/toms-agent-config/toms-agent-config/**)",
+      "Read(~/.local/state/tac/**)",
+      "Edit(/.agents/**)",
+      "Edit(/.codex/**)",
+      "Edit(/.claude/agents/builder.md)",
+      "Edit(/.claude/agents/chief.md)",
+      "Edit(/.claude/agents/director.md)",
+      "Edit(/.claude/agents/manager.md)",
+      "Edit(/.claude/agents/reviewer.md)",
+      "Edit(/.claude/agents/scout.md)",
+      "Edit(/.claude/settings.json)",
+      "Edit(/.codex/agents/builder.toml)",
+      "Edit(/.codex/agents/director.toml)",
+      "Edit(/.codex/agents/manager.toml)",
+      "Edit(/.codex/agents/reviewer.toml)",
+      "Edit(/.codex/agents/scout.toml)",
+      "Edit(/.codex/config.toml)",
+      "Edit(/AGENTS.md)",
+      "Edit(/CLAUDE.md)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "filesystem": {
+      "denyRead": [
+        "./**/*.env",
+        "./**/secrets",
+        "./**/*.pem",
+        "~/.ssh",
+        "~/.aws",
+        "~/.config/gh",
+        "~/.config/toms-agent-config/toms-agent-config",
+        "~/.local/state/tac"
+      ],
+      "denyWrite": [
+        "./.agents",
+        "./.codex",
+        "./.claude/agents/builder.md",
+        "./.claude/agents/chief.md",
+        "./.claude/agents/director.md",
+        "./.claude/agents/manager.md",
+        "./.claude/agents/reviewer.md",
+        "./.claude/agents/scout.md",
+        "./.claude/settings.json",
+        "./.codex/agents/builder.toml",
+        "./.codex/agents/director.toml",
+        "./.codex/agents/manager.toml",
+        "./.codex/agents/reviewer.toml",
+        "./.codex/agents/scout.toml",
+        "./.codex/config.toml",
+        "./AGENTS.md",
+        "./CLAUDE.md",
+        "~/.local/state/tac"
+      ]
+    },
+    "network": {
+      "allowedDomains": [
+        "pypi.org",
+        "files.pythonhosted.org",
+        "github.com",
+        "api.github.com",
+        "codeload.github.com",
+        "objects.githubusercontent.com",
+        "registry.npmjs.org"
+      ]
+    }
+  },
+  "hooks": {}
+}

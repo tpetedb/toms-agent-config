@@ -1,0 +1,15 @@
+{
+  "order_id": "docs-intro",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "summary": "Wrote the intro page.",
+  "changed_paths": [
+    "docs/intro.md"
+  ],
+  "checks": [
+    {
+      "command": "just work-check docs-intro",
+      "exit": 0
+    }
+  ],
+  "open_items": []
+}

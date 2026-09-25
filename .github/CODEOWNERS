@@ -1,0 +1,34 @@
+# Changes to the checker, its policy or its wiring need the owner's review.
+# Anything not listed here is reviewed under the ordinary rules.
+/.agents/                   @tpetedb
+/src/tac/                   @tpetedb
+/hooks/                     @tpetedb
+/templates/                 @tpetedb
+/contracts/                 @tpetedb
+/AGENTS.md                  @tpetedb
+/CLAUDE.md                  @tpetedb
+/.claude/                   @tpetedb
+/.codex/                    @tpetedb
+/.github/                   @tpetedb
+/justfile                   @tpetedb
+/.pre-commit-config.yaml    @tpetedb
+/pyproject.toml             @tpetedb
+/conftest.py                @tpetedb
+/bootstrap.sh               @tpetedb
+/scripts/                   @tpetedb
+/tests/conftest.py          @tpetedb
+/mise.toml                  @tpetedb
+/uv.lock                    @tpetedb
+/.python-version            @tpetedb
+# What CI runs from. On pull_request the workflow and these scripts are the
+# candidate's copy, so the owner's review is their gate; tac doctor names a gap.
+/.github/workflows/         @tpetedb
+/.github/CODEOWNERS         @tpetedb
+/scripts/ci_*.sh            @tpetedb
+/scripts/private_scan.sh    @tpetedb
+/scripts/private_scan.py    @tpetedb
+# The term list the scan reads, and the one path whose content it skips.
+/scripts/private_terms.txt  @tpetedb
+# Attributes decide what git treats as binary and how it checks files out, at
+# any depth, so a bare name owns every one of them.
+.gitattributes              @tpetedb

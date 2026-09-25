@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "board-question",
+  "description": "The entry payload of the board pipeline: one question the board convenes on, written by the chief from what triggered it.",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "A short title for the question."
+    },
+    "question": {
+      "type": "string",
+      "description": "The question the board must answer, in one or two sentences."
+    },
+    "context": {
+      "type": "string",
+      "description": "What the directors need to know: the change, the finding or the dispute, with links."
+    },
+    "trigger": {
+      "type": "string",
+      "enum": [
+        "loosens-policy",
+        "touches-checker",
+        "security-finding",
+        "cross-team-dispute",
+        "unresolved-finding"
+      ],
+      "description": "Why the board convenes; it convenes on nothing else."
+    },
+    "raised_by": {
+      "type": "string",
+      "description": "The role or order that raised the question."
+    }
+  },
+  "required": [
+    "title",
+    "question",
+    "context",
+    "trigger",
+    "raised_by"
+  ],
+  "additionalProperties": false
+}

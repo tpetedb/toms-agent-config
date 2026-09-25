@@ -1,0 +1,33 @@
+# Environments: built by bootstrap, the runner or CI, never committed.
+.venv/
+.agents/.venv/
+
+# Runtime state lives in the git common dir or the controller store; a local
+# runtime/ folder is a mistake to keep out, not a place to use.
+runtime/
+
+# The real secrets file lives outside the repository; keep a stray copy out.
+agents.env
+*.env
+
+# Python and tool caches.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Test artefacts and editor noise.
+tests/out/
+.DS_Store
+
+# What tac work measures next to an order: never committed.
+work/orders/*/result.json
+work/orders/*/touched.json
+work/orders/*/repair.md
+
+# What tac sync makes locally and never commits: per-skill links, local settings.
+.claude/skills/
+.claude/settings.local.json

@@ -1,0 +1,90 @@
+[project]
+name = "tac"
+version = "0.1.0"
+description = "One authored .agents/ tree that every coding-agent harness is made to obey."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "click>=8.2",
+  "cryptography>=45",
+  "jinja2>=3.1",
+  "jsonschema>=4.26.0",
+  "pydantic>=2.11",
+]
+
+[project.scripts]
+tac = "tac.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.8,<1"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+  "actionlint-py>=1.7.12.25",
+  "basedpyright>=1.31",
+  "pytest>=8.4",
+  "pyyaml>=6.0",
+  "ruff>=0.13",
+  "shellcheck-py>=0.11.0.1",
+  "towncrier>=25.8",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+# The stamped copy is generated from src/tac and judged there, not twice.
+extend-exclude = [".agents/lib"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.basedpyright]
+typeCheckingMode = "basic"
+pythonVersion = "3.12"
+include = ["src", "tests", "scripts"]
+exclude = [".agents", "**/.venv", "**/__pycache__"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+
+[tool.towncrier]
+name = "toms-agent-config"
+directory = "changelog.d"
+filename = "CHANGELOG.md"
+start_string = "<!-- towncrier release notes start -->\n"
+title_format = "## [{version}] - {project_date}"
+issue_format = ""
+underlines = ["", "", ""]
+
+[[tool.towncrier.type]]
+directory = "added"
+name = "Added"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "changed"
+name = "Changed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "deprecated"
+name = "Deprecated"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "removed"
+name = "Removed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "fixed"
+name = "Fixed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "security"
+name = "Security"
+showcontent = true

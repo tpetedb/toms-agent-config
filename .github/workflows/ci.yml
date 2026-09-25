@@ -1,0 +1,141 @@
+# Judges every pull request with a read-only token. Never pull_request_target:
+# a head checkout with a write token would let a candidate run with trust.
+#
+# Two jobs, both required by the ruleset. `verify` runs the candidate's own
+# code: its environment, lints, types and tests. `gates` never runs candidate
+# code: it takes the base and the head from the event payload by commit id, runs
+# only gate scripts taken from that base, and reads the candidate tree as data.
+# Each job has its own runner, so nothing a candidate test does (moving a ref,
+# writing a file, poisoning a cache) reaches the gates (docs/DESIGN.md, 8).
+name: ci
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Sync the candidate environment
+        run: uv sync --frozen
+      - name: Build the deployed toolchain from its named source
+        run: uv sync --frozen --no-editable --project .agents
+      - name: Workflow lint
+        run: uv run --frozen actionlint
+      - name: Shell lint
+        run: uv run --frozen shellcheck bootstrap.sh scripts/*.sh
+      - name: Ruff lint
+        run: uv run --frozen ruff check .
+      - name: Ruff format
+        run: uv run --frozen ruff format --check .
+      - name: Types
+        run: uv run --frozen basedpyright
+      - name: Tests
+        # Linux has no Seatbelt, so the gate and probe confinement tests skip
+        # here; a macOS host run is their evidence (docs/evidence/m0-host-run.md).
+        run: uv run --frozen pytest -q
+      - name: Generated files match the lock, judged by the deployed checker
+        run: uv run --frozen --no-sync --project .agents tac check
+      - name: Pipelines are sound, judged by the deployed checker
+        run: uv run --frozen --no-sync --project .agents tac pipeline check
+
+  # No step here runs the candidate's code: no uv sync of its project, no test,
+  # no script from its checkout. tests/test_ci_gates.py holds every step to that.
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The base commit, the head commit and every commit between them have
+          # to be here: the gates read the range and take scripts from the base.
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          # Named here, so no uv.toml or pyproject.toml in the candidate picks
+          # the uv that builds the base's checker; mise.toml pins the same one.
+          version: "0.12.18"
+          # No cache: one the verify job saved could carry what a candidate test
+          # wrote into it.
+          enable-cache: false
+      - name: Take the gate scripts from the base revision
+        # The base commit comes from the event payload, never from a ref in this
+        # clone, so nothing can move it. The checkout is the candidate's, so a
+        # gate script run from it could be edited to exit 0; the base's copy runs
+        # instead. A base that predates a script (the pull request that adds it,
+        # and the bootstrap pull requests #1, #2 and #4) runs the candidate's
+        # copy and says so; those need the owner's direct review. This workflow
+        # file is the candidate's too: CODEOWNERS on /.github/ and the ruleset's
+        # required owner review protect it (docs/DESIGN.md, 8).
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GATES: >-
+            private_scan.sh private_scan.py private_terms.txt
+            ci_work_from_base.sh ci_config_from_base.sh ci_verify_receipts.sh
+        run: |
+          git rev-parse --verify --quiet "$BASE_SHA^{commit}" >/dev/null || {
+            echo "::error::the base commit ${BASE_SHA:0:12} of the event is not in this clone"
+            exit 1
+          }
+          mkdir -p "$RUNNER_TEMP/gates"
+          for name in $GATES; do
+            if git cat-file -e "$BASE_SHA:scripts/$name" 2>/dev/null; then
+              git show "$BASE_SHA:scripts/$name" > "$RUNNER_TEMP/gates/$name"
+            else
+              echo "::warning::the base revision ${BASE_SHA:0:12} has no scripts/$name; the candidate's copy runs, and the owner's review is the gate"
+              cp "scripts/$name" "$RUNNER_TEMP/gates/$name"
+            fi
+          done
+      - name: Private scan of every commit, the base revision's term list
+        # Every blob each commit of the pull request adds or changes, the tip's
+        # tree, every commit message and the branch name: a term added in one
+        # commit and removed in the next is still public in the history. A base
+        # whose scan predates the range mode (it has no private_terms.txt) runs
+        # that scan over the final tree; the owner's review covers the history.
+        # The branch name reaches the scan as a variable, never as script text.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if git cat-file -e "$BASE_SHA:scripts/private_scan.sh" 2>/dev/null &&
+            ! git cat-file -e "$BASE_SHA:scripts/private_terms.txt" 2>/dev/null; then
+            echo "::warning::the base revision ${BASE_SHA:0:12} has the older private scan; it scans the final tree only, and the owner's review covers the history"
+            bash "$RUNNER_TEMP/gates/private_scan.sh"
+          else
+            bash "$RUNNER_TEMP/gates/private_scan.sh" --range "$BASE_SHA..$HEAD_SHA" --branch "$HEAD_REF"
+          fi
+      - name: Work orders are readable, reviewed and inside their files
+        # Judged by the base revision's checker, never the candidate's. A branch
+        # name is chosen by whoever opens the pull request, so it reaches the
+        # shell as a variable and never as script text.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: bash "$RUNNER_TEMP/gates/ci_work_from_base.sh" "$BASE_SHA" "$HEAD_REF"
+      - name: The floor only tightens, judged by the base revision's checker
+        # The base's floor and the base's config checker, never the candidate's,
+        # so a pull request cannot loosen the floor and rewrite its judge.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash "$RUNNER_TEMP/gates/ci_config_from_base.sh" "$BASE_SHA"
+      - name: Committed receipts verify with the base revision's verifier and key
+        # The verifier and runner.pub both come from the base commit, never the
+        # candidate tree, so a pull request can bring neither the key nor the
+        # code its own receipts are judged by.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash "$RUNNER_TEMP/gates/ci_verify_receipts.sh" "$BASE_SHA" "$GITHUB_REPOSITORY"

@@ -1,0 +1,1 @@
+The configuration layer now reads `.agents/config/receipts.toml` through the same model CI judges receipts with, so `tac config show` prints what the acceptance gate expects, a typo in the file fails loudly, every key carries its comment, and `contracts/config/receipts.schema.json` is its JSON Schema.

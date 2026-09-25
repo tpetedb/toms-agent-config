@@ -1,0 +1,86 @@
+# =============================================================================
+# config/pipelines/board.toml: the board decides a question the agents may not.
+# It convenes only on [governance] board_triggers in .agents/config.toml. The
+# lead director designs, each other director critiques independently, the lead
+# revises, the tally is counted, the chief proposes and the owner rules; the
+# owner's ruling supersedes everything. Stage keys are explained in full in
+# config/pipelines/order.toml. Unknown keys fail loudly.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+# Must equal the file name and be listed in [pipelines] enabled:
+# order | board | review | release | retro.
+name = "board"
+# One line on what a run of this pipeline achieves, printed by tac pipeline plan.
+description = "the board decides a question that loosens policy or touches the checker"
+# The payloads a run starts with, by contract under contracts/handoffs/.
+entry_contracts = ["board-question"]
+
+# The lead director writes a position.
+[[stages]]
+id = "design"                           # the stage id, unique in the pipeline
+kind = "agent"                          # agent | gate | effect | human
+role = "director"                       # the role charter it runs as
+seats = "lead"                          # which director seats run it: lead (the lead in models.toml) | others (every other seat, independently)
+reads = ["board-question"]              # the contracts it reads
+writes = "position"                     # the contract its result must pass
+template = "handoffs/design.md.j2"      # the prompt template under templates/
+on_fail = "repair-once-then-human"      # repair-once-then-human | human | stop
+
+# Each other director critiques the position, without seeing the others.
+[[stages]]
+id = "review"                           # the stage id, unique in the pipeline
+kind = "agent"                          # agent | gate | effect | human
+role = "director"                       # the role charter it runs as
+seats = "others"                        # lead | others: one fresh session per other seat
+depends_on = ["design"]                 # the stages that finish first
+reads = ["board-question", "position"]  # the contracts it reads
+writes = "critique"                     # the contract its result must pass
+template = "handoffs/critique.md.j2"    # the prompt template under templates/
+on_fail = "repair-once-then-human"      # repair-once-then-human | human | stop
+
+# The lead director revises the position against the critiques; one round only.
+[[stages]]
+id = "revise"                           # the stage id, unique in the pipeline
+kind = "agent"                          # agent | gate | effect | human
+role = "director"                       # the role charter it runs as
+seats = "lead"                          # lead | others
+depends_on = ["review"]                 # the stages that finish first
+reads = ["board-question", "position", "critique"]   # the contracts it reads; the position is the lead's first one
+writes = "position"                     # the contract its result must pass
+template = "handoffs/revise.md.j2"      # the prompt template under templates/
+on_fail = "repair-once-then-human"      # repair-once-then-human | human | stop
+
+# The tally, compiled by the seat [governance] tally_by names, never the proposer.
+[[stages]]
+id = "decide"                           # the stage id, unique in the pipeline
+kind = "gate"                           # agent | gate | effect | human
+depends_on = ["revise"]                 # the stages that finish first
+on_fail = "human"                       # repair-once-then-human | human | stop
+
+# A majority of three decides and the dissent is recorded; the automated tally is M8.
+[[stages.gates]]
+argv = ["just", "board-tally"]          # the command, run without a shell; argv[0] is just
+args_from = ["run_id"]                  # run values appended to argv, any of: order_id | run_id | local_checks
+waits_on = "M8"                         # the milestone or question that adds the recipe, like M8 or Q13; a run refuses the pipeline until then
+
+# The chief writes the proposal and its TODO.HUMAN.md items.
+[[stages]]
+id = "propose"                          # the stage id, unique in the pipeline
+kind = "agent"                          # agent | gate | effect | human
+role = "chief"                          # the role charter it runs as
+depends_on = ["decide"]                 # the stages that finish first
+reads = ["board-question", "position"]  # the contracts it reads
+bind = { position = "revise" }          # which upstream stage a contract comes from when two write it: position from revise, not design
+writes = "proposal"                     # the contract its result must pass
+template = "handoffs/propose.md.j2"     # the prompt template under templates/
+on_fail = "repair-once-then-human"      # repair-once-then-human | human | stop
+
+# The owner rules; the ruling is recorded as a decision with basis owner.
+[[stages]]
+id = "rule"                             # the stage id, unique in the pipeline
+kind = "human"                          # agent | gate | effect | human
+depends_on = ["propose"]                # the stages that finish first
+reads = ["proposal"]                    # the contracts the owner is shown
+asks = "Rule on the board's proposal: accept it, reject it, or send it back with a question."   # the question, rendered into TODO.HUMAN.md
+owner_actions = ["approve", "loosen-policy"]   # what only the owner does here, each in policy.toml owner_only

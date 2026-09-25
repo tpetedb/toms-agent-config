@@ -1,0 +1,18 @@
+# Stamped from the root pyproject.toml by scripts/stamp_lib.py; do not edit.
+
+[project]
+name = "tac"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["click>=8.2", "cryptography>=45", "jinja2>=3.1", "jsonschema>=4.26.0", "pydantic>=2.11"]
+
+[project.scripts]
+tac = "tac.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.8,<1"]
+build-backend = "uv_build"
+
+[tool.uv]
+# Rebuild the wheel when a module changes, not only when this file does.
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.py" }]

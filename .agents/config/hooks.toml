@@ -1,0 +1,76 @@
+# =============================================================================
+# config/hooks.toml: what the harness hooks run (layer 2, design section 9).
+# Every rendered hook calls the stamped guard, never the source hooks/run.py,
+# with absolute trusted executables, a fixed environment and `python -I`, so a
+# module, a PATH shim or a project config an agent wrote changes nothing about
+# what runs (build condition C2). Hooks are reminders and early refusals; CI
+# and the ruleset are the gate. M2 (tac-hooks) renders and probes this file.
+# Unknown keys fail loudly.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+
+# ---- guard: how a hook starts the guard.
+[guard]
+script = ".agents/hooks/run.py"           # the stamped guard, relative to the repository root; never the source hooks/run.py
+python = "/usr/bin/python3"               # an absolute interpreter the owner trusts; macOS ships 3.9 there, and the guard is 3.9 compatible
+isolated = true                           # run Python with -I: no script directory, no user site-packages, PYTHON* ignored
+# The only PATH a hook command sees: absolute system folders, never a project one.
+path = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+deadline_s = 8                            # the guard's own deadline, kept under timeout_s so it answers before the client gives up
+timeout_s = 10                            # the hook timeout rendered for the client; a timed-out Claude hook lets the call continue
+
+# ---- checks: one table per guard check. For each:
+#   event: when it fires, PreToolUse | PostToolUse | SessionStart | SubagentStart | Stop;
+#   kind: deny (exit 2 refuses the call) | reminder (exit 0 with a message) | record (exit 0, journals only);
+#   claude, codex: the tool matcher on that client; empty means not wired on that
+#   client in release 1, until M2 proves the client's tool names with a probe.
+
+# An edit outside the paths the current order owns.
+[checks.owned-paths]
+event = "PreToolUse"                      # PreToolUse | PostToolUse | SessionStart | SubagentStart | Stop
+kind = "deny"                             # deny | reminder | record
+claude = "Edit|Write|MultiEdit|NotebookEdit"   # Claude's file-editing tools
+codex = ""                                # not wired until M2 probes Codex's edit tool name
+
+# A read of a secret: *.env, secrets folders, keys, cloud credentials.
+[checks.secret-read]
+event = "PreToolUse"                      # PreToolUse | PostToolUse | SessionStart | SubagentStart | Stop
+kind = "deny"                             # deny | reminder | record
+claude = "Read|Grep|Glob"                 # Claude's reading tools
+codex = ""                                # not wired until M2 probes Codex's read tool name
+
+# An edit to a path generated.lock lists: regenerate with tac sync instead.
+[checks.generated-paths]
+event = "PreToolUse"                      # PreToolUse | PostToolUse | SessionStart | SubagentStart | Stop
+kind = "deny"                             # deny | reminder | record
+claude = "Edit|Write|MultiEdit|NotebookEdit"   # Claude's file-editing tools
+codex = ""                                # not wired until M2 probes Codex's edit tool name
+
+# A native subagent spawn without a valid single-use dispatch token (section 5).
+[checks.handoff-guard]
+event = "PreToolUse"                      # PreToolUse | PostToolUse | SessionStart | SubagentStart | Stop
+kind = "deny"                             # deny | reminder | record
+claude = "Agent|Task"                     # the current and former names of Claude's subagent tool
+codex = "spawn_agent"                     # Codex's subagent tool
+
+# A subagent start, recorded only: SubagentStart cannot block in either client.
+[checks.spawn-record]
+event = "SubagentStart"                   # PreToolUse | PostToolUse | SessionStart | SubagentStart | Stop
+kind = "record"                           # deny | reminder | record
+claude = "*"                              # every subagent start
+codex = "*"                               # every subagent start
+
+# A session that stops with its order's acceptance still failing.
+[checks.order-check]
+event = "Stop"                            # PreToolUse | PostToolUse | SessionStart | SubagentStart | Stop
+kind = "reminder"                         # deny | reminder | record
+claude = "*"                              # every stop
+codex = "*"                               # every stop
+
+# ---- git: the prek hooks installed from hooks/git/ (layer 3a), by name, in order.
+[git]
+# Before a commit: formatting, lint, the staged check, the secret scan, TOML and Markdown.
+pre_commit = ["ruff-format", "ruff-check", "tac-check-staged", "gitleaks", "taplo", "rumdl"]
+commit_msg = ["tac-check-commit-msg"]     # the message against [commits] in config/standards.toml
+pre_push = ["fast-tests", "tac-check"]    # the fast tests and the full check before anything leaves the machine

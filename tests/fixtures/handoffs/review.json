@@ -1,0 +1,15 @@
+{
+  "order_id": "docs-intro",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "verdict": "accept",
+  "summary": "The page says what the tool does and the check passes.",
+  "findings": [
+    {
+      "severity": "low",
+      "path": "docs/intro.md",
+      "line": 3,
+      "summary": "One sentence runs long.",
+      "detail": "Split the third sentence in two."
+    }
+  ]
+}

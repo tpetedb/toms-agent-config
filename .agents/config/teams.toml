@@ -1,0 +1,98 @@
+# =============================================================================
+# .agents/config/teams.toml: the teams, the paths each answers for, and the
+# knobs of `tac work`. A path belongs to the FIRST team below that covers it, so
+# the specific teams come before the general ones. `dir/` is everything under
+# it; anything else is a glob. An order owns files of its own team; files of
+# another team go in its `cross` list and need that team's sign-off.
+# Unknown keys and values of the wrong type fail loudly ("8" is not 8).
+# work/README.md explains the orders.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+
+# ---- work: the knobs of `tac work` that hold for every team.
+[work]
+# The branch orders are measured against and landed on.
+base = "origin/main"
+# Any team may own a test file; two active orders still may not own the same one.
+shared = ["tests/"]
+# What any order may touch besides what it owns: the changelog fragment every
+# product change carries and the stamped copy with its lock. `tac work` adds
+# .agents/generated.lock and every output it lists, so those are not named here.
+anyone = ["changelog.d/", ".agents/lib/tac/", ".agents/uv.lock"]
+# A criterion may run a whole battery; a hung one must still end.
+check_timeout_s = 1500
+# All of an order's criteria together when a stop hook runs them, kept under
+# the hook's own time limit so the tool ends them, with a reason.
+stop_budget_s = 1500
+# How many agents an order remembers in touched.json, newest edit last.
+touched_keep = 32
+# "other": a review counts only from the provider that did not build the order.
+# "any" drops that rule, for a project with one provider, or one adopting tac
+# whose existing orders were written before orders named a provider.
+review_provider = "other"
+
+# ---- work.repair: the bounded builder turn of `just work-repair <id>`.
+[work.repair]
+# One bounded builder turn for `just work-repair <id>`: argv run without a
+# shell, the rendered handoff on stdin, `{order}` and `{max_turns}` the only
+# placeholders. Deferred, and empty until `tac launch` exists: a headless turn
+# needs the rendered settings overlay and MCP file (M1) and the owner's billing
+# answer Q16 (M3), so no default `claude -p` line is guessed here. Until then
+# the handoff is written to work/orders/<id>/repair.md and the check runs again.
+argv = []
+timeout_s = 1800                          # seconds before the repair turn is ended
+max_turns = 30                            # model turns the repair turn may take, passed as {max_turns}
+
+# ---- teams: one [teams.<id>] table per team. A standing team has no
+# `expires`; a spin-up team adds `expires = "YYYY-MM-DD"` (ISO 8601) and takes
+# no new orders after that day. Each team names its title, the paths it owns,
+# its tests, its manager, its builder budget, model overrides, skills and cost cap.
+
+# The tac package and what it ships.
+[teams.core]
+title = "The tac package and what it ships: CLI, runner, hook guard, templates, contracts"  # one line on what it answers for
+owns = ["src/", "hooks/", "templates/", "contracts/"]   # the paths it answers for, `dir/` or a glob
+tests = ["tests/test_cli.py", "tests/test_doctor_exit.py", "tests/test_work.py"]   # the test files that cover its paths
+manager = "core-manager"                  # the manager who splits its goals and signs off cross-team changes
+max_workers = 2                           # builders at once, never above [teams] max_local_agents
+models = {}                               # role = model id overrides for this team; empty uses config/models.toml
+skills = ["work-order"]                   # skills under .agents/skills/ its workers are given
+budget_usd = 20.0                         # the cost cap handed to one headless turn of this team
+
+# How the work is done here.
+[teams.harness]
+title = "How the work is done here: the agent tree, CI, scripts, tooling, the orders"  # one line on what it answers for
+# The paths it answers for, `dir/` or a glob.
+owns = [
+  ".agents/",
+  ".github/",
+  "scripts/",
+  "work/",
+  "justfile",
+  "bootstrap.sh",
+  "mise.toml",
+  "pyproject.toml",
+  "uv.lock",
+  ".gitignore",
+  ".python-version",
+  "CHANGELOG.md",
+  "changelog.d/",
+]
+tests = ["tests/test_scaffolding.py", "tests/test_work.py"]   # the test files that cover its paths
+manager = "harness-manager"               # the manager who splits its goals and signs off cross-team changes
+max_workers = 2                           # builders at once, never above [teams] max_local_agents
+models = {}                               # role = model id overrides for this team; empty uses config/models.toml
+skills = ["work-order"]                   # skills under .agents/skills/ its workers are given
+budget_usd = 20.0                         # the cost cap handed to one headless turn of this team
+
+# What a reader is told.
+[teams.docs]
+title = "What a reader is told: the design, the board, the README, the owner's list"  # one line on what it answers for
+owns = ["docs/", "*.md", "LICENSE"]       # the paths it answers for, `dir/` or a glob
+tests = ["tests/test_scaffolding.py"]     # the test files that cover its paths
+manager = "docs-manager"                  # the manager who splits its goals and signs off cross-team changes
+max_workers = 1                           # builders at once, never above [teams] max_local_agents
+models = {}                               # role = model id overrides for this team; empty uses config/models.toml
+skills = ["work-order"]                   # skills under .agents/skills/ its workers are given
+budget_usd = 5.0                          # the cost cap handed to one headless turn of this team

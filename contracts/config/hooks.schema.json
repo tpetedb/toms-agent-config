@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "GitHooks": {
+      "additionalProperties": false,
+      "properties": {
+        "commit_msg": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Commit Msg",
+          "type": "array"
+        },
+        "pre_commit": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Pre Commit",
+          "type": "array"
+        },
+        "pre_push": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Pre Push",
+          "type": "array"
+        }
+      },
+      "required": [
+        "pre_commit",
+        "commit_msg",
+        "pre_push"
+      ],
+      "title": "GitHooks",
+      "type": "object"
+    },
+    "Guard": {
+      "additionalProperties": false,
+      "properties": {
+        "deadline_s": {
+          "minimum": 1,
+          "title": "Deadline S",
+          "type": "integer"
+        },
+        "isolated": {
+          "const": true,
+          "title": "Isolated",
+          "type": "boolean"
+        },
+        "path": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minLength": 1,
+          "title": "Path",
+          "type": "array"
+        },
+        "python": {
+          "minLength": 1,
+          "title": "Python",
+          "type": "string"
+        },
+        "script": {
+          "minLength": 1,
+          "title": "Script",
+          "type": "string"
+        },
+        "timeout_s": {
+          "minimum": 1,
+          "title": "Timeout S",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "script",
+        "python",
+        "isolated",
+        "path",
+        "deadline_s",
+        "timeout_s"
+      ],
+      "title": "Guard",
+      "type": "object"
+    },
+    "HookCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "claude": {
+          "title": "Claude",
+          "type": "string"
+        },
+        "codex": {
+          "title": "Codex",
+          "type": "string"
+        },
+        "event": {
+          "enum": [
+            "PreToolUse",
+            "PostToolUse",
+            "SessionStart",
+            "SubagentStart",
+            "Stop"
+          ],
+          "title": "Event",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "deny",
+            "reminder",
+            "record"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event",
+        "kind",
+        "claude",
+        "codex"
+      ],
+      "title": "HookCheck",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "checks": {
+      "additionalProperties": {
+        "$ref": "#/definitions/HookCheck"
+      },
+      "title": "Checks",
+      "type": "object"
+    },
+    "git": {
+      "$ref": "#/definitions/GitHooks"
+    },
+    "guard": {
+      "$ref": "#/definitions/Guard"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "guard",
+    "checks",
+    "git"
+  ],
+  "title": "HooksFile",
+  "type": "object"
+}

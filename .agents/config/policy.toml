@@ -1,0 +1,32 @@
+# =============================================================================
+# config/policy.toml: what no agent may read, write or do, whatever the prompt.
+# Rendered into the Claude sandbox and permission rules and the Codex settings,
+# and applied by the hook guard. The generated paths that generated.lock lists
+# are added to deny_write automatically. Unknown keys fail loudly.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+
+# ---- paths: reads and writes refused to every agent session.
+[paths]
+# Never read: secrets files, keys, cloud and GitHub credentials. Globs; ~ is the home folder.
+deny_read = ["*.env", "**/secrets/**", "*.pem", "~/.ssh/**", "~/.aws/**", "~/.config/gh/**"]
+# Never written by an agent: the authored tree, its stamped toolchain and venv,
+# and all of .codex/, since Codex runs a hooks.json it finds in a trusted project.
+# Hand-maintained files like the justfile stay editable; CODEOWNERS guards them.
+deny_write = [".agents/**", ".codex/**"]
+
+# ---- effects: who performs what leaves the machine.
+[effects]
+# Performed only by the trusted runner, as the machine account, journaled with an idempotency key.
+runner_only = ["commit", "push", "open-pr", "open-issue", "comment", "render"]
+# The owner's own action, never an agent's and never the runner's alone.
+owner_only = ["merge", "release", "approve", "loosen-policy"]
+
+# ---- host: values no host-rendered file may carry. They are allowed only
+# inside a container profile (isolation = container or disposable-container).
+[host]
+refuse_claude_modes = ["bypassPermissions"]          # Claude defaultMode values refused on the host, any of: default | acceptEdits | plan | bypassPermissions
+refuse_unsandboxed_commands = true                    # true refuses allowUnsandboxedCommands = true on the host
+refuse_codex_sandbox = ["danger-full-access"]        # Codex sandbox_mode values refused on the host, any of: read-only | workspace-write | danger-full-access
+refuse_codex_approval = ["never"]                    # Codex approval_policy values refused on the host, any of: on-request | never

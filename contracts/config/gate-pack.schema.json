@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "GateCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minLength": 2,
+          "title": "Argv",
+          "type": "array"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "waits_on": {
+          "pattern": "^(Q[0-9]+)?$",
+          "title": "Waits On",
+          "type": "string"
+        },
+        "why": {
+          "minLength": 1,
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "argv",
+        "why",
+        "enabled",
+        "waits_on"
+      ],
+      "title": "GateCheck",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "checks": {
+      "additionalProperties": {
+        "$ref": "#/definitions/GateCheck"
+      },
+      "title": "Checks",
+      "type": "object"
+    },
+    "description": {
+      "minLength": 1,
+      "title": "Description",
+      "type": "string"
+    },
+    "includes": {
+      "items": {
+        "enum": [
+          "app",
+          "tool",
+          "library",
+          "data-pipeline",
+          "document"
+        ],
+        "type": "string"
+      },
+      "title": "Includes",
+      "type": "array"
+    },
+    "kind": {
+      "enum": [
+        "app",
+        "tool",
+        "library",
+        "data-pipeline",
+        "document",
+        "mixed"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "description",
+    "includes",
+    "checks"
+  ],
+  "title": "GatePack",
+  "type": "object"
+}

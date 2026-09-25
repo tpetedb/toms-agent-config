@@ -1,0 +1,1 @@
+Model ids and efforts in `models.toml` now follow the clients' published docs: Codex builds on `gpt-6-sol` and scouts on `gpt-6-luna`, both clients accept `max`, Codex no longer lists `minimal`, and Codex `ultra` stays out because it delegates past the handoff guard.

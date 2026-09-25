@@ -1,0 +1,184 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "DiagramInventory": {
+      "additionalProperties": false,
+      "properties": {
+        "lifecycles": {
+          "items": {
+            "enum": [
+              "init",
+              "sync",
+              "hook",
+              "memory",
+              "board",
+              "human-loop",
+              "release"
+            ],
+            "type": "string"
+          },
+          "title": "Lifecycles",
+          "type": "array"
+        },
+        "per_pipeline": {
+          "title": "Per Pipeline",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "lifecycles",
+        "per_pipeline"
+      ],
+      "title": "DiagramInventory",
+      "type": "object"
+    },
+    "Issues": {
+      "additionalProperties": false,
+      "properties": {
+        "blank_issues": {
+          "title": "Blank Issues",
+          "type": "boolean"
+        },
+        "comments_from": {
+          "const": "pushers",
+          "title": "Comments From",
+          "type": "string"
+        },
+        "forms": {
+          "items": {
+            "enum": [
+              "bug",
+              "feature",
+              "work-order",
+              "decision",
+              "human-question"
+            ],
+            "type": "string"
+          },
+          "title": "Forms",
+          "type": "array"
+        }
+      },
+      "required": [
+        "forms",
+        "blank_issues",
+        "comments_from"
+      ],
+      "title": "Issues",
+      "type": "object"
+    },
+    "Labels": {
+      "additionalProperties": false,
+      "properties": {
+        "families": {
+          "items": {
+            "enum": [
+              "type",
+              "team",
+              "state",
+              "priority"
+            ],
+            "type": "string"
+          },
+          "title": "Families",
+          "type": "array"
+        },
+        "states": {
+          "items": {
+            "enum": [
+              "queued",
+              "building",
+              "review",
+              "blocked",
+              "landed"
+            ],
+            "type": "string"
+          },
+          "title": "States",
+          "type": "array"
+        }
+      },
+      "required": [
+        "families",
+        "states"
+      ],
+      "title": "Labels",
+      "type": "object"
+    },
+    "Merge": {
+      "additionalProperties": false,
+      "properties": {
+        "match_head_commit": {
+          "const": true,
+          "title": "Match Head Commit",
+          "type": "boolean"
+        },
+        "method": {
+          "const": "squash",
+          "title": "Method",
+          "type": "string"
+        }
+      },
+      "required": [
+        "method",
+        "match_head_commit"
+      ],
+      "title": "Merge",
+      "type": "object"
+    },
+    "Repository": {
+      "additionalProperties": false,
+      "properties": {
+        "default_branch": {
+          "minLength": 1,
+          "title": "Default Branch",
+          "type": "string"
+        },
+        "slug": {
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+          "title": "Slug",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug",
+        "default_branch"
+      ],
+      "title": "Repository",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "diagrams": {
+      "$ref": "#/definitions/DiagramInventory"
+    },
+    "issues": {
+      "$ref": "#/definitions/Issues"
+    },
+    "labels": {
+      "$ref": "#/definitions/Labels"
+    },
+    "merge": {
+      "$ref": "#/definitions/Merge"
+    },
+    "repository": {
+      "$ref": "#/definitions/Repository"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "repository",
+    "merge",
+    "labels",
+    "issues",
+    "diagrams"
+  ],
+  "title": "GitHubFile",
+  "type": "object"
+}

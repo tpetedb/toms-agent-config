@@ -1,0 +1,130 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "Binding": {
+      "additionalProperties": false,
+      "properties": {
+        "order_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9][a-z0-9-]{2,48}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Order Id"
+        },
+        "policy_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Policy Hash",
+          "type": "string"
+        },
+        "repository": {
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+          "title": "Repository",
+          "type": "string"
+        },
+        "revision": {
+          "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$",
+          "title": "Revision",
+          "type": "string"
+        },
+        "run_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "stage": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$",
+          "title": "Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository",
+        "revision",
+        "run_id",
+        "stage",
+        "policy_hash"
+      ],
+      "title": "Binding",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "Receipt": {
+      "additionalProperties": false,
+      "properties": {
+        "binding": {
+          "$ref": "#/definitions/Binding"
+        },
+        "created": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+          "title": "Created",
+          "type": "string"
+        },
+        "key_id": {
+          "pattern": "^[0-9a-f]{16}$",
+          "title": "Key Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "gate",
+            "probe",
+            "dispatch",
+            "effect"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "observed": {
+          "additionalProperties": {
+            "$ref": "#/definitions/JsonValue"
+          },
+          "title": "Observed",
+          "type": "object"
+        },
+        "receipt_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Receipt Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "receipt_id",
+        "kind",
+        "binding",
+        "observed",
+        "created",
+        "key_id"
+      ],
+      "title": "Receipt",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "receipt": {
+      "$ref": "#/definitions/Receipt"
+    },
+    "signature": {
+      "title": "Signature",
+      "type": "string"
+    }
+  },
+  "required": [
+    "receipt",
+    "signature"
+  ],
+  "title": "SignedReceipt",
+  "type": "object"
+}

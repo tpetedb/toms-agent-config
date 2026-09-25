@@ -1,0 +1,1 @@
+A gate child can no longer connect to a Unix socket outside its own scratch folder, other than the DNS resolver's, or to a loopback port. Before, a criterion could reach a socket of a process the owner runs unsandboxed, such as tmux or Docker, and have it run a command that reads the signing key.

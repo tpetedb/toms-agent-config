@@ -1,0 +1,34 @@
+# =============================================================================
+# config/pipelines/retro.toml: lessons from a landed order or a decision.
+# Runs at the LANDED and DECISION events. Lessons are extracted as records of
+# kind lesson and reviewed before any is promoted into memory. Stage keys are
+# explained in full in config/pipelines/order.toml. Unknown keys fail loudly.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+# Must equal the file name and be listed in [pipelines] enabled:
+# order | board | review | release | retro.
+name = "retro"
+# One line on what a run of this pipeline achieves, printed by tac pipeline plan.
+description = "lessons extracted from a landed order, reviewed before promotion"
+# The payloads a run starts with: the landed order's build report and its review.
+entry_contracts = ["build-report", "review"]
+
+# The chief extracts the lessons.
+[[stages]]
+id = "extract"                          # the stage id, unique in the pipeline
+kind = "agent"                          # agent | gate | effect | human
+role = "chief"                          # the role charter it runs as
+reads = ["build-report", "review"]      # the contracts it reads, both from the entry
+writes = "lessons"                      # the contract its result must pass
+template = "handoffs/retro.md.j2"       # the prompt template under templates/
+on_fail = "repair-once-then-human"      # repair-once-then-human | human | stop
+
+# No lesson is promoted before the owner has read it.
+[[stages]]
+id = "promote"                          # the stage id, unique in the pipeline
+kind = "human"                          # agent | gate | effect | human
+depends_on = ["extract"]                # the stages that finish first
+reads = ["lessons"]                     # the contracts the owner is shown
+asks = "Approve the lessons worth keeping; the rest stay out of memory."   # the question, rendered into TODO.HUMAN.md
+owner_actions = ["approve"]             # what only the owner does here, each in policy.toml owner_only

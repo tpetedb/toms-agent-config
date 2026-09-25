@@ -1,0 +1,1 @@
+CI splits into two required jobs: verify runs the candidate's code, and gates runs none of it, takes the base and head commits from the event payload rather than a movable ref, and runs only gate scripts taken from that base, with a pinned uv and no cache.

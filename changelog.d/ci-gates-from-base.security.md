@@ -1,0 +1,1 @@
+CI takes every gate script (`ci_work_from_base.sh`, `ci_config_from_base.sh`, `ci_verify_receipts.sh`, `private_scan.sh`) from the base revision and never runs the candidate's copy; CODEOWNERS names the workflows, the gate scripts and itself on their own lines; `tac doctor` gains a `codeowners-ci` check that fails naming each path CI runs from that CODEOWNERS leaves open.

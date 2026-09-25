@@ -1,0 +1,19 @@
+# The agent toolchain: the deployed, non-editable tac that judges every change.
+# Built only by bootstrap, the runner or CI, never by a worker:
+#   uv sync --frozen --no-editable --project .agents
+# In-session calls: uv run --frozen --no-sync --project .agents tac <command>
+[project]
+name = "tac-agent-toolchain"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "tac",
+]
+
+[tool.uv]
+# This project only pins an environment; it is not itself a package.
+package = false
+
+[tool.uv.sources]
+# The stamped copy, never src/: the checker must not import a tree an agent writes.
+tac = { path = "lib/tac" }

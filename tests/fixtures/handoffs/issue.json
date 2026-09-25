@@ -1,0 +1,11 @@
+{
+  "number": 12,
+  "title": "Add an intro page",
+  "body": "The docs need an intro page.",
+  "author": "example-owner",
+  "author_association": "OWNER",
+  "labels": [
+    "docs"
+  ],
+  "url": "https://github.com/example/repo/issues/12"
+}

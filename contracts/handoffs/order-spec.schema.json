@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "order-spec",
+  "description": "A work order as the specify stage writes it: owned paths and acceptance criteria that are commands.",
+  "type": "object",
+  "properties": {
+    "order_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{2,48}$",
+      "description": "The order id, as tac work uses it."
+    },
+    "title": {
+      "type": "string",
+      "description": "The order title."
+    },
+    "team": {
+      "type": "string",
+      "description": "The team that owns the order."
+    },
+    "owns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Every path or glob the order may change, and nothing else."
+    },
+    "criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "A short criterion id, unique in the order."
+          },
+          "text": {
+            "type": "string",
+            "description": "What must hold, in plain words."
+          },
+          "check": {
+            "type": "string",
+            "description": "The command that proves it, run by just work-check."
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "check"
+        ],
+        "additionalProperties": false
+      },
+      "description": "The acceptance criteria; every one is a command."
+    },
+    "cross_team": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Teams whose paths the order touches and whose sign-off it needs; empty when none."
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Skill names the builder loads for this order."
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Anything the builder must know that fits nowhere else; null when nothing."
+    }
+  },
+  "required": [
+    "order_id",
+    "title",
+    "team",
+    "owns",
+    "criteria",
+    "cross_team",
+    "skills",
+    "notes"
+  ],
+  "additionalProperties": false
+}

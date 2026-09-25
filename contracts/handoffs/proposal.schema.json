@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "proposal",
+  "description": "The chief's proposal to the owner after a board run, with the items it adds to TODO.HUMAN.md.",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "A short title for the proposal."
+    },
+    "summary": {
+      "type": "string",
+      "description": "The proposal in plain words."
+    },
+    "human_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^Q[0-9]+$",
+            "description": "A stable question id, as TODO.HUMAN.md uses it."
+          },
+          "question": {
+            "type": "string",
+            "description": "The exact question or action for the owner."
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The options the owner chooses from; empty for a one-time step."
+          },
+          "recommendation": {
+            "type": "string",
+            "description": "The board's recommendation."
+          },
+          "waits": {
+            "type": "string",
+            "description": "The milestone or order that waits on the answer."
+          }
+        },
+        "required": [
+          "id",
+          "question",
+          "options",
+          "recommendation",
+          "waits"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Items for TODO.HUMAN.md; empty when the owner need not act."
+    }
+  },
+  "required": [
+    "title",
+    "summary",
+    "human_items"
+  ],
+  "additionalProperties": false
+}

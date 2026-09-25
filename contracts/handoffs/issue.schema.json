@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "issue",
+  "description": "The entry payload of the order pipeline: a GitHub issue as tac read it through the API, never typed by a model.",
+  "type": "object",
+  "properties": {
+    "number": {
+      "type": "integer",
+      "description": "The issue number."
+    },
+    "title": {
+      "type": "string",
+      "description": "The issue title, as written."
+    },
+    "body": {
+      "type": "string",
+      "description": "The issue body, as written; empty when there is none."
+    },
+    "author": {
+      "type": "string",
+      "description": "The login of the account that opened the issue."
+    },
+    "author_association": {
+      "type": "string",
+      "enum": [
+        "OWNER",
+        "MEMBER",
+        "COLLABORATOR",
+        "CONTRIBUTOR",
+        "FIRST_TIME_CONTRIBUTOR",
+        "FIRST_TIMER",
+        "MANNEQUIN",
+        "NONE"
+      ],
+      "description": "GitHub's author_association; intake refuses anything but OWNER, MEMBER and COLLABORATOR."
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The label names on the issue."
+    },
+    "url": {
+      "type": "string",
+      "description": "The issue's html_url."
+    }
+  },
+  "required": [
+    "number",
+    "title",
+    "body",
+    "author",
+    "author_association",
+    "labels",
+    "url"
+  ],
+  "additionalProperties": false
+}

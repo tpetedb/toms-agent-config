@@ -1,0 +1,32 @@
+# =============================================================================
+# config/gates/library.toml: the gate pack for project.kind = "library".
+# A library: its public API does not change by accident and a wheel builds.
+# The pack is the minimum the project promises on top of the standards
+# registry, not a certificate of production readiness. Each check is an argv
+# run without a shell; argv[0] is `just`, and the project's justfile provides
+# the recipe. A pack never requires a deferred tool: such a check is written
+# with enabled = false and the open question it waits on. Unknown keys fail loudly.
+# =============================================================================
+# The layout of this file; tac migrate moves an older one forward.
+schema_version = 1
+# Must equal the file name; [project] kind in .agents/config.toml picks the pack:
+# app | tool | library | data-pipeline | document | mixed.
+kind = "library"
+# One line on what a project of this kind ships.
+description = "A library other code imports."
+# Other packs whose checks also apply, by kind: app | tool | library | data-pipeline | document.
+includes = []
+
+# The public API surface is unchanged or the version says so.
+[checks.api-diff]
+argv = ["just", "gate-api-diff"]        # the command, run without a shell; argv[0] is just
+why = "an API surface diff against the last release; a removal needs a major bump"   # what the check proves, printed when it fails
+enabled = true                          # false only while a deferred tool waits on waits_on
+waits_on = ""                           # the open question a disabled check waits on, like Q13; empty when enabled
+
+# A wheel builds.
+[checks.wheel]
+argv = ["just", "gate-wheel"]           # the command, run without a shell; argv[0] is just
+why = "the package builds into a wheel from a clean tree"   # what the check proves, printed when it fails
+enabled = true                          # false only while a deferred tool waits on waits_on
+waits_on = ""                           # the open question a disabled check waits on, like Q13; empty when enabled

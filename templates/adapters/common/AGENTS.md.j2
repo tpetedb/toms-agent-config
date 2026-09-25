@@ -1,0 +1,12 @@
+{# output: AGENTS.md #}
+<!-- {{ note }} -->
+
+{{ common.brief }}
+
+## Generated files
+
+`tac sync` renders these from `.agents/` for {{ common.enforced | join(" and ") }}; {{ common.instructions_only | join(", ") }} read this file and the skills only. Never edit them: change `.agents/` or `templates/adapters/`, run `tac sync`, and `tac check` proves the result.
+
+{% for path in common.generated %}
+- `{{ path }}`
+{% endfor %}
