@@ -1,0 +1,1 @@
+`QUICKSTART.md` takes a newcomer from a fresh checkout to a green `just check` in ten minutes, and has a table of where to tweak each setting: the file to edit (linked), the keys `tac explain` resolves, and the command to run after. The README points to it and states the current status.
