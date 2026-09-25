@@ -79,7 +79,7 @@ Dates in file names are ISO 8601 in the basic form, `20260925` or `20260925T1425
 
 `just diagrams-render` runs `tac diagrams render`: for every `.mmd` here and every fenced mermaid block in a Markdown file under `docs/`, it runs `npx --yes @mermaid-js/mermaid-cli@<pinned>` with the version [mise.toml](../../mise.toml) pins under `[tools]`, one SVG per source into a scratch folder, and stops at the first failure. Then it writes [render.lock](render.lock): the mermaid-cli version and the sha256 of every source it rendered. It needs node 22.13 or later and, on the first run, the network (mermaid-cli fetches a headless browser).
 
-No SVG is committed: renders differ between versions and machines, so the lock binds the sources to the last successful render instead. `just diagrams-check` (and `tac check`, and `tests/test_diagrams.py`) compares the sources to the lock without node, and names every source that changed, appeared or disappeared since. CI renders again on every pull request and fails when a render fails or the lock would change.
+No SVG is committed: renders differ between versions and machines, so the lock binds the sources to the last successful render instead. `just diagrams-check` (and `tac check`, and `tests/test_diagrams.py`) compares the sources to the lock without node, and names every source that changed, appeared or disappeared since. CI runs the same check on every pull request. The render itself runs locally with `just diagrams-render` until the owner decides how CI runs headless Chromium (TODO.HUMAN.md).
 
 Rendering proves syntax only.
 
