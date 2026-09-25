@@ -11,6 +11,8 @@ checkouts and a stand-in for pytest, never the real suite, so nothing recurses.
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import tomllib
 import typing
 from collections.abc import Mapping, Sequence
@@ -21,6 +23,7 @@ import pytest
 from click.testing import CliRunner
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from tac import config as config_module
 from tac import doctor, proof
 from tac.cli import cli
 from tac.config import load_config
@@ -29,6 +32,7 @@ from tac.doctor import Status
 from tac.probes import LIVE_OBSERVATIONS, NotYetLive, observe
 from tac.receipts import Binding, sign
 from tac.runner import (
+    REQUEST,
     ProbesFile,
     RunnerError,
     controller_store,
@@ -255,6 +259,16 @@ def test_coverage_refuses_a_dirty_tree_unless_allowed(project: Path) -> None:
     assert report["tree_clean"] is False
 
 
+def test_the_proof_group_is_there_when_cli_py_runs_as_a_script() -> None:
+    done = subprocess.run(
+        [sys.executable, str(REPO / "src/tac/cli.py"), "proof", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
 # ---------------------------------------------------------------- live probes
 
 
@@ -270,6 +284,34 @@ def test_live_probes_cover_every_harness_place_session_and_condition() -> None:
         "bypass.ruleset-owner-review": ("github-identity",),
         "bypass.push-required-checks": ("github-identity",),
     }
+
+
+def test_every_live_probe_has_a_slug_the_runner_accepts() -> None:
+    """The runner takes a probe request only by a short lowercase name, and
+    probes.toml keys it the same way; the dotted name stays the map's key."""
+    slugs = [p.slug for p in proof.LIVE_PROBES]
+    assert len(set(slugs)) == len(slugs)
+    for probe in proof.LIVE_PROBES:
+        harness = probe.harness or "claude"
+        request = {"op": "probe", "harness": harness, "probe": probe.slug}
+        REQUEST.validate_python({**request, "run_id": f"probe-{harness}"})
+
+
+def test_the_receipt_client_is_asked_by_slug_and_the_receipt_held_to_it() -> None:
+    [probe] = proof.probe_group("C6.keychain-token.codex.worktree.headless")
+    trusted = Ed25519PrivateKey.generate()
+    asked: list[tuple[str, str]] = []
+
+    def client(harness: str, name: str) -> str:
+        asked.append((harness, name))
+        return probe_receipt(trusted, name, True)
+
+    facts = met_facts(live=True)
+    facts = proof.Facts(facts.doctor, facts.answered, live=True, harness="codex")
+    [result] = proof.judge_live([probe], facts, client, trusted.public_key)
+    assert asked == [("codex", probe.slug)]
+    assert result.status == "passed"
+    assert result.as_dict()["slug"] == probe.slug
 
 
 NOTHING_DONE = proof.Facts(doctor={}, answered=frozenset())
@@ -334,10 +376,11 @@ def test_a_synthetic_answer_never_passes_a_live_probe() -> None:
         return result
 
     assert judged("{}").status == "failed"
-    assert judged(probe_receipt(other, probe.name, True)).status == "failed"
-    assert judged(probe_receipt(trusted, "C1.other", True)).status == "failed"
-    assert judged(probe_receipt(trusted, probe.name, False)).status == "failed"
-    assert judged(probe_receipt(trusted, probe.name, True)).status == "passed"
+    assert judged(probe_receipt(other, probe.slug, True)).status == "failed"
+    assert judged(probe_receipt(trusted, "c1-other", True)).status == "failed"
+    assert judged(probe_receipt(trusted, probe.name, True)).status == "failed"
+    assert judged(probe_receipt(trusted, probe.slug, False)).status == "failed"
+    assert judged(probe_receipt(trusted, probe.slug, True)).status == "passed"
     [none] = proof.judge_live([probe], met_facts(live=True), None, None)
     assert none.status == "skipped"
 
@@ -379,6 +422,18 @@ def test_every_live_kind_is_described_and_the_runner_refuses_it(tmp_path: Path) 
         request = {"op": "probe", "harness": "claude", "probe": "spawn", "run_id": "p"}
         with pytest.raises(RunnerError, match="spawn is not live yet"):
             runner.handle(request)
+
+
+def test_the_checker_takes_every_live_kind_ahead_of_the_follow_up_config() -> None:
+    """tac check and the probes contract read runner.ProbesFile, so the runner's
+    ProbeSpec is where the schema widens: the follow-up probes.toml is judged by
+    this revision's checker once it is the base."""
+    assert config_module.ProbesFile is ProbesFile
+    contract = (REPO / "contracts/config/probes.schema.json").read_text("utf-8")
+    for kind in typing.get_args(LiveProbeKind):
+        probes = {"p": {"description": "live", "kind": kind}}
+        ProbesFile.model_validate({"schema_version": 1, "probes": probes})
+        assert f'"{kind}"' in contract
 
 
 def test_the_shipped_probes_toml_names_every_offline_kind() -> None:

@@ -252,14 +252,17 @@ REQUIREMENTS: Mapping[str, Needs] = {
 
 @dataclass(frozen=True, slots=True)
 class LiveProbe:
+    # The dotted name is the map's key and what a SKIP line prints; the slug is
+    # what the runner is asked for and what probes.toml keys the probe by.
     name: str
+    slug: str
     condition: str
     kind: str
     harness: str | None
     place: str
     session: str
     requires: tuple[str, ...]
-    # The receipt it writes: kind probe, under the stage probe.<name>.
+    # The receipt it writes: kind probe, under the stage probe.<slug>.
     receipt: str = "probe"
 
 
@@ -278,6 +281,28 @@ C6_KINDS: Mapping[str, str] = {
 }
 
 
+# The runner's probe names are lowercase, hyphenated and at most 32 characters
+# (tac.runner.Probe), so each slug abbreviates the parts of the dotted name.
+SLUG_PARTS: Mapping[str, str] = {
+    "missing-token": "tok-missing",
+    "altered-token": "tok-altered",
+    "reused-token": "tok-reused",
+    "delegation-off": "deleg-off",
+    "hook-timeout": "hook-tmout",
+    "keychain-token": "kc-token",
+    "keychain-key": "kc-key",
+    "subdir": "sub",
+    "worktree": "wt",
+    "resumed": "resum",
+    "headless": "hless",
+}
+
+
+def probe_slug(name: str) -> str:
+    """The runner-facing name of a dotted probe name."""
+    return "-".join(SLUG_PARTS.get(part, part) for part in name.lower().split("."))
+
+
 def _client_requires(harness: str, *more: str) -> tuple[str, ...]:
     # Codex first: while it is paused nothing else of it is asked.
     first = ("codex-resumed",) if harness == "codex" else ()
@@ -294,9 +319,11 @@ def _live_probes() -> tuple[LiveProbe, ...]:
             for harness in CLIENTS:
                 for place in PLACES:
                     for session in SESSIONS:
+                        name = f"{condition}.{slug}.{harness}.{place}.{session}"
                         found.append(
                             LiveProbe(
-                                f"{condition}.{slug}.{harness}.{place}.{session}",
+                                name,
+                                probe_slug(name),
                                 condition,
                                 kind,
                                 harness,
@@ -308,6 +335,7 @@ def _live_probes() -> tuple[LiveProbe, ...]:
     found += [
         LiveProbe(
             "bypass.ruleset-owner-review",
+            probe_slug("bypass.ruleset-owner-review"),
             "bypass",
             "ruleset-owner-review",
             None,
@@ -317,6 +345,7 @@ def _live_probes() -> tuple[LiveProbe, ...]:
         ),
         LiveProbe(
             "bypass.push-required-checks",
+            probe_slug("bypass.push-required-checks"),
             "bypass",
             "push-required-checks",
             None,
@@ -326,6 +355,7 @@ def _live_probes() -> tuple[LiveProbe, ...]:
         ),
         LiveProbe(
             "bypass.classifier.claude",
+            probe_slug("bypass.classifier.claude"),
             "bypass",
             "classifier-script-computed",
             "claude",
@@ -384,9 +414,15 @@ class LiveResult:
     probe: str
     status: Literal["passed", "failed", "skipped"]
     reason: str
+    slug: str
 
     def as_dict(self) -> dict[str, str]:
-        return {"probe": self.probe, "status": self.status, "reason": self.reason}
+        return {
+            "probe": self.probe,
+            "slug": self.slug,
+            "status": self.status,
+            "reason": self.reason,
+        }
 
 
 ReceiptClient = Callable[[str, str], str]
@@ -424,10 +460,12 @@ def judge_live(
                 unmet=reasons,
             )
         except NotYetLive as exc:
-            results.append(LiveResult(probe.name, "skipped", exc.reason))
+            results.append(LiveResult(probe.name, "skipped", exc.reason, probe.slug))
             continue
         if receipt is None or trusted is None:
-            results.append(LiveResult(probe.name, "skipped", "no receipt client"))
+            results.append(
+                LiveResult(probe.name, "skipped", "no receipt client", probe.slug)
+            )
             continue
         results.append(_receipt_result(probe, harness, receipt, trusted))
     return results
@@ -439,16 +477,19 @@ def _receipt_result(
     receipt: ReceiptClient,
     trusted: Callable[[], Any],
 ) -> LiveResult:
+    def result(status: Literal["passed", "failed"], reason: str) -> LiveResult:
+        return LiveResult(probe.name, status, reason, probe.slug)
+
     try:
-        text = receipt(harness, probe.name)
+        text = receipt(harness, probe.slug)
         signed = check_signature(parse(text), trusted())
     except (ReceiptError, ProofError, ValidationError, ValueError) as exc:
-        return LiveResult(probe.name, "failed", f"no verified receipt: {exc}")
-    if signed.kind != "probe" or signed.observed.get("probe") != probe.name:
-        return LiveResult(probe.name, "failed", "the receipt is for another probe")
+        return result("failed", f"no verified receipt: {exc}")
+    if signed.kind != "probe" or signed.observed.get("probe") != probe.slug:
+        return result("failed", "the receipt is for another probe")
     if signed.observed.get("matched") is not True:
-        return LiveResult(probe.name, "failed", "the receipt says it did not match")
-    return LiveResult(probe.name, "passed", f"receipt {signed.receipt_id}")
+        return result("failed", "the receipt says it did not match")
+    return result("passed", f"receipt {signed.receipt_id}")
 
 
 # ---------------------------------------------------------------- the map

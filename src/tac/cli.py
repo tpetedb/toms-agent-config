@@ -79,6 +79,7 @@ cli.add_command(run_command)
 cli.add_command(launch_command)
 cli.add_command(inbox_group)
 cli.add_command(usage_group)
+cli.add_command(proof_group)
 
 
 def main() -> None:
@@ -87,4 +88,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-cli.add_command(proof_group)

@@ -167,9 +167,7 @@ def test_a_workflow_call_with_a_reused_token_is_denied(served: Served) -> None:
 
 
 def test_a_workflow_call_without_a_token_is_denied(served: Served) -> None:
-    done = served.call("Workflow", "chief", script=BODY)
-    assert done.returncode == 2, done.stdout + done.stderr
-    assert "[handoff-guard]" in done.stderr
+    denied(served.call("Workflow", "chief", script=BODY), "no dispatch record")
 
 
 def test_a_workflow_call_with_an_unregistered_script_is_denied(served: Served) -> None:
@@ -179,9 +177,7 @@ def test_a_workflow_call_with_an_unregistered_script_is_denied(served: Served) -
         "workflow",
     )
     before = sorted((served.runner.store / "tokens").glob("*.json"))
-    done = served.call("Workflow", "chief", script=other)
-    assert done.returncode == 2, done.stdout + done.stderr
-    assert "[handoff-guard]" in done.stderr
+    denied(served.call("Workflow", "chief", script=other), "is not registered for")
     # Refused on the registry, before the runner was asked for the token.
     assert sorted((served.runner.store / "tokens").glob("*.json")) == before
 

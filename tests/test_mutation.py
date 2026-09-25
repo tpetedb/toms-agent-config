@@ -31,6 +31,7 @@ from typing import Any
 
 import pytest
 
+from tac import proof
 from tac.config import load_config
 from tac.sync import sync
 from tests._gitrepo import GIT
@@ -315,6 +316,13 @@ def empty_matcher(text: str, check: str, client: str) -> str:
 def test_every_wired_check_is_a_case_or_named_as_not_load_bearing() -> None:
     assert set(wired()) == set(CASES) | set(NOT_LOAD_BEARING)
     assert not set(CASES) & set(NOT_LOAD_BEARING)
+
+
+def test_every_case_names_a_test_that_collects() -> None:
+    """`proves` names the test that holds each refusal; it must still exist."""
+    ids = {case.proves for case in CASES.values()}
+    collected = proof.Pytest(REPO).collect(sorted({i.split("::")[0] for i in ids}))
+    assert {i for i in ids if not proof.matches(i, collected)} == set()
 
 
 @pytest.mark.parametrize("pair", LOAD_BEARING, ids=_id)

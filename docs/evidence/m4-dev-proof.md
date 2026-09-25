@@ -200,7 +200,168 @@ SKIP live: bypass.classifier: live; requires live-claude-session; runs through `
 ## What waits
 
 - The live probes, C1 and C6 on Claude and Codex across the root, a subdirectory and a linked worktree and across fresh, resumed and headless sessions, run through `just dev-proof --require-live` on the host once S5 (the runner key), Q24 (the keychain) and S3 (Claude's workspace trust) are done and the owner resumes Codex and answers S10 in `TODO.HUMAN.md`. Codex's own trust steps, S1 and S2, are asked of it as well.
-- The entries for the new probe kinds in `.agents/config/probes.toml` and `.agents/config/receipts.toml` are follow-up config: CI judges configuration with the base revision's checker, so the kinds entered the schema first. Until they land, the runner refuses each live kind by name.
+- The entries for the new probe kinds in `.agents/config/probes.toml` and `.agents/config/receipts.toml` are follow-up config: CI judges configuration with the base revision's checker, so the kinds entered the schema first. Until they land, the runner refuses each live kind by name. Each entry is keyed by the probe's slug, listed below, since the runner takes a probe name only as lowercase letters, digits and hyphens of at most 32 characters.
 - The GitHub-bound bypass attempts (the ruleset refusing a pull request that edits `src/tac` without the owner's review, a push without the required checks) wait for Q14; the auto-mode classifier check waits for a live Claude session.
 - The pipeline run of the ledger from an issue to the recap (the chief specifies, a builder builds, the gates verify, the other provider reviews, a manager signs off, the recap writes `TODO.HUMAN.md`) waits for the runner key, both clients and Q14.
 - The ledger's diagram renders through `just diagrams-render` once order 7 lands; until then `just dev-proof` prints `SKIP render: recipe lands with order 7`.
+
+## Edits outside the order's owns
+
+Two edits outside the order's files and its listed shared edits. Each needs the harness team's sign-off recorded in the order; the reasons are here.
+
+- `.agents/config/teams.toml` and `.agents/generated.lock`: `dev/` joins the harness team's `owns`, a value in an existing list, because `test_every_tracked_file_has_a_team` refuses a tracked file no team owns and `just work-check` refuses an order whose owns no team covers. The harness team answers for how the work is done and proven.
+- `src/tac/runner.py` and its stamped copy: `ProbeSpec.kind` takes every live kind, and `Runner.probe` refuses a live kind by name. `tac check` and `contracts/config/probes.schema.json` both read `runner.ProbesFile`, so this is where the probes schema widens; without it the follow-up `probes.toml` would be refused by the base checker. `test_the_checker_takes_every_live_kind_ahead_of_the_follow_up_config` holds it.
+
+## The follow-up probes.toml keys
+
+`tac proof dev` asks the runner for each live probe by its slug and passes it only on a receipt whose `observed.probe` is that slug; `dev/out/dev-proof.json` carries both. Slug, then the dotted name the map and the SKIP lines use:
+
+```text
+c1-tok-missing-claude-root-fresh  C1.missing-token.claude.root.fresh
+c1-tok-missing-claude-root-resum  C1.missing-token.claude.root.resumed
+c1-tok-missing-claude-root-hless  C1.missing-token.claude.root.headless
+c1-tok-missing-claude-sub-fresh  C1.missing-token.claude.subdir.fresh
+c1-tok-missing-claude-sub-resum  C1.missing-token.claude.subdir.resumed
+c1-tok-missing-claude-sub-hless  C1.missing-token.claude.subdir.headless
+c1-tok-missing-claude-wt-fresh  C1.missing-token.claude.worktree.fresh
+c1-tok-missing-claude-wt-resum  C1.missing-token.claude.worktree.resumed
+c1-tok-missing-claude-wt-hless  C1.missing-token.claude.worktree.headless
+c1-tok-missing-codex-root-fresh  C1.missing-token.codex.root.fresh
+c1-tok-missing-codex-root-resum  C1.missing-token.codex.root.resumed
+c1-tok-missing-codex-root-hless  C1.missing-token.codex.root.headless
+c1-tok-missing-codex-sub-fresh  C1.missing-token.codex.subdir.fresh
+c1-tok-missing-codex-sub-resum  C1.missing-token.codex.subdir.resumed
+c1-tok-missing-codex-sub-hless  C1.missing-token.codex.subdir.headless
+c1-tok-missing-codex-wt-fresh  C1.missing-token.codex.worktree.fresh
+c1-tok-missing-codex-wt-resum  C1.missing-token.codex.worktree.resumed
+c1-tok-missing-codex-wt-hless  C1.missing-token.codex.worktree.headless
+c1-tok-altered-claude-root-fresh  C1.altered-token.claude.root.fresh
+c1-tok-altered-claude-root-resum  C1.altered-token.claude.root.resumed
+c1-tok-altered-claude-root-hless  C1.altered-token.claude.root.headless
+c1-tok-altered-claude-sub-fresh  C1.altered-token.claude.subdir.fresh
+c1-tok-altered-claude-sub-resum  C1.altered-token.claude.subdir.resumed
+c1-tok-altered-claude-sub-hless  C1.altered-token.claude.subdir.headless
+c1-tok-altered-claude-wt-fresh  C1.altered-token.claude.worktree.fresh
+c1-tok-altered-claude-wt-resum  C1.altered-token.claude.worktree.resumed
+c1-tok-altered-claude-wt-hless  C1.altered-token.claude.worktree.headless
+c1-tok-altered-codex-root-fresh  C1.altered-token.codex.root.fresh
+c1-tok-altered-codex-root-resum  C1.altered-token.codex.root.resumed
+c1-tok-altered-codex-root-hless  C1.altered-token.codex.root.headless
+c1-tok-altered-codex-sub-fresh  C1.altered-token.codex.subdir.fresh
+c1-tok-altered-codex-sub-resum  C1.altered-token.codex.subdir.resumed
+c1-tok-altered-codex-sub-hless  C1.altered-token.codex.subdir.headless
+c1-tok-altered-codex-wt-fresh  C1.altered-token.codex.worktree.fresh
+c1-tok-altered-codex-wt-resum  C1.altered-token.codex.worktree.resumed
+c1-tok-altered-codex-wt-hless  C1.altered-token.codex.worktree.headless
+c1-tok-reused-claude-root-fresh  C1.reused-token.claude.root.fresh
+c1-tok-reused-claude-root-resum  C1.reused-token.claude.root.resumed
+c1-tok-reused-claude-root-hless  C1.reused-token.claude.root.headless
+c1-tok-reused-claude-sub-fresh  C1.reused-token.claude.subdir.fresh
+c1-tok-reused-claude-sub-resum  C1.reused-token.claude.subdir.resumed
+c1-tok-reused-claude-sub-hless  C1.reused-token.claude.subdir.headless
+c1-tok-reused-claude-wt-fresh  C1.reused-token.claude.worktree.fresh
+c1-tok-reused-claude-wt-resum  C1.reused-token.claude.worktree.resumed
+c1-tok-reused-claude-wt-hless  C1.reused-token.claude.worktree.headless
+c1-tok-reused-codex-root-fresh  C1.reused-token.codex.root.fresh
+c1-tok-reused-codex-root-resum  C1.reused-token.codex.root.resumed
+c1-tok-reused-codex-root-hless  C1.reused-token.codex.root.headless
+c1-tok-reused-codex-sub-fresh  C1.reused-token.codex.subdir.fresh
+c1-tok-reused-codex-sub-resum  C1.reused-token.codex.subdir.resumed
+c1-tok-reused-codex-sub-hless  C1.reused-token.codex.subdir.headless
+c1-tok-reused-codex-wt-fresh  C1.reused-token.codex.worktree.fresh
+c1-tok-reused-codex-wt-resum  C1.reused-token.codex.worktree.resumed
+c1-tok-reused-codex-wt-hless  C1.reused-token.codex.worktree.headless
+c1-deleg-off-claude-root-fresh  C1.delegation-off.claude.root.fresh
+c1-deleg-off-claude-root-resum  C1.delegation-off.claude.root.resumed
+c1-deleg-off-claude-root-hless  C1.delegation-off.claude.root.headless
+c1-deleg-off-claude-sub-fresh  C1.delegation-off.claude.subdir.fresh
+c1-deleg-off-claude-sub-resum  C1.delegation-off.claude.subdir.resumed
+c1-deleg-off-claude-sub-hless  C1.delegation-off.claude.subdir.headless
+c1-deleg-off-claude-wt-fresh  C1.delegation-off.claude.worktree.fresh
+c1-deleg-off-claude-wt-resum  C1.delegation-off.claude.worktree.resumed
+c1-deleg-off-claude-wt-hless  C1.delegation-off.claude.worktree.headless
+c1-deleg-off-codex-root-fresh  C1.delegation-off.codex.root.fresh
+c1-deleg-off-codex-root-resum  C1.delegation-off.codex.root.resumed
+c1-deleg-off-codex-root-hless  C1.delegation-off.codex.root.headless
+c1-deleg-off-codex-sub-fresh  C1.delegation-off.codex.subdir.fresh
+c1-deleg-off-codex-sub-resum  C1.delegation-off.codex.subdir.resumed
+c1-deleg-off-codex-sub-hless  C1.delegation-off.codex.subdir.headless
+c1-deleg-off-codex-wt-fresh  C1.delegation-off.codex.worktree.fresh
+c1-deleg-off-codex-wt-resum  C1.delegation-off.codex.worktree.resumed
+c1-deleg-off-codex-wt-hless  C1.delegation-off.codex.worktree.headless
+c1-runner-lost-claude-root-fresh  C1.runner-lost.claude.root.fresh
+c1-runner-lost-claude-root-resum  C1.runner-lost.claude.root.resumed
+c1-runner-lost-claude-root-hless  C1.runner-lost.claude.root.headless
+c1-runner-lost-claude-sub-fresh  C1.runner-lost.claude.subdir.fresh
+c1-runner-lost-claude-sub-resum  C1.runner-lost.claude.subdir.resumed
+c1-runner-lost-claude-sub-hless  C1.runner-lost.claude.subdir.headless
+c1-runner-lost-claude-wt-fresh  C1.runner-lost.claude.worktree.fresh
+c1-runner-lost-claude-wt-resum  C1.runner-lost.claude.worktree.resumed
+c1-runner-lost-claude-wt-hless  C1.runner-lost.claude.worktree.headless
+c1-runner-lost-codex-root-fresh  C1.runner-lost.codex.root.fresh
+c1-runner-lost-codex-root-resum  C1.runner-lost.codex.root.resumed
+c1-runner-lost-codex-root-hless  C1.runner-lost.codex.root.headless
+c1-runner-lost-codex-sub-fresh  C1.runner-lost.codex.subdir.fresh
+c1-runner-lost-codex-sub-resum  C1.runner-lost.codex.subdir.resumed
+c1-runner-lost-codex-sub-hless  C1.runner-lost.codex.subdir.headless
+c1-runner-lost-codex-wt-fresh  C1.runner-lost.codex.worktree.fresh
+c1-runner-lost-codex-wt-resum  C1.runner-lost.codex.worktree.resumed
+c1-runner-lost-codex-wt-hless  C1.runner-lost.codex.worktree.headless
+c1-hook-tmout-claude-root-fresh  C1.hook-timeout.claude.root.fresh
+c1-hook-tmout-claude-root-resum  C1.hook-timeout.claude.root.resumed
+c1-hook-tmout-claude-root-hless  C1.hook-timeout.claude.root.headless
+c1-hook-tmout-claude-sub-fresh  C1.hook-timeout.claude.subdir.fresh
+c1-hook-tmout-claude-sub-resum  C1.hook-timeout.claude.subdir.resumed
+c1-hook-tmout-claude-sub-hless  C1.hook-timeout.claude.subdir.headless
+c1-hook-tmout-claude-wt-fresh  C1.hook-timeout.claude.worktree.fresh
+c1-hook-tmout-claude-wt-resum  C1.hook-timeout.claude.worktree.resumed
+c1-hook-tmout-claude-wt-hless  C1.hook-timeout.claude.worktree.headless
+c1-hook-tmout-codex-root-fresh  C1.hook-timeout.codex.root.fresh
+c1-hook-tmout-codex-root-resum  C1.hook-timeout.codex.root.resumed
+c1-hook-tmout-codex-root-hless  C1.hook-timeout.codex.root.headless
+c1-hook-tmout-codex-sub-fresh  C1.hook-timeout.codex.subdir.fresh
+c1-hook-tmout-codex-sub-resum  C1.hook-timeout.codex.subdir.resumed
+c1-hook-tmout-codex-sub-hless  C1.hook-timeout.codex.subdir.headless
+c1-hook-tmout-codex-wt-fresh  C1.hook-timeout.codex.worktree.fresh
+c1-hook-tmout-codex-wt-resum  C1.hook-timeout.codex.worktree.resumed
+c1-hook-tmout-codex-wt-hless  C1.hook-timeout.codex.worktree.headless
+c6-kc-token-claude-root-fresh  C6.keychain-token.claude.root.fresh
+c6-kc-token-claude-root-resum  C6.keychain-token.claude.root.resumed
+c6-kc-token-claude-root-hless  C6.keychain-token.claude.root.headless
+c6-kc-token-claude-sub-fresh  C6.keychain-token.claude.subdir.fresh
+c6-kc-token-claude-sub-resum  C6.keychain-token.claude.subdir.resumed
+c6-kc-token-claude-sub-hless  C6.keychain-token.claude.subdir.headless
+c6-kc-token-claude-wt-fresh  C6.keychain-token.claude.worktree.fresh
+c6-kc-token-claude-wt-resum  C6.keychain-token.claude.worktree.resumed
+c6-kc-token-claude-wt-hless  C6.keychain-token.claude.worktree.headless
+c6-kc-token-codex-root-fresh  C6.keychain-token.codex.root.fresh
+c6-kc-token-codex-root-resum  C6.keychain-token.codex.root.resumed
+c6-kc-token-codex-root-hless  C6.keychain-token.codex.root.headless
+c6-kc-token-codex-sub-fresh  C6.keychain-token.codex.subdir.fresh
+c6-kc-token-codex-sub-resum  C6.keychain-token.codex.subdir.resumed
+c6-kc-token-codex-sub-hless  C6.keychain-token.codex.subdir.headless
+c6-kc-token-codex-wt-fresh  C6.keychain-token.codex.worktree.fresh
+c6-kc-token-codex-wt-resum  C6.keychain-token.codex.worktree.resumed
+c6-kc-token-codex-wt-hless  C6.keychain-token.codex.worktree.headless
+c6-kc-key-claude-root-fresh  C6.keychain-key.claude.root.fresh
+c6-kc-key-claude-root-resum  C6.keychain-key.claude.root.resumed
+c6-kc-key-claude-root-hless  C6.keychain-key.claude.root.headless
+c6-kc-key-claude-sub-fresh  C6.keychain-key.claude.subdir.fresh
+c6-kc-key-claude-sub-resum  C6.keychain-key.claude.subdir.resumed
+c6-kc-key-claude-sub-hless  C6.keychain-key.claude.subdir.headless
+c6-kc-key-claude-wt-fresh  C6.keychain-key.claude.worktree.fresh
+c6-kc-key-claude-wt-resum  C6.keychain-key.claude.worktree.resumed
+c6-kc-key-claude-wt-hless  C6.keychain-key.claude.worktree.headless
+c6-kc-key-codex-root-fresh  C6.keychain-key.codex.root.fresh
+c6-kc-key-codex-root-resum  C6.keychain-key.codex.root.resumed
+c6-kc-key-codex-root-hless  C6.keychain-key.codex.root.headless
+c6-kc-key-codex-sub-fresh  C6.keychain-key.codex.subdir.fresh
+c6-kc-key-codex-sub-resum  C6.keychain-key.codex.subdir.resumed
+c6-kc-key-codex-sub-hless  C6.keychain-key.codex.subdir.headless
+c6-kc-key-codex-wt-fresh  C6.keychain-key.codex.worktree.fresh
+c6-kc-key-codex-wt-resum  C6.keychain-key.codex.worktree.resumed
+c6-kc-key-codex-wt-hless  C6.keychain-key.codex.worktree.headless
+bypass-ruleset-owner-review  bypass.ruleset-owner-review
+bypass-push-required-checks  bypass.push-required-checks
+bypass-classifier-claude  bypass.classifier.claude
+```
