@@ -46,8 +46,9 @@ sync *args:
     {{ tac }} sync {{ args }}
 
 # Judge the generated files against a fresh render and the lock: just check --staged
+[positional-arguments]
 check *args:
-    {{ tac }} check {{ args }}
+    {{ tac }} check "$@"
 
 # Every pipeline under .agents/config/pipelines/ is sound; each refusal names its reason.
 pipeline-check *names:
@@ -62,12 +63,14 @@ hooks-install:
     uv run --frozen --no-sync prek install --config hooks/git/prek.toml
 
 # The owner's queue: just human render --check | ask | answer <id> | recap | verify <id>
+[positional-arguments]
 human *args:
-    {{ tac }} human {{ args }}
+    {{ tac }} human "$@"
 
 # Owner only, host only: sign the decision on an approval item with the runner key.
+[positional-arguments]
 approve *args:
-    {{ tac }} approve {{ args }}
+    {{ tac }} approve "$@"
 
 # Refuse private terms in tracked and new files.
 private-scan:

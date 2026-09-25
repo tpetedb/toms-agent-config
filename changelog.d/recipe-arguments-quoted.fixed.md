@@ -1,0 +1,1 @@
+`just human`, `just approve` and `just check` pass each argument through as given, so a multi-word `--text` or `--question`, a JSON `--arguments` and a file path reach `tac` intact. QUICKSTART's `human ask` rows carry the flags each kind requires, and its notes on git hooks, the stamped guard and the enterprise profile match what M2 does.
