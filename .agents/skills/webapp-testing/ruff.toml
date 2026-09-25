@@ -1,4 +1,5 @@
-# The scripts and examples are vendored verbatim from anthropics/skills
-# (THIRD_PARTY.md), so this repository's lint and format rules skip them.
+# The scripts, the examples and the Python in SKILL.md are vendored verbatim
+# from anthropics/skills (THIRD_PARTY.md), so this repository's lint and format
+# rules skip them.
 extend = "../../../pyproject.toml"
-extend-exclude = ["scripts", "examples"]
+extend-exclude = ["scripts", "examples", "SKILL.md"]
