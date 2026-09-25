@@ -106,6 +106,36 @@ def seat(config: Config, role: str, harness: str) -> Seat | None:
     return None
 
 
+def claude_session(config: Config, role: str) -> list[str] | None:
+    """The command that starts `role` as the owner's own Claude Code session, as
+    config/models.toml seats it; None unless the charter runs it as the host
+    session on the provider that runs through Claude Code.
+
+    `--agent` runs the session as .claude/agents/<role>.md, taking its prompt,
+    tools and model; `--effort` sets the session's effort and also takes
+    `ultracode` (v2.1.203 or later), which an agent file cannot say. Ultracode is
+    never rendered into .claude/settings.json, where it would turn on for every
+    session and headless run in the project.
+    https://code.claude.com/docs/en/cli-reference,
+    https://code.claude.com/docs/en/sub-agents,
+    https://code.claude.com/docs/en/model-config#adjust-effort-level
+    """
+    charter = config.roles.get(role)
+    spec = config.models.roles.get(role)
+    provider = provider_of(config, "claude")
+    if charter is None or spec is None or charter.runs != "host-session":
+        return None
+    if provider is None or spec.provider != provider:
+        return None
+    found = spec.seats()[provider]
+    argv = ["claude", "--agent", role]
+    if found.ultracode:
+        argv += ["--effort", "ultracode"]
+    elif found.effort is not None:
+        argv += ["--effort", found.effort]
+    return argv
+
+
 def _read(root: Path, rel: str) -> str:
     path = root / rel
     return path.read_text(encoding="utf-8").strip() if path.is_file() else ""

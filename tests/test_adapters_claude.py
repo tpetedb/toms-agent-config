@@ -220,6 +220,19 @@ def test_an_agent_carries_the_models_toml_seat(root: Path) -> None:
         assert pair == (seat["model"], seat.get("effort"))
 
 
+def test_ultracode_is_a_launch_flag_never_a_file_setting(root: Path) -> None:
+    # Frontmatter `effort` takes low..max only, so the chief's file says xhigh,
+    # the effort ultracode sends; a project settings key would turn ultracode on
+    # for every session and headless run in the project.
+    meta = frontmatter((root / ".claude/agents/chief.md").read_text())
+    assert meta["effort"] == "xhigh"
+    rendered = (root / ".claude/settings.json").read_text()
+    assert "ultracode" not in rendered
+    assert "effortLevel" not in rendered
+    for path in (root / ".claude/agents").glob("*.md"):
+        assert "ultracode" not in path.read_text(), path.name
+
+
 def test_native_delegation_off_denies_the_spawn_tools(tmp_path: Path) -> None:
     root = copy_project(tmp_path)
     replace_in(

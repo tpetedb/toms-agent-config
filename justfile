@@ -98,6 +98,10 @@ explain key:
 config-check base="":
     {{ tac }} config check {{ if base == "" { "" } else { "--base " + quote(base) } }}
 
+# Start the chief as config/models.toml seats it (model, effort, ultracode), read through tac: just chief --resume
+chief *args:
+    {{ shell(tac + " config launch-command") }} {{ args }}
+
 # ---- the gate pack for project.kind = "tool" (.agents/config/gates/tool.toml)
 
 # The installed command prints its version and its help and exits 0.

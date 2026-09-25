@@ -587,6 +587,19 @@ def _cross_checks(
         problems.append(
             f"{knob}: [governance] chief = {knobs.governance.chief!r} has no charter"
         )
+    # Ultracode is set when a session starts, so only a role launched as a session
+    # of its own can have it; a subagent's agent file takes an effort, never
+    # ultracode (https://code.claude.com/docs/en/sub-agents, frontmatter `effort`).
+    for name, spec in models.roles.items():
+        charter = roles.get(name)
+        if charter is None or charter.runs != "subagent":
+            continue
+        for pid in sorted(p for p, s in spec.seats().items() if s.ultracode):
+            problems.append(
+                f"{CONFIG_DIR}/models.toml: roles.{name}.{pid} sets ultracode, but "
+                f'roles/{name}.toml runs = "subagent": ultracode is set when a '
+                "session starts, and a subagent is never launched as one"
+            )
     for seat in knobs.governance.directors:
         if seat not in models.directors:
             problems.append(

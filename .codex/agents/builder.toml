@@ -3,7 +3,7 @@
 # https://developers.openai.com/codex/subagents
 
 # The name Codex spawns this agent by: the charter's name.
-# charter-sha256: 545031efc9af107e76ca0460459c47723a80c19a498a9eca71e19833cacd110a
+# charter-sha256: bc4809b882a3d5431d1e8649b5f31ccb4dd966ad83c8e6929f2bd00136f9e1ed
 name = "builder"
 # When to use this agent: the charter's description.
 description = "Builds one work order in its own worktree, inside the paths the order owns, until its acceptance commands pass."

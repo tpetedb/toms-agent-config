@@ -111,6 +111,11 @@
           "minLength": 1,
           "title": "Model",
           "type": "string"
+        },
+        "ultracode": {
+          "default": false,
+          "title": "Ultracode",
+          "type": "boolean"
         }
       },
       "required": [
