@@ -1,7 +1,8 @@
-"""Layer 3b in CI: scripts/ci_check_from_base.sh judges the candidate's floor and
-generated files with the base revision's checker, so a candidate that brings a
-lenient checker of its own changes nothing unless it changes the checker, which
-CODEOWNERS then guards."""
+"""Layer 3b in CI: scripts/ci_check_from_base.sh judges the candidate's generated
+files with the base revision's checker, so a candidate that brings a lenient
+checker of its own changes nothing unless it changes the checker, which
+CODEOWNERS then guards. The floor is ci_config_from_base.sh's, tested in
+tests/test_ci_config.py."""
 
 from __future__ import annotations
 
@@ -12,11 +13,10 @@ from pathlib import Path
 import pytest
 
 from tests._gitrepo import commit_all, copy_toolchain, git
-from tests._syncproject import replace_in, synced
+from tests._syncproject import synced
 
 REPO = Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "scripts" / "ci_check_from_base.sh"
-FLOOR = ".agents/standards.floor.toml"
 
 # Slow: each case builds the base's toolchain in a throwaway repository.
 pytestmark = pytest.mark.slow
@@ -54,7 +54,6 @@ def test_a_clean_candidate_holds(tmp_path: Path) -> None:
     code, output = run_ci(root)
     assert code == 0, output
     assert "generated files match the lock" in output
-    assert "config holds" in output
 
 
 def test_a_hand_edit_to_a_generated_file_fails(tmp_path: Path) -> None:
@@ -65,15 +64,6 @@ def test_a_hand_edit_to_a_generated_file_fails(tmp_path: Path) -> None:
     code, output = run_ci(root)
     assert code == 1, output
     assert "CLAUDE.md" in output
-
-
-def test_a_loosened_floor_fails(tmp_path: Path) -> None:
-    root = base_repo(tmp_path, checker=True)
-    replace_in(root / FLOOR, "commit_max_subject = 72", "commit_max_subject = 90")
-    commit_all(root, "loosen the floor")
-    code, output = run_ci(root)
-    assert code == 1, output
-    assert "commit_max_subject" in output
 
 
 def test_a_changed_checker_only_warns_and_names_the_gate(tmp_path: Path) -> None:

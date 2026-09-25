@@ -28,13 +28,30 @@ jobs:
         run: uv sync --frozen
       - name: Build the deployed toolchain from its named source
         run: uv sync --frozen --no-editable --project .agents
-      - name: Seatbelt confinement tests, none skipped for want of a sandbox
-        # A test that skips for want of sandbox-exec proves nothing, so the
-        # job fails on that skip reason as it fails on a test.
+      - name: Install just, pinned by version and checksum
+        # The gate tests run real `just` recipes inside the sandbox and skip
+        # without it. The release comes from the just project with its SHA256
+        # checked here; the runner image's tools and Homebrew are not pinned.
+        env:
+          JUST_VERSION: "1.58.0"
+          JUST_SHA256: 50ae3e996c974a0bf32ea7d10f495070df33f1b43e0616b2769e3d4821ed8f48
+        run: |
+          asset="just-$JUST_VERSION-aarch64-apple-darwin.tar.gz"
+          dest="$RUNNER_TEMP/just"
+          mkdir -p "$dest"
+          curl --fail --silent --show-error --location --proto '=https' \
+            --output "$dest/$asset" \
+            "https://github.com/casey/just/releases/download/$JUST_VERSION/$asset"
+          (cd "$dest" && echo "$JUST_SHA256  $asset" | shasum -a 256 -c -)
+          tar -xzf "$dest/$asset" -C "$dest" just
+          echo "$dest" >> "$GITHUB_PATH"
+      - name: Seatbelt confinement tests, none skipped
+        # A skipped test proves nothing: without sandbox-exec or just the
+        # confinement tests skip, so the job fails on any skip as on a failure.
         shell: bash
         run: |
-          uv run --frozen pytest -q -rs tests/test_runner_skeleton.py | tee "$RUNNER_TEMP/seatbelt.txt"
-          if grep -q "needs macOS sandbox-exec" "$RUNNER_TEMP/seatbelt.txt"; then
-            echo "::error::the Seatbelt tests skipped: sandbox-exec was not found"
+          uv run --frozen pytest -q -rs --color=no tests/test_runner_skeleton.py | tee "$RUNNER_TEMP/seatbelt.txt"
+          if grep -q "^SKIPPED" "$RUNNER_TEMP/seatbelt.txt"; then
+            echo "::error::a Seatbelt test skipped; see the summary above"
             exit 1
           fi

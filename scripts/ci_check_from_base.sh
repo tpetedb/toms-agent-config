@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# ci_check_from_base.sh: judge the candidate tree's configuration and generated
-# files with the base revision's own checker, not the candidate's.
+# ci_check_from_base.sh: judge the candidate tree's generated files with the
+# base revision's own checker, not the candidate's.
 #
 # Layer 3b (docs/DESIGN.md, section 9): the base's checker, stamped in the
-# base's .agents/ and built outside the checkout as ci_work_from_base.sh builds
-# it, runs `tac config check --base` (the floor may only tighten) and `tac
-# check` (every generated file matches a fresh render and the lock) against the
-# head tree. The verify job runs the candidate's own checker as well; this is
-# the one a pull request cannot edit.
+# base's .agents/ and built outside the checkout as ci_config_from_base.sh
+# builds it, runs `tac check` (every generated file matches a fresh render and
+# the lock) against the head tree. ci_config_from_base.sh judges the floor; the
+# verify job runs the candidate's own checker as well; this is the one a pull
+# request cannot edit.
 #
 # A pull request that changes the checker itself (.agents/lib/) can be judged
 # only by its new code, so there a failure of the base's checker is a warning
@@ -15,14 +15,14 @@
 # checker yet.
 #
 # Usage: scripts/ci_check_from_base.sh <base-ref>
-# Exit:  0 when both hold, or when they may only warn; 1 when either fails;
-#        2 on a usage error.
+# Exit:  0 when it holds, or when it may only warn; 1 when it fails; 2 on a
+#        usage error.
 set -euo pipefail
 
 CHECKER=".agents/lib/tac/src/tac/sync.py"
 
 usage() {
-  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 case "${1:-}" in
@@ -71,7 +71,6 @@ uv sync --quiet --frozen --no-editable --directory "$work/.agents"
 tac="$work/.agents/.venv/bin/tac"
 
 status=0
-"$tac" config check --root "$top" --base "$base" || status=1
 "$tac" check --root "$top" || status=1
 
 if [ "$status" -ne 0 ] && [ "$advisory" -eq 1 ]; then

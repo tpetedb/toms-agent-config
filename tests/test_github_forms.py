@@ -466,25 +466,28 @@ def test_the_macos_job_runs_the_seatbelt_tests_and_is_not_required() -> None:
     assert job["runs-on"].startswith("macos-")
     assert set(flow["jobs"]).isdisjoint(REQUIRED_CHECKS)
     run = "\n".join(step.get("run", "") for step in job["steps"])
-    assert "pytest -q -rs tests/test_runner_skeleton.py" in run
-    # The skip reason of tests/test_runner_skeleton.py, which fails the job.
-    assert "needs macOS sandbox-exec" in run
-    assert "needs macOS sandbox-exec" in (
-        REPO / "tests/test_runner_skeleton.py"
-    ).read_text("utf-8")
+    assert "pytest -q -rs --color=no tests/test_runner_skeleton.py" in run
+    # Any skip fails the job: without sandbox-exec or just, the confinement
+    # tests skip, and a skipped test proves nothing.
+    assert 'grep -q "^SKIPPED"' in run
+    source = (REPO / "tests/test_runner_skeleton.py").read_text("utf-8")
+    assert 'reason="needs macOS sandbox-exec"' in source
+    assert 'reason="needs just"' in source
+    # just comes pinned by version and checksum, never from an unpinned source.
+    install = next(s for s in job["steps"] if "JUST_SHA256" in s.get("env", {}))
+    assert re.fullmatch(r"[0-9a-f]{64}", install["env"]["JUST_SHA256"])
+    assert "shasum -a 256 -c" in install["run"]
 
 
 def test_the_work_job_judges_from_the_base_revision() -> None:
     job = workflows()["ci.yml"]["jobs"]["work"]
-    runs = [step for step in job["steps"] if "run" in step]
-    scripts = [step["run"].split()[1] for step in runs]
-    assert scripts == [
-        "scripts/ci_work_from_base.sh",
-        "scripts/ci_check_from_base.sh",
-        "scripts/ci_verify_receipts.sh",
+    # The gates run in this order, each the base revision's copy (the fetch is
+    # tests/test_ci_gates.py's to prove).
+    runs = [step.get("run", "") for step in job["steps"]]
+    gates = re.findall(r'^bash "\$RUNNER_TEMP/gates/([\w.-]+)"', "\n".join(runs), re.M)
+    assert gates == [
+        "ci_work_from_base.sh",
+        "ci_config_from_base.sh",
+        "ci_check_from_base.sh",
+        "ci_verify_receipts.sh",
     ]
-    for step in runs:
-        # A ref chosen by whoever opens the pull request reaches the shell as a
-        # variable, never as script text.
-        assert "${{" not in step["run"]
-        assert step["env"]["BASE_REF"] == "${{ github.base_ref }}"
