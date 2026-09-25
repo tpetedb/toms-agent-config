@@ -1,0 +1,31 @@
+%% Lifecycle: board, how a question that loosens policy is decided.
+%% Drawn from docs/DESIGN.md sections 4 (board rules) and 5, and .agents/config.toml [governance].
+%% Legend: green terminator, blue process, yellow decision, orange input or output, dim red data store, red stop.
+flowchart TD
+    T(["a trigger: policy loosening, a checker change,<br/>security, a cross-team dispute, an unresolved finding"]) --> Q[/"board-question"/]
+    Q --> D["the lead director<br/>writes a position"]
+    D --> RV["each other director, independently<br/>one critique round"]
+    RV --> RE["the lead director revises"]
+    RE --> V{"a safety veto?"}
+    V -->|yes| O[/"to the owner"/]
+    V -->|no| TL{"Fable tallies<br/>a majority of three"}
+    TL --> DIS[("the dissent, recorded")]
+    TL --> P["the chief writes the proposal<br/>and its TODO.HUMAN.md items"]
+    P --> RU{"the owner rules<br/>accept, reject or send back"}
+    O --> RU
+    RU -->|send back| D
+    RU -->|reject| X[/"closed"/]
+    RU -->|accept| DEC[("decision record<br/>basis owner")]
+    DEC --> Z(["applied through a pull request"])
+    classDef term fill:#00A86B,stroke:#00D084,color:#000000
+    classDef proc fill:#0067A5,stroke:#0088CC,color:#FFFFFF
+    classDef dec fill:#FFBF00,stroke:#FFD500,color:#000000
+    classDef io fill:#FF8C1A,stroke:#FFA94D,color:#000000
+    classDef store fill:#9A2A2A,stroke:#F04923,color:#FFFFFF
+    classDef stop fill:#D32F2F,stroke:#F04923,color:#FFFFFF
+    class T,Z term
+    class D,RV,RE,P proc
+    class V,TL,RU dec
+    class Q,O io
+    class DIS,DEC store
+    class X stop

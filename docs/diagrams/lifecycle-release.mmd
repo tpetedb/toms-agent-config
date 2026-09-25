@@ -1,0 +1,27 @@
+%% Lifecycle: release, from fragments to a new judge on the host.
+%% Drawn from docs/DESIGN.md sections 13 and 18 and .agents/config/pipelines/release.toml.
+%% Legend: green terminator, blue process, yellow decision, dim red data store, red stop.
+flowchart TD
+    C(["a change lands with its fragment"]) --> F[("changelog.d/")]
+    F -.-> PLAN["the release pipeline plans<br/>the version from the fragments"]
+    PLAN --> VER{"just verify<br/>and just changelog"}
+    VER -->|fail| X1[/"to the owner"/]
+    VER -->|pass| PR["towncrier build and the version bump<br/>on a release pull request"]
+    PR --> M{"the owner merges?"}
+    M -->|no| X2[/"stays open"/]
+    M -->|yes| TAG["the owner tags vX.Y.Z<br/>and publishes the GitHub release"]
+    TAG --> DEP["tac deploy on the host<br/>re-stamps .agents/lib/tac, rebuilds .agents/.venv"]
+    DEP --> ST[(".agents/.venv, the new judge")]
+    ST --> AD["adopting projects stamp the pinned release"]
+    AD --> Z(["released"])
+    classDef term fill:#00A86B,stroke:#00D084,color:#000000
+    classDef proc fill:#0067A5,stroke:#0088CC,color:#FFFFFF
+    classDef dec fill:#FFBF00,stroke:#FFD500,color:#000000
+    classDef io fill:#FF8C1A,stroke:#FFA94D,color:#000000
+    classDef store fill:#9A2A2A,stroke:#F04923,color:#FFFFFF
+    classDef stop fill:#D32F2F,stroke:#F04923,color:#FFFFFF
+    class C,Z term
+    class PLAN,PR,TAG,DEP,AD proc
+    class VER,M dec
+    class F,ST store
+    class X1,X2 stop

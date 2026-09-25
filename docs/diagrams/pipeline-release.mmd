@@ -1,0 +1,23 @@
+%% Pipeline release: fragments assembled and the version bumped on a release pull request, the tag cut by the owner.
+%% Drawn from .agents/config/pipelines/release.toml.
+%% Legend: green terminator, blue process, yellow decision, orange input or output, dim red data store, red stop.
+flowchart TD
+    F[("changelog.d/")] -.-> PL["plan: the lead director<br/>writes release-plan"]
+    PL --> VE{"verify: just verify<br/>and just changelog"}
+    VE -->|fail| H[/"to the owner"/]
+    VE -->|pass| PU["publish: the runner<br/>commit, push, open-pr"]
+    PU --> ME[/"merge: the owner<br/>with the one command"/]
+    ME --> CU[/"cut: the owner tags the merged revision<br/>and publishes the GitHub release"/]
+    CU --> Z(["released"])
+    classDef term fill:#00A86B,stroke:#00D084,color:#000000
+    classDef proc fill:#0067A5,stroke:#0088CC,color:#FFFFFF
+    classDef dec fill:#FFBF00,stroke:#FFD500,color:#000000
+    classDef io fill:#FF8C1A,stroke:#FFA94D,color:#000000
+    classDef store fill:#9A2A2A,stroke:#F04923,color:#FFFFFF
+    classDef stop fill:#D32F2F,stroke:#F04923,color:#FFFFFF
+    class Z term
+    class PL,PU proc
+    class VE dec
+    class ME,CU io
+    class F store
+    class H stop

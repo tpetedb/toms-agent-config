@@ -39,7 +39,15 @@ import yaml
 from jinja2 import StrictUndefined, TemplateError
 from jinja2.sandbox import SandboxedEnvironment
 
-from tac import adapters, contracts, githooks, handoff, pipelines, tomlwrite
+from tac import (
+    adapters,
+    contracts,
+    diagrams,
+    githooks,
+    handoff,
+    pipelines,
+    tomlwrite,
+)
 from tac.config import CONFIG_DIR, Config, load_config
 from tac.standards import FLOOR_FILE
 from tac.tomldoc import document
@@ -580,6 +588,10 @@ def check_tree(root: Path) -> list[str]:
     problems += contracts.check_contracts(root)
     problems += handoff.check_templates(root)
     problems += pipelines.check_pipelines(root)
+    # The diagram inventory of github.toml, held where the project keeps its
+    # diagrams; a project without docs/diagrams/ has adopted no diagrams yet.
+    if (root / diagrams.DIAGRAMS_DIR).is_dir():
+        problems += diagrams.check(root, config)
     return problems
 
 

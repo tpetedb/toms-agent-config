@@ -9,6 +9,7 @@ import click
 
 from tac import __version__
 from tac.config_cli import config_group, explain
+from tac.diagrams_cli import diagrams_group
 from tac.doctor import CHECKS, exit_code, find_root, render_text, run_checks
 from tac.github_cli import github_group
 from tac.handoff_cli import handoff_group
@@ -78,6 +79,7 @@ cli.add_command(run_command)
 cli.add_command(launch_command)
 cli.add_command(inbox_group)
 cli.add_command(usage_group)
+cli.add_command(diagrams_group)
 
 
 def main() -> None:
