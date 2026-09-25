@@ -518,3 +518,19 @@ def test_doctor_agents_venv_needs_an_interpreter(tmp_path: Path) -> None:
     assert status is Status.FAIL and "bootstrap.sh" in detail
     write(tmp_path, ".agents/.venv/bin/python", "")
     assert doctor.check_agents_venv(tmp_path)[0] is Status.PASS
+
+
+def test_a_live_probe_named_by_several_conditions_is_reported_once() -> None:
+    entries = [
+        proof.Entry(
+            condition=c,
+            tests=(PASSING,),
+            probe="bypass.ruleset-owner-review",
+            requires=("github-identity",),
+            live=True,
+        )
+        for c in ("layer.3b", "bypass.ruleset-owner-review")
+    ]
+    [skip] = proof.live_skips(entries)
+    assert skip["conditions"] == ["layer.3b", "bypass.ruleset-owner-review"]
+    assert "github-identity" in skip["reason"]

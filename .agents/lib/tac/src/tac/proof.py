@@ -655,16 +655,23 @@ class CoverageResult:
     report: dict[str, Any] | None
 
 
-def live_skips(entries: Iterable[Entry]) -> list[dict[str, str]]:
-    return [
-        {
-            "probe": e.probe,
-            "reason": f"live; requires {', '.join(e.requires)}; runs through "
-            "`just dev-proof --require-live` on the host",
-        }
-        for e in entries
-        if e.probe is not None
-    ]
+def live_skips(entries: Iterable[Entry]) -> list[dict[str, Any]]:
+    """One line per live probe the map names, with the conditions waiting on it."""
+    found: dict[str, dict[str, Any]] = {}
+    for entry in entries:
+        if entry.probe is None:
+            continue
+        item = found.setdefault(
+            entry.probe,
+            {
+                "probe": entry.probe,
+                "conditions": [],
+                "reason": f"live; requires {', '.join(entry.requires)}; runs "
+                "through `just dev-proof --require-live` on the host",
+            },
+        )
+        item["conditions"].append(entry.condition)
+    return list(found.values())
 
 
 def coverage(
