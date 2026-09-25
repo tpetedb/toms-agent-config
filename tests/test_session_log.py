@@ -110,6 +110,26 @@ def test_a_secret_in_a_session_event_is_refused_by_name(tmp_path: Path) -> None:
     assert not (tmp_path / "store" / SESSIONS_DIR / DAY / "s1.jsonl").exists()
 
 
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"tool": "x\n" + "gh" + "p_" + "Q" * 36},
+        {"tool": "x\t" + "gh" + "p_" + "Q" * 36},
+        {"topic": ["a", "b\n" + "gh" + "p_" + "Q" * 36]},
+        {"model": "m\n" + "AKIA" + "ABCDEFGHIJKLMNOP"},
+    ],
+    ids=["newline", "tab", "topic", "aws"],
+)
+def test_a_secret_after_a_newline_or_tab_is_refused(
+    tmp_path: Path, changes: dict[str, object]
+) -> None:
+    # JSON writes a newline as a backslash and an n, which would hide a token
+    # from a \b-anchored pattern if the encoded line were scanned.
+    with pytest.raises(Bad, match="the secrets scan found"):
+        log(tmp_path / "store", ev("s1", 1, **changes))
+    assert not (tmp_path / "store" / SESSIONS_DIR / DAY / "s1.jsonl").exists()
+
+
 def test_purge_moves_the_file_and_leaves_an_audit_line(tmp_path: Path) -> None:
     store = tmp_path / "store"
     path = log(store, ev("s1", 1))
@@ -168,6 +188,37 @@ def test_purge_reads_only_dated_folders(tmp_path: Path) -> None:
     with pytest.raises(Bad, match="no session s1"):
         purge(store, "s1", reason="cleanup", by="agent", now=NOW)
     assert odd.is_file()
+
+
+def test_purge_skips_a_day_folder_that_is_a_symlink(tmp_path: Path) -> None:
+    store = tmp_path / "store"
+    log(store, ev("s1", 1))
+    journal = store / "memory" / "records.jsonl"
+    journal.parent.mkdir(parents=True)
+    journal.write_text('{"sequence": 1}\n', encoding="utf-8")
+    (store / SESSIONS_DIR / "2026-09-26").symlink_to(store / "memory")
+    with pytest.raises(Bad, match="no session records"):
+        purge(store, "records", reason="cleanup", by="agent", now=NOW)
+    assert journal.read_text("utf-8") == '{"sequence": 1}\n'
+    assert not (store / SESSIONS_DIR / PURGED_DIR).exists()
+
+
+def test_purge_skips_a_session_file_that_is_a_symlink(tmp_path: Path) -> None:
+    store = tmp_path / "store"
+    log(store, ev("s1", 1))
+    outside = tmp_path / "outside.jsonl"
+    outside.write_text("keep\n", encoding="utf-8")
+    (store / SESSIONS_DIR / DAY / "s2.jsonl").symlink_to(outside)
+    # One link leaves the journal, the other stays in the day folder, which the
+    # resolved-parent check alone would accept.
+    (store / SESSIONS_DIR / DAY / "s3.jsonl").symlink_to("s1.jsonl")
+    for session_id in ("s2", "s3"):
+        with pytest.raises(Bad, match=f"no session {session_id}"):
+            purge(store, session_id, reason="cleanup", by="agent", now=NOW)
+        assert (store / SESSIONS_DIR / DAY / f"{session_id}.jsonl").is_symlink()
+    assert outside.read_text("utf-8") == "keep\n"
+    assert (store / SESSIONS_DIR / DAY / "s1.jsonl").is_file()
+    assert not (store / SESSIONS_DIR / PURGED_DIR).exists()
 
 
 def test_the_cli_refuses_a_purge_that_walks_out_of_the_journal(

@@ -721,16 +721,20 @@ def known(stores: Stores) -> Known:
     return Known(records, events, live, promoted)
 
 
-def _refuse_secrets(text: str, what: str) -> None:
-    """Refuse by pattern name, never echoing the value. The whole line is
+def _refuse_secrets(value: object, what: str) -> None:
+    """Refuse by pattern name, never echoing the value. Every field is
     scanned, since paths, topics, repository and an event's `by` reach the
     promoted store as surely as the statement does."""
-    hit = secrets_scan.names(text)
+    hit = secrets_scan.names_in(value)
     if hit:
         raise Bad(
             f"{what} refused: the secrets scan found {', '.join(hit)}; the value "
             "is not repeated here. Remove it and write again"
         )
+
+
+def _fields(item: Record | Event) -> dict[str, Any]:
+    return item.model_dump(mode="json")
 
 
 @dataclass(frozen=True, slots=True)
@@ -783,10 +787,7 @@ def add(
     if stores.live is None:
         raise Bad("no worker store: set memory.runtime_store or run inside git")
     body, notes = _check_draft(draft)
-    _refuse_secrets(
-        json.dumps(body, sort_keys=True, ensure_ascii=False, default=str),
-        "the record",
-    )
+    _refuse_secrets(body, "the record")
     stamp = utc_text(now)
     with locked(stores.live):
         seen = known(stores)
@@ -822,7 +823,7 @@ def add(
             record = Record.model_validate(fields)
         except ValidationError as e:
             raise Bad(f"the record is refused: {_first(e)}") from None
-        _refuse_secrets(record.line(), "the record")
+        _refuse_secrets(_fields(record), "the record")
         if record.supersedes is not None and record.supersedes not in seen.records:
             raise Bad(f"supersedes {record.supersedes}, which no store holds")
         derived = seen.derived
@@ -901,7 +902,7 @@ def append_event(
             )
         except ValidationError as e:
             raise Bad(f"the event is refused: {_first(e)}") from None
-        _refuse_secrets(event.line(), "the event")
+        _refuse_secrets(_fields(event), "the event")
         append_line(stores.live / EVENTS_FILE, event.line())
     return event
 
@@ -1122,7 +1123,7 @@ def promote(
                     else ""
                 )
             )
-        _refuse_secrets(record.line(), "promotion")
+        _refuse_secrets(_fields(record), "promotion")
         promoted_ids = {r.id for r in seen.promoted.records} | {record_id}
         have = {e.id for e in seen.promoted.events}
         carried = [
@@ -1133,7 +1134,7 @@ def promote(
             and record_id in (e.record, e.supersedes_with)
         ]
         for one in carried:
-            _refuse_secrets(one.line(), f"promotion (event {one.id})")
+            _refuse_secrets(_fields(one), f"promotion (event {one.id})")
         append_line(stores.live / EVENTS_FILE, review.line())
         target = stores.promoted / RECORDS_DIR / f"{_file_id(record_id)}.json"
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -1297,7 +1298,7 @@ def _sequence_problems(name: str, items: Sequence[Record | Event]) -> list[str]:
 
 
 def _secret_problems(name: str, item: Record | Event) -> list[str]:
-    hit = secrets_scan.names(item.line())
+    hit = secrets_scan.names_in(_fields(item))
     return [f"{name}: {item.id} looks like it holds a {h}" for h in hit]
 
 
