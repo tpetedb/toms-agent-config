@@ -783,6 +783,83 @@ def test_promote_and_lint_scan_paths_and_event_fields(
     assert not any(FAKE_GITHUB in p for p in problems)
 
 
+# JSON writes a newline as a backslash and an n, so a token scanned in its JSON
+# form would follow a word character and slip past every \\b-anchored pattern.
+FAKE_AWS = "AKIA" + "ABCDEFGHIJKLMNOP"
+AFTER_A_BREAK = [
+    ("github-token", "Deploy key:\n" + FAKE_GITHUB),
+    ("github-token", "key\t" + FAKE_GITHUB),
+    ("aws-access-key-id", "The id is\n" + FAKE_AWS),
+]
+
+
+@pytest.mark.parametrize(("name", "text"), AFTER_A_BREAK, ids=["nl", "tab", "aws"])
+def test_a_secret_after_a_newline_or_tab_is_refused_by_add(
+    stores: Stores, name: str, text: str
+) -> None:
+    with pytest.raises(Bad) as refused:
+        put(stores, statement=text)
+    assert name in str(refused.value)
+    assert text.split()[-1] not in str(refused.value)
+    assert not (live(stores) / RECORDS_FILE).exists()
+
+
+def test_a_secret_after_a_newline_in_an_event_note_is_refused(stores: Stores) -> None:
+    got = put(stores).record
+    for note in ("n\n" + FAKE_GITHUB, "n\t" + FAKE_GITHUB):
+        with pytest.raises(Bad, match="github-token"):
+            append_event(
+                stores,
+                kind="decay",
+                record=got.id,
+                other=None,
+                note=note,
+                by="test",
+                basis=None,
+                now=NOW,
+                suffix=suffixes(0x50),
+            )
+    assert not (live(stores) / EVENTS_FILE).exists()
+
+
+def test_promote_and_lint_find_a_secret_after_a_newline(
+    stores: Stores, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Written around `add`, which would have refused it.
+    planted = record(1, statement="Deploy key:\n" + FAKE_GITHUB)
+    write_lines(live(stores) / RECORDS_FILE, [planted])
+    stub_evidence(monkeypatch, "owner")
+    with pytest.raises(Bad, match="github-token"):
+        promote_here(stores, planted.id, ["approval:Q1"])
+    assert not (stores.promoted / RECORDS_DIR).exists()
+    problems = lint(stores)
+    assert any(planted.id in p and "github-token" in p for p in problems)
+    assert not any(FAKE_GITHUB in p for p in problems)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [{"by": "x\n" + FAKE_GITHUB}, {"note": "see\n" + FAKE_OPENAI}],
+    ids=["by", "note"],
+)
+def test_lint_scans_the_promoted_events(
+    stores: Stores, changes: dict[str, Any]
+) -> None:
+    kept = record(1)
+    (stores.promoted / RECORDS_DIR).mkdir(parents=True)
+    (stores.promoted / RECORDS_DIR / f"{kept.id.replace(':', '_')}.json").write_text(
+        record_text(kept), encoding="utf-8"
+    )
+    planted = event(1, "decay", kept.id, **changes)
+    write_lines(stores.promoted / EVENTS_DIR / "2026-09-24.jsonl", [planted])
+    problems = lint(stores)
+    assert any(
+        f"{PROMOTED_DIR}/{EVENTS_DIR}" in p and planted.id in p and "looks like" in p
+        for p in problems
+    )
+    assert not any(FAKE_GITHUB in p or FAKE_OPENAI in p for p in problems)
+
+
 def test_the_cli_refuses_an_event_note_holding_a_secret(
     project: Path, tmp_path: Path
 ) -> None:

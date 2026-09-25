@@ -99,7 +99,7 @@ def sessions_dir(worker_store: Path) -> Path:
 
 def log(worker_store: Path, event: SessionEvent) -> Path:
     """Append the event to its session's file and refresh that day's index."""
-    hit = secrets_scan.names(event.line())
+    hit = secrets_scan.names_in(event.model_dump(mode="json"))
     if hit:
         raise Bad(
             f"the session event is refused: the secrets scan found {', '.join(hit)}; "
@@ -199,7 +199,8 @@ def _session_files(root: Path, session_id: str) -> list[Path]:
         return []
     found = []
     for day in sorted(root.iterdir()):
-        if not day.is_dir() or not re.fullmatch(DAY, day.name):
+        # A linked day folder could point at the memory journal next to it.
+        if day.is_symlink() or not day.is_dir() or not re.fullmatch(DAY, day.name):
             continue
         path = day / f"{session_id}.jsonl"
         real = path.is_file() and not path.is_symlink()

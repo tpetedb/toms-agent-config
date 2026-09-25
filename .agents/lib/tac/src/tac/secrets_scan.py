@@ -1,15 +1,17 @@
 """The secrets scan every memory and session write passes (design section 6).
 
-One function, `findings(text)`, used by `tac memory add`, `promote` and `lint`
-and by `tac session log`. Each pattern is anchored on a known prefix or an
-explicit `key=value` shape, so a sha256, a commit id or a record id never trips
-it. A finding names the pattern and the line, never the matched text: the scan
-exists so a secret is not written anywhere, its own report included.
+One function, `findings(text)`, and `names_in(value)` for a record or event,
+used by `tac memory add`, `promote` and `lint` and by `tac session log`. Each
+pattern is anchored on a known prefix or an explicit `key=value` shape, so a
+sha256, a commit id or a record id never trips it. A finding names the pattern
+and the line, never the matched text: the scan exists so a secret is not written
+anywhere, its own report included.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 
 # Name to pattern. Names are what a refusal prints; keep them free of any value.
@@ -64,3 +66,24 @@ def names(text: str) -> list[str]:
     """The pattern names `text` trips, each once, in pattern order."""
     hit = {f.pattern for f in findings(text)}
     return [name for name, _ in PATTERNS if name in hit]
+
+
+def strings(value: object) -> Iterator[str]:
+    """Every string in `value`, keys included, walking mappings and sequences."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, Mapping):
+        for key, item in value.items():
+            yield from strings(key)
+            yield from strings(item)
+    elif isinstance(value, list | tuple | set | frozenset):
+        for item in value:
+            yield from strings(item)
+
+
+def names_in(value: object) -> list[str]:
+    """The pattern names any string in `value` trips. The decoded strings are
+    scanned, never their JSON form: JSON writes a newline as a backslash and an
+    n, which puts a word character before a token and hides it from every
+    pattern anchored on a word boundary."""
+    return names("\n".join(strings(value)))
