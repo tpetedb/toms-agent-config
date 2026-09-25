@@ -13,6 +13,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import re
 import subprocess
 import tomllib
 from pathlib import Path
@@ -23,6 +24,7 @@ from click.testing import CliRunner
 from tac import adapters
 from tac import sync as sync_mod
 from tac.cli import cli
+from tac.config import load_config
 from tac.contracts import MODEL_FACING_DIR, strict_subset_problems
 from tac.doctor import Status, check_generated_lock
 from tac.draft07 import DRAFT_07
@@ -96,6 +98,47 @@ def test_the_lock_names_inputs_templates_policy_floor_and_outputs(
     assert set(lock["floor"]) == {".agents/standards.floor.toml"}
     assert "templates/adapters/claude/CLAUDE.md.j2" in lock["templates"]
     assert set(lock["outputs"]) == set(render(root).outputs)
+
+
+# ---------------------------------------------------------------- container profiles
+
+
+def _files(root: Path) -> dict[str, bytes]:
+    return {
+        str(p.relative_to(root)): p.read_bytes()
+        for p in sorted(root.rglob("*"))
+        if p.is_file() and not p.is_symlink()
+    }
+
+
+def test_sync_refuses_yolo_on_the_host_and_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = synced(tmp_path)
+    replace_in(root / ".agents/config.toml", 'active = "standard"', 'active = "yolo"')
+    before = _files(root)
+    # The host, whatever the machine running the test is: no marker is found.
+    monkeypatch.setattr("tac.config.container_evidence", lambda *_: None)
+    with pytest.raises(Bad, match=re.escape("profiles/yolo.toml: isolation")):
+        sync(root)
+    assert _files(root) == before
+    assert any("profiles/yolo.toml: isolation" in p for p in check_tree(root))
+    done = CliRunner().invoke(cli, ["sync", "--root", str(root)])
+    assert done.exit_code != 0 and "/.dockerenv" in done.output
+    assert _files(root) == before
+
+
+def test_yolo_renders_bypass_with_the_sandbox_off_inside_a_container(
+    tmp_path: Path,
+) -> None:
+    # The container is the isolation there, which is the shape yolo asks for.
+    root = copy_project(tmp_path)
+    replace_in(root / ".agents/config.toml", 'active = "standard"', 'active = "yolo"')
+    config = load_config(root, container="/.dockerenv (Docker)")
+    settings = json.loads(render(root, config).outputs[".claude/settings.json"])
+    assert settings["permissions"]["defaultMode"] == "bypassPermissions"
+    assert "disableBypassPermissionsMode" not in settings["permissions"]
+    assert settings["sandbox"]["enabled"] is False
 
 
 # ---------------------------------------------------------------- drift

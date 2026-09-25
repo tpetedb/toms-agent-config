@@ -1,0 +1,1 @@
+`tac config check` now cross-checks every profile against `config/mcp.toml`: `mcp_servers = "none"` while servers are listed is refused, since they would never load, and `mcp_servers = "from-conf"` with `strict = false` is refused, since a headless stage would load the owner's own user-level servers.

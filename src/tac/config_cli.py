@@ -108,9 +108,14 @@ def check(root: Path | None, base: str | None) -> None:
         click.echo(f"note: {note}", err=True)
     if problems:
         raise click.ClickException("\n".join(problems))
+    # A container profile loads only with a marker; name it, so the owner sees
+    # what the check took as proof.
+    where = (
+        "" if config.profile.on_host else f", inside a container: {config.container}"
+    )
     click.echo(
         f"config holds: profile {config.profile.name}, kind "
-        f"{config.knobs.project.kind}, {len(config.entries)} values"
+        f"{config.knobs.project.kind}, {len(config.entries)} values{where}"
     )
 
 
