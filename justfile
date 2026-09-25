@@ -193,3 +193,24 @@ work-thread id:
 # Say something on the order's issue in a role: just work-say docs-intro manager:docs "..."
 work-say id role text:
     {{ tac }} work say {{ quote(id) }} --role {{ quote(role) }} {{ quote(text) }}
+
+# ---- memory: the append-only bus (docs/DESIGN.md, 6)
+
+# The memory bus: just memory add | event | search | index | promote | schema
+[positional-arguments]
+memory *args:
+    {{ tac }} memory "$@"
+
+# What a stage prompt receives from memory: just select --stage build --order <id>
+[positional-arguments]
+select *args:
+    {{ tac }} select "$@"
+
+# The session journal, run by the launcher: just session log | purge <id> --reason "..."
+[positional-arguments]
+session *args:
+    {{ tac }} session "$@"
+
+# Every record and event parses, the index is current, no secret-like line, no sequence gap.
+memory-lint:
+    {{ tac }} memory lint
