@@ -1,5 +1,5 @@
 {
-  "_note": "Shaped on the documented response of the GitHub REST API (API version 2022-11-28) with placeholder ids and names; tests/test_github_schema.py validates it against the published schema in openapi_rulesets.json. No live call recorded it. A bypass: verify and work are required, but with no integration_id any integration may post them.",
+  "_note": "Shaped on the documented response of the GitHub REST API (API version 2022-11-28) with placeholder ids and names; tests/test_github_schema.py validates it against the published schema in openapi_rulesets.json. No live call recorded it. A bypass: verify and gates are required, but with no integration_id any integration may post them.",
   "body": {
     "id": 101,
     "name": "tac-default-branch",
@@ -49,7 +49,7 @@
               "context": "verify"
             },
             {
-              "context": "work"
+              "context": "gates"
             }
           ]
         }

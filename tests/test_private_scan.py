@@ -453,20 +453,67 @@ def test_the_scan_and_its_term_list_carry_no_term() -> None:
                 assert not hit, (name, line)
 
 
-def test_only_the_term_lists_exact_path_is_skipped(repo: Path, base: str) -> None:
-    # The same content elsewhere is read, even though the list's blob is not.
+NOT_AN_ENTRY = "neither blank nor an entry"
+# A term spelled only in hex digits, and an entry whose hex spells it: the entry
+# line is the one thing the scan does not read, and only at the list's path.
+HEX_TERM = "a6b"
+HEX_TERMS = f"text {HEX_TERM.encode().hex()}\n"
+HEX_ENTRY = f"text {b'jk'.hex()}"
+
+
+def test_only_the_term_lists_entry_lines_at_its_exact_path_are_not_read(
+    repo: Path,
+) -> None:
+    assert HEX_TERM in HEX_ENTRY
     others = (f"{TERMS_PATH}.orig", "docs/private_terms.txt", "private_terms.txt")
-    write(repo, TERMS_PATH, f"text {TERM}\n")
-    write(repo, others[0], f"text {TERM}\n")
+    # The list and the copy beside it are one blob, read once each way: the
+    # scan reads it at the list's path first, then again, whole, at the other.
+    write(repo, TERMS_PATH, f"\n{HEX_ENTRY}\n")
+    write(repo, others[0], f"\n{HEX_ENTRY}\n")
     for other in others[1:]:
-        write(repo, other, f"{other} {TERM}\n")
+        write(repo, other, f"{other}\n{HEX_ENTRY}\n")
     commit_all(repo, "candidate")
-    for done in (run_scan(repo), run_range(repo, base)):
-        lines = done.stdout.splitlines()
-        assert done.returncode == 1
-        assert not [line for line in lines if f"{TERMS_PATH}:" in line], lines
-        for other in others:
-            assert [line for line in lines if f"{other}:1:" in line], (other, lines)
+    done = run_scan(repo, terms=HEX_TERMS)
+    lines = done.stdout.splitlines()
+    assert done.returncode == 1, (done.stdout, done.stderr)
+    assert not [line for line in lines if f"{TERMS_PATH}:" in line], lines
+    for other in others:
+        assert f"{other}:2:{HEX_ENTRY}" in lines, (other, lines)
+
+
+def test_a_term_in_a_comment_in_the_term_list_is_found(repo: Path, base: str) -> None:
+    # A comment is no entry: it is read like any other line, and refused as well.
+    listed = f"text {KEY.encode().hex()}\n# notes on {TERM}\n"
+    write(repo, TERMS_PATH, listed)
+    hits = (f"{TERMS_PATH}:2:# notes on {TERM}", f"{TERMS_PATH}:2: {NOT_AN_ENTRY}")
+    assert_found(run_scan(repo), *hits)
+    commit_all(repo, "candidate")
+    assert_found(run_scan(repo), *hits)
+    assert_found(run_range(repo, base), *(f"{short(repo)}:{hit}" for hit in hits))
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "a plain sentence",
+        "# a comment",
+        f"text {KEY.encode().hex()} trailing words",
+        HEX_ENTRY.upper(),
+        HEX_ENTRY.replace("text", "TEXT"),
+        f" {HEX_ENTRY}",
+        f"{HEX_ENTRY} ",
+        "text",
+        "text 6",
+    ],
+)
+def test_an_unknown_line_in_the_term_list_is_refused(
+    repo: Path, base: str, line: str
+) -> None:
+    write(repo, TERMS_PATH, f"text {KEY.encode().hex()}\n{line}\n")
+    commit_all(repo, "candidate")
+    hit = f"{TERMS_PATH}:2: {NOT_AN_ENTRY}"
+    assert_found(run_scan(repo), hit)
+    assert_found(run_range(repo, base), f"{short(repo)}:{hit}")
 
 
 def test_an_unstaged_change_and_a_working_tree_deletion_are_both_read(
@@ -485,10 +532,15 @@ def test_an_unstaged_change_and_a_working_tree_deletion_are_both_read(
 @pytest.mark.parametrize(
     ("terms", "says"),
     [
-        ("# nothing but comments\n", "no terms"),
-        ("text\n", "an empty term"),
-        ("word 6162\n", "the kind must be one of"),
-        ("text zz\n", "not UTF-8 in hex"),
+        ("\n \n", "no terms"),
+        ("# a comment\ntext 6162\n", f"{NOT_AN_ENTRY}"),
+        ("text 6162\nfree text\n", ":2: neither blank nor an entry"),
+        ("text\n", NOT_AN_ENTRY),
+        ("word 6162\n", NOT_AN_ENTRY),
+        ("text zz\n", NOT_AN_ENTRY),
+        ("text 6162 # a note\n", NOT_AN_ENTRY),
+        ("text 6162\r\n", NOT_AN_ENTRY),
+        ("text ff\n", "not UTF-8 in hex"),
         ("regex 28\n", "does not compile"),
     ],
 )
@@ -525,8 +577,8 @@ CI = REPO / ".github/workflows/ci.yml"
 
 
 def ci_steps() -> list[dict]:
-    """The verify job's step that takes the scan from the base, then the scan."""
-    steps = yaml.safe_load(CI.read_text("utf-8"))["jobs"]["verify"]["steps"]
+    """The gates job's step that takes the scan from the base, then the scan."""
+    steps = yaml.safe_load(CI.read_text("utf-8"))["jobs"]["gates"]["steps"]
     fetch = next(
         s for s in steps if "private_scan.sh" in s.get("env", {}).get("GATES", "")
     )
@@ -540,7 +592,9 @@ def run_ci(
     runner_temp = tmp_path / "runner-temp"
     runner_temp.mkdir()
     environ = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    environ |= {"RUNNER_TEMP": str(runner_temp), "BASE_REF": "main"}
+    # The base and the head by commit id, as the event payload names them.
+    base = git(root, "rev-parse", "main")
+    environ |= {"RUNNER_TEMP": str(runner_temp), "BASE_SHA": base}
     environ |= {"HEAD_REF": "candidate", "HEAD_SHA": head}
     done = []
     for step in ci_steps():
@@ -569,6 +623,9 @@ def pull_request(
     root = tmp_path / "pr"
     root.mkdir()
     git(root, "init", "-q")
+    # The other gates the same step takes from the base, as stand-ins.
+    for gate in (REPO / "scripts").glob("ci_*.sh"):
+        write(root, f"scripts/{gate.name}", "exit 0\n")
     for path, text in base_files.items():
         write(root, path, text)
     base = commit_all(root, "base")

@@ -26,8 +26,9 @@ API_ROOT = "https://api.github.com"
 API_VERSION = "2022-11-28"
 ACCEPT = "application/vnd.github+json"
 RULESET_NAME = "tac-default-branch"
-# The jobs of .github/workflows/ci.yml; a test keeps the two in step.
-REQUIRED_CHECKS = ("verify", "work")
+# The jobs of .github/workflows/ci.yml, both required: verify runs the
+# candidate's code, gates runs only the base's; a test keeps the two in step.
+REQUIRED_CHECKS = ("verify", "gates")
 # The GitHub Actions app: pinning the source stops a commit status posted by any
 # other integration from satisfying a required check.
 GITHUB_ACTIONS_APP_ID = 15368

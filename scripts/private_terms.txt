@@ -1,69 +1,33 @@
-# private_terms.txt: the terms scripts/private_scan.sh refuses in this public
-# repository. Changes need the owner's review (CODEOWNERS names this file).
-#
-# One term per line: a kind, a space, and the term's UTF-8 bytes in hex. Hex, so
-# this public file does not carry the terms as searchable text, and so a scanner
-# that greps every file (an older base's) does not flag the list itself. It is
-# not a secret: anyone can decode it. The scan skips the content at this exact
-# path in every tree it reads; in CI it takes the list from the base revision.
-#
-# Kinds:
-#   text      a fixed string, matched without regard to case
-#   regex     a Python regular expression, matched with case, line by line
-#   identity  an exact `Name <email>` pair, compared without regard to case,
-#             that a commit's author or committer header may carry although a
-#             term matches it: the owner's own commit identity, which every
-#             commit already publishes. It exempts that header only; the same
-#             words anywhere else, and any other identity, are still refused.
-#
-# Add a term:        bash scripts/private_scan.sh --encode text 'the term'
-# Read the list:     bash scripts/private_scan.sh --show-terms
-# Blank lines and lines that start with # are ignored.
-
-# Local home and workspace paths.
 text 2f55736572732f
 text 7e2f706c6174666f726d
 text 7e2f7265706f73
 
-# The owner's business name.
 text 6d617867726f7570
 
-# Personal mail addresses.
 text 742e70657465727370726976617465
 text 40676d61696c2e636f6d
-# The owner's commit identity, published on every commit it made (TODO.HUMAN.md,
-# Q22 asks whether it moves to the GitHub noreply address instead).
 identity 74706574656462203c742e7065746572737072697661746540676d61696c2e636f6d3e
 
-# Business services and clients.
 text 652d426f656b686f7564656e
 text 5061792e6e6c
 text 432d506c616e
 
-# Private tools and repositories.
 text 646f632d646f63
 text 646f63646f63
 text 52322d4432
 text 746f6d732d746f6f6c626f78
 
-# Machine names and private paths.
 text 4d61632d6d696e69
 text 686f73742e6d64
 text 2e6769742f626f617264
 
-# Subscription details.
 text 6d61782d323078
 text 70726f2d3578
 text 4d617820323078
 
-# Private watch tools.
 text 636f6465782d7761746368
 text 75736167652d7761746368
 
-# Citation keys of the private design notes: fact keys (an F and three
-# digits), one earlier decision key, review keys (two capitals after an opening
-# bracket or a separator) and requirement or lesson keys (an R or an L and one
-# or two digits in brackets).
 regex 283f3c215c7729465b302d395d7b337d283f215c7729
 regex 283f3c215c772944313933283f215c7729
 regex 5b283b2c5d203f2841507c4f507c41537c44447c4f527c455629285b203b2c295d7c2429

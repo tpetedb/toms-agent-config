@@ -1438,10 +1438,9 @@ def test_the_justfile_has_every_work_recipe_on_the_deployed_copy() -> None:
     assert 'tac := "uv run --frozen --no-sync --project .agents tac"' in justfile
 
 
-def test_ci_runs_the_work_gate_after_the_tests_with_refs_as_variables() -> None:
+def test_ci_runs_the_work_gate_in_the_gate_job_with_refs_as_variables() -> None:
     ci = yaml.safe_load((REPO / ".github/workflows/ci.yml").read_text())
-    job = ci["jobs"]["work"]
-    assert job["needs"] == "verify"
+    job = ci["jobs"]["gates"]
     checkout = job["steps"][0]
     assert checkout["with"]["fetch-depth"] == 0
     assert checkout["with"]["persist-credentials"] is False
@@ -1450,7 +1449,7 @@ def test_ci_runs_the_work_gate_after_the_tests_with_refs_as_variables() -> None:
     # the shell as a variable and never as script text.
     assert "${{" not in step["run"]
     assert step["env"] == {
-        "BASE_REF": "${{ github.base_ref }}",
+        "BASE_SHA": "${{ github.event.pull_request.base.sha }}",
         "HEAD_REF": "${{ github.head_ref }}",
     }
     # The base revision's checker judges, never the candidate's.

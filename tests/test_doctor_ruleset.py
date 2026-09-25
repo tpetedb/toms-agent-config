@@ -1,7 +1,7 @@
 """Build condition C5: `tac doctor` fetches each active branch ruleset by id and
 fails on a missing or non-empty bypass_actors, a tag-only ruleset, and a
 ruleset without code-owner review that someone must approve, or without the
-verify and work checks from the GitHub Actions app."""
+verify and gates checks from the GitHub Actions app."""
 
 from __future__ import annotations
 
@@ -158,7 +158,7 @@ def test_a_required_checks_rule_naming_no_check_fails() -> None:
         ("ruleset_unrelated_check", "the 'verify' check is not required"),
         # The right names, from any source: a forged status satisfies them.
         ("ruleset_any_source_checks", "'verify' check may come from any integration"),
-        ("ruleset_other_app_check", "'work' check may come from 424242"),
+        ("ruleset_other_app_check", "'gates' check may come from 424242"),
         # Code-owner review that asks for no approving review asks for nothing.
         ("ruleset_zero_approvals", "asks for no approving review"),
     ],
@@ -171,13 +171,13 @@ def test_a_ruleset_with_a_bypass_fails(fixture: str, message: str) -> None:
     assert message in detail
 
 
-def test_the_work_check_has_to_be_required_as_well() -> None:
+def test_the_gates_check_has_to_be_required_as_well() -> None:
     holds = load("ruleset_holds")
     checks = rule(holds, "required_status_checks")["parameters"]
     checks["required_status_checks"] = checks["required_status_checks"][:1]
     status, detail = judged(standard(rules=holds["rules"]))
     assert status is Status.FAIL
-    assert "the 'work' check is not required" in detail
+    assert "the 'gates' check is not required" in detail
 
 
 def test_a_second_source_for_a_required_check_fails() -> None:

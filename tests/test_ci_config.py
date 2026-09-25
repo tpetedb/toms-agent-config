@@ -131,15 +131,13 @@ def test_a_base_without_a_floor_or_checker_falls_back_loudly(
 
 def test_ci_runs_the_floor_check_from_the_base_in_a_required_job() -> None:
     ci = yaml.safe_load((REPO / ".github/workflows/ci.yml").read_text())
-    job = ci["jobs"]["work"]
+    job = ci["jobs"]["gates"]
     # A step in a job the ruleset does not require would never block a merge.
-    assert "work" in REQUIRED_CHECKS
+    assert "gates" in REQUIRED_CHECKS
     assert job["steps"][0]["with"]["fetch-depth"] == 0
     step = next(s for s in job["steps"] if "ci_config_from_base.sh" in s.get("run", ""))
     # A branch name reaches the shell as a variable, never as script text.
     assert "${{" not in step["run"]
-    assert step["env"] == {"BASE_REF": "${{ github.base_ref }}"}
+    assert step["env"] == {"BASE_SHA": "${{ github.event.pull_request.base.sha }}"}
     # The base revision's copy of the script, taken by an earlier step.
-    assert step["run"] == (
-        'bash "$RUNNER_TEMP/gates/ci_config_from_base.sh" "origin/$BASE_REF"'
-    )
+    assert step["run"] == 'bash "$RUNNER_TEMP/gates/ci_config_from_base.sh" "$BASE_SHA"'
