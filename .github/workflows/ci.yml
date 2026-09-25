@@ -37,6 +37,10 @@ jobs:
         run: uv run --frozen ruff format --check .
       - name: Types
         run: uv run --frozen basedpyright
+      - name: Python 3.9 for the guard's tests
+        # The source guard must run under the 3.9 macOS ships as /usr/bin/python3;
+        # test_guard_py39.py finds this one and never installs during the tests.
+        run: uv python install 3.9
       - name: Tests
         # Linux has no Seatbelt, so the gate and probe confinement tests skip
         # here; a macOS host run is their evidence (docs/evidence/m0-host-run.md).

@@ -539,6 +539,24 @@ def test_another_accounts_approval_is_not_the_owners(project: Path) -> None:
     assert verdict.state == "waiting"
 
 
+def test_a_bot_that_carries_the_owners_login_is_not_the_owner(project: Path) -> None:
+    """Only a review by a user account counts; an app or bot never does, even
+    when GitHub reports it under the owner's login."""
+    bot = review()
+    bot["user"]["type"] = "Bot"
+    assert bot["user"]["login"] == OWNER
+    verdict = by_github(pr_item(project), github(reviews=[bot]))
+    assert verdict.state == "waiting", verdict.reason
+
+
+def test_a_repository_the_agent_identity_owns_is_refused(project: Path) -> None:
+    """When the agent identity owns the repository, the owner's review would be
+    the agent's own, so nothing it says is an approval."""
+    verdict = by_github(pr_item(project), github(), agent_identity=OWNER)
+    assert verdict.state == "refused"
+    assert f"the repository owner {OWNER} is the agent identity" in verdict.reason
+
+
 def test_no_review_is_waiting_even_after_the_timeout(project: Path) -> None:
     item = pr_item(project, expires_at="2026-09-25T11:30:00Z")
     verdict = by_github(item, github(reviews=[]))

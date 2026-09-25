@@ -1,4 +1,5 @@
-"""The hook guard and its checker (DESIGN 9 and 10, build condition C2).
+"""The hook guard and its checker (DESIGN 9 and 10). What the guard loads in a
+hostile session, build condition C2, is proved in test_hook_isolation.py.
 
 The guard runs as a client runs it: a subprocess started from an absolute
 interpreter and an absolute script, the event on stdin. Its checker is a stub
@@ -31,10 +32,13 @@ from tests._guard import (
     emitted,
     event,
     guarded,
-    hostile,
     install_candidate,
+    patch,
+    real_checkout,
+    rendered,
     run_guard,
     site_packages,
+    tool_event,
 )
 from tests._syncproject import copy_project, replace_in
 
@@ -46,10 +50,6 @@ EVERY = [("claude", e) for e in CLAUDE_EVENTS] + [("codex", e) for e in CODEX_EV
 @pytest.fixture
 def fx(tmp_path: Path) -> Fixture:
     return guarded(tmp_path)
-
-
-def tool_event(name: str, tool: str = "Edit", **given: Any) -> dict[str, Any]:
-    return event(name, tool_name=tool, tool_input=given)
 
 
 def payload_for(name: str) -> dict[str, Any]:
@@ -299,66 +299,12 @@ def test_an_editable_checker_pointing_at_a_source_tree_is_refused(
     refuses(fx, f"imported tac from {os.path.realpath(source)}")
 
 
-# ---------------------------------------------------------------- isolation (C2)
-
-
-def test_path_pythonpath_and_planted_modules_change_nothing_the_guard_loads(
-    fx: Fixture, tmp_path: Path
-) -> None:
-    env, marker, work_dir = hostile(fx, tmp_path)
-    fx.stub(mode="echo")
-    done = run_guard(
-        fx, "claude", "SessionStart", event("SessionStart"), env=env, cwd=work_dir
-    )
-    assert done.returncode == 0, done.stderr
-    assert not marker.exists(), marker.read_text("utf-8")
-    seen = json.loads(emitted(done)["hookSpecificOutput"]["additionalContext"])
-    # The checker got the fixed PATH and none of the variables that steer Python,
-    # uv or git, nor the token.
-    assert seen["env"]["PATH"] == "/usr/bin:/bin:/usr/sbin:/sbin"
-    for name in env:
-        if name not in ("PATH", "HOME"):
-            assert name not in seen["env"], name
-    assert seen["cwd"] == os.path.realpath(fx.root)
-    for entry in seen["path"]:
-        assert entry, "the working folder is on the checker's sys.path"
-        for place in (fx.root, work_dir, tmp_path / "planted"):
-            inside = os.path.realpath(entry).startswith(os.path.realpath(place))
-            assert not inside or ".agents/.venv" in entry, entry
-
-
-def test_a_real_checker_still_answers_from_the_venv_in_a_hostile_checkout(
-    tmp_path: Path,
-) -> None:
-    fx = guarded(tmp_path, checker="candidate")
-    copy_project(fx.root)
-    sync(fx.root, links=False)
-    env, marker, work_dir = hostile(fx, tmp_path)
-    target = fx.root / "AGENTS.md"
-    done = run_guard(
-        fx,
-        "claude",
-        "PreToolUse",
-        tool_event("PreToolUse", file_path=str(target)),
-        env=env,
-        cwd=work_dir,
-    )
-    assert not marker.exists(), marker.read_text("utf-8")
-    assert done.returncode == 2, done.stderr
-    assert "[generated-paths] AGENTS.md is generated" in done.stderr
-
-
 # ---------------------------------------------------------------- the real checker
 
 
 @pytest.fixture
 def real(tmp_path: Path) -> Fixture:
-    """A synced copy of this project with the guard stamped into it and the
-    candidate tac installed, not editable, in its .agents/.venv."""
-    fx = guarded(tmp_path, checker="candidate")
-    copy_project(fx.root)
-    sync(fx.root, links=False)
-    return fx
+    return real_checkout(tmp_path)
 
 
 def test_the_real_checker_refuses_generated_files_and_secrets(real: Fixture) -> None:
@@ -381,75 +327,6 @@ def test_the_real_checker_lets_ordinary_calls_through(real: Fixture) -> None:
     for client, name in (("claude", "Stop"), ("codex", "SessionStart")):
         done = run_guard(real, client, name, event(name, cwd=str(real.root)))
         assert done.returncode == 0, done.stderr
-
-
-def rendered(root: Path, client: str, event_name: str) -> str:
-    """The one command a client's rendered file runs for an event."""
-    rel = ".claude/settings.json" if client == "claude" else ".codex/hooks.json"
-    hooks = json.loads((root / rel).read_text("utf-8"))["hooks"]
-    (group,) = hooks[event_name]
-    (one,) = group["hooks"]
-    return one["command"]
-
-
-@pytest.mark.skipif(
-    not os.access("/usr/bin/python3", os.X_OK), reason="no system interpreter"
-)
-@pytest.mark.parametrize("client", ["claude", "codex"])
-def test_the_rendered_command_runs_the_stamped_guard_in_a_hostile_session(
-    real: Fixture, tmp_path: Path, client: str
-) -> None:
-    """The exact command tac sync renders, run by a shell as the client runs it,
-    from an environment and a checkout an agent prepared: it reaches the real
-    checker, refuses an edit of a generated file, and loads nothing planted."""
-    done = subprocess.run(
-        ["/usr/bin/git", "init", "-q", str(real.root)], capture_output=True, check=False
-    )
-    assert done.returncode == 0, done.stderr
-    env, marker, work_dir = hostile(real, tmp_path)
-    target = real.root / ".claude" / "settings.json"
-    if client == "claude":
-        env["CLAUDE_PROJECT_DIR"] = str(real.root)
-        cwd = work_dir
-        call = tool_event("PreToolUse", file_path=str(target))
-    else:
-        # Codex names no project folder, so the command asks git from the
-        # session's folder, anywhere inside the checkout.
-        cwd = real.root / "src"
-        cwd.mkdir(exist_ok=True)
-        call = tool_event(
-            "PreToolUse",
-            tool="apply_patch",
-            command=patch("Update File: ../.claude/settings.json"),
-        )
-    call["cwd"] = str(cwd)
-    command = rendered(real.root, client, "PreToolUse")
-    ran = subprocess.run(
-        ["/bin/sh", "-c", command],
-        input=json.dumps(call),
-        capture_output=True,
-        text=True,
-        cwd=cwd,
-        env=env,
-        check=False,
-        timeout=120,
-    )
-    assert not marker.exists(), marker.read_text("utf-8")
-    assert ran.returncode == 2, ran.stderr
-    assert "[generated-paths] .claude/settings.json is generated" in ran.stderr
-    stop = subprocess.run(
-        ["/bin/sh", "-c", rendered(real.root, client, "Stop")],
-        input=json.dumps(event("Stop", cwd=str(cwd))),
-        capture_output=True,
-        text=True,
-        cwd=cwd,
-        env=env,
-        check=False,
-        timeout=120,
-    )
-    assert not marker.exists(), marker.read_text("utf-8")
-    assert stop.returncode == 0, stop.stderr
-    assert "tac guard" not in stop.stdout + stop.stderr
 
 
 @pytest.mark.parametrize("client", ["claude", "codex"])
@@ -616,11 +493,6 @@ def test_a_check_left_unwired_on_a_client_does_not_run(project: Path) -> None:
         tool_input={"file_path": str(project / "AGENTS.md")},
     )
     assert read.verdict == edit.verdict == "allow"
-
-
-def patch(*headers: str) -> str:
-    body = [f"*** {h}\n@@\n+x" for h in headers]
-    return "*** Begin Patch\n" + "\n".join(body) + "\n*** End Patch\n"
 
 
 @pytest.mark.parametrize(

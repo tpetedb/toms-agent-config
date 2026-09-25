@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Any
 
 from tac import tomlwrite
+from tac.sync import sync
+from tests._syncproject import copy_project
 
 REPO = Path(__file__).resolve().parents[1]
 SOURCE_GUARD = REPO / "hooks" / "run.py"
@@ -193,6 +195,34 @@ def run_guard(
 
 def event(name: str, **more: Any) -> dict[str, Any]:
     return {"session_id": "s-1", "cwd": "/", "hook_event_name": name, **more}
+
+
+def tool_event(name: str, tool: str = "Edit", **given: Any) -> dict[str, Any]:
+    return event(name, tool_name=tool, tool_input=given)
+
+
+def patch(*headers: str) -> str:
+    """A Codex apply_patch body that names each header's file."""
+    body = [f"*** {h}\n@@\n+x" for h in headers]
+    return "*** Begin Patch\n" + "\n".join(body) + "\n*** End Patch\n"
+
+
+def rendered(root: Path, client: str, event_name: str) -> str:
+    """The one command a client's rendered file runs for an event."""
+    rel = ".claude/settings.json" if client == "claude" else ".codex/hooks.json"
+    hooks = json.loads((root / rel).read_text("utf-8"))["hooks"]
+    (group,) = hooks[event_name]
+    (one,) = group["hooks"]
+    return one["command"]
+
+
+def real_checkout(tmp: Path) -> Fixture:
+    """A synced copy of this project with the guard stamped into it and the
+    candidate tac installed, not editable, in its .agents/.venv."""
+    fx = guarded(tmp, checker="candidate")
+    copy_project(fx.root)
+    sync(fx.root, links=False)
+    return fx
 
 
 def emitted(done: subprocess.CompletedProcess[str]) -> dict[str, Any]:

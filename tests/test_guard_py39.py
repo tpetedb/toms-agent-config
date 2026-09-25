@@ -3,8 +3,11 @@
 macOS ships 3.9 as /usr/bin/python3 and a hook must run before any venv exists,
 so the guard stays 3.9 compatible. This runs the candidate, the source
 `hooks/run.py`, never the deployed `.agents/hooks/run.py`, which a builder
-cannot write and which changes only after a deploy. The interpreter comes from
-uv: the one uv finds, else one uv installs.
+cannot write and which changes only after a deploy. The interpreter is the 3.9
+uv finds: /usr/bin/python3 on a Mac, and in CI the one its workflow installs
+with `uv python install 3.9` before the tests. The pin is the 3.9 language level,
+not a patch release, because the guard's contract is what every macOS 3.9 runs.
+The test never installs one itself, so it needs no network.
 """
 
 from __future__ import annotations
@@ -41,9 +44,7 @@ def _find() -> str:
 def py39() -> str:
     found = _find()
     if not found:
-        subprocess.run(["uv", "python", "install", "3.9"], check=True)
-        found = _find()
-    assert found, "uv found no Python 3.9 and could not install one"
+        pytest.fail("uv finds no Python 3.9; run `uv python install 3.9` once")
     version = subprocess.run(
         [found, "-I", "-c", "import sys; print(sys.version_info[:2])"],
         capture_output=True,
