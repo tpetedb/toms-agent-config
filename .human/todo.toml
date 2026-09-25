@@ -28,5 +28,6 @@ sections = [
   { id = "standards", heading = "Standards and memory" },
   { id = "skills", heading = "Skills and third-party material" },
   { id = "approvals", heading = "Approvals waiting on the owner" },
+  { id = "escalations", heading = "Handoffs that failed their contract" },
   { id = "steps", heading = "One-time steps on the owner's machine" },
 ]

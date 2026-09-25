@@ -14,7 +14,7 @@ schema_version = 1
 ".agents/config/gates/mixed.toml" = "3e47ab91cd931efb3c064ae760a3ca4de464385c17b90014fb6e299dca67e13b"
 ".agents/config/gates/tool.toml" = "305e8c0042992f981315efa1883a3f3838d3b9be1590692f6ff975c8df7516fc"
 ".agents/config/github.toml" = "4e91f0edf1d595a0cd4b7d466be72aa5eabd43a73b9be3b69b576bac102c3d6d"
-".agents/config/hooks.toml" = "2f6ea7f36eff32a52e7111ecb67823ff9cce63ec3dfe6dde9c6e0c34a29b0bef"
+".agents/config/hooks.toml" = "8bce165bb8318edbb0069691513ebac336086336acb8d61fca67b32fc02d3a86"
 ".agents/config/mcp.toml" = "a5ebdd9c08e6a5175d1e1a900118afac635b5e54f92a1b8989272ace9619479e"
 ".agents/config/models.toml" = "92e56d65ff72a54f3be5f42e821f7d4a57eb6af8284cb67b9700a37be6f2a5e9"
 ".agents/config/network.toml" = "74b9a81741b4ef613a2297625d817d1c85a36864734fe987cb20b0629d7b9bd9"
@@ -36,7 +36,7 @@ schema_version = 1
 ".agents/config/roles/scout.toml" = "395a3149b9fd1386f85f6d32190c0a88cf928f6a01abb87d004dd1b972cb3af5"
 ".agents/config/runtime.toml" = "42f91290afea8a3c6c450bdb288f5a7ba17543a1c0a26421ea6282baa5441821"
 ".agents/config/standards.toml" = "15ff1110450c1eddf42030ed0dccbfa8006b7bd5f79ce847115bb00a2b15990b"
-".agents/config/teams.toml" = "84a4f9a42bf9ec9e4e0ffb17d36d9273b013a1dc98852826ae5705de317fbffe"
+".agents/config/teams.toml" = "ba0cb4c331ba1b46121a1be7963ddc6ef40d3b3002f798f95f16134db1a7fed6"
 ".agents/context/brief.md" = "a528bc9c81526f63124a818202fd1ffa4b6f4a6c5421f0d2d786da3bfe96bc16"
 ".agents/context/claude.md" = "cff1c2de685136f7e1a078c1287cb2438537ea3618832f9825e7944d02b300c5"
 
@@ -57,7 +57,7 @@ schema_version = 1
 
 [hooks]
 ".agents/hooks/run.py" = "0f2056af525c3bbeb16a11fdfc158dcf39802f223cad84f6a15081eaf3a84c18"
-"hooks/git/prek.toml" = "02a622662f16b0537ece3413a30a279ebffbf5dcf72a17565bd546ce11de9689"
+"hooks/git/prek.toml" = "73297fabfecffe1068e24190a8be838b3b00f49e3aeb07da873610adadff896c"
 "hooks/run.py" = "0f2056af525c3bbeb16a11fdfc158dcf39802f223cad84f6a15081eaf3a84c18"
 
 [outputs]

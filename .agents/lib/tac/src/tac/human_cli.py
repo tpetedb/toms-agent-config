@@ -98,12 +98,12 @@ def human_group() -> None:
 )
 @click.option(
     "--topic",
-    required=True,
+    default=None,
     help="The section of the page, by its id in .human/todo.toml.",
 )
 @click.option("--title", default=None, help="A few words naming the item.")
 @click.option(
-    "--question", required=True, help="The exact question or action, one line."
+    "--question", default=None, help="The exact question or action, one line."
 )
 @click.option("--option", "options", multiple=True, help="One option; repeat for each.")
 @click.option("--recommendation", default=None, help="The board's recommendation.")
@@ -145,6 +145,14 @@ def human_group() -> None:
     default=None,
     help="Hours until the question lapses; a lapse is never consent.",
 )
+@click.option(
+    "--from-handoff",
+    "from_handoff",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Queue the <envelope>.human.json `tac handoff validate` wrote; it carries "
+    "its own question, options and recommendation, so no other item flag is taken.",
+)
 def human_ask(
     root: Path | None,
     at: str | None,
@@ -168,11 +176,30 @@ def human_ask(
     revision: str | None,
     pull_request: int | None,
     expires_in: int | None,
+    from_handoff: Path | None,
 ) -> None:
     """Add an item with its recommendation, what it blocks and the milestone
     that waits on it, then render the page."""
     paths = _paths(root)
     now = _now(at)
+    if from_handoff is not None:
+        ctx = click.get_current_context()
+        taken = sorted(
+            f"--{name.replace('_', '-')}"
+            for name, value in ctx.params.items()
+            if name not in {"root", "at", "item_id", "from_handoff", "kind"}
+            and value not in (None, ())
+        )
+        if taken or kind != "question":
+            _fail(
+                "--from-handoff carries the whole item; drop "
+                + ", ".join(taken or ["--kind"])
+            )
+        _ask_from_handoff(paths, from_handoff, item_id)
+        return
+    if topic is None or question is None:
+        _fail("pass --topic and --question, or --from-handoff")
+        return
     if kind != "step":
         missing = [
             flag
@@ -231,6 +258,24 @@ def human_ask(
             raise human.HumanError(human.first_error(exc)) from exc
         path = human.ask(paths, item)
     except human.HumanError as exc:
+        _fail(str(exc))
+        return
+    click.echo(f"asked {item.id} in {path.relative_to(paths.root).as_posix()}")
+    _rerender(paths)
+
+
+def _ask_from_handoff(
+    paths: human.HumanPaths, source: Path, item_id: str | None
+) -> None:
+    try:
+        item = human.item_from_handoff(
+            source.read_text(encoding="utf-8"),
+            source.name,
+            human.load_items(paths),
+            item_id=item_id,
+        )
+        path = human.ask(paths, item)
+    except (human.HumanError, OSError) as exc:
         _fail(str(exc))
         return
     click.echo(f"asked {item.id} in {path.relative_to(paths.root).as_posix()}")
@@ -529,3 +574,7 @@ def approve_command(
         f"{record.expires_at if record else '?'}"
     )
     _rerender(paths)
+
+
+# Design sections 7 and 13 name a top-level `tac recap`; it is the same command.
+recap_command = human_recap

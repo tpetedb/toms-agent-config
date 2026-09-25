@@ -89,7 +89,7 @@ budget_usd = 20.0                         # the cost cap handed to one headless 
 # What a reader is told.
 [teams.docs]
 title = "What a reader is told: the design, the board, the README, the owner's list"  # one line on what it answers for
-owns = ["docs/", "*.md", "LICENSE"]       # the paths it answers for, `dir/` or a glob
+owns = ["docs/", "*.md", "LICENSE", ".human/"]   # the paths it answers for, `dir/` or a glob; .human/ is the source of TODO.HUMAN.md
 tests = ["tests/test_scaffolding.py"]     # the test files that cover its paths
 manager = "docs-manager"                  # the manager who splits its goals and signs off cross-team changes
 max_workers = 1                           # builders at once, never above [teams] max_local_agents

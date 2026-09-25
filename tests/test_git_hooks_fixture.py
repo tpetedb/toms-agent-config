@@ -43,6 +43,9 @@ EXTRA = (
     ".agents/uv.lock",
     "scripts/private_scan.sh",
     ".gitignore",
+    "TODO.HUMAN.md",
+    ".human/todo.toml",
+    ".human/approvals",
 )
 APP = 'def greet(name: str) -> str:\n    return f"hello {name}"\n'
 PASSING = (
@@ -167,7 +170,10 @@ def repo(tmp_path: Path) -> Repo:
     for rel in EXTRA:
         target = root / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(REPO / rel, target)
+        if (REPO / rel).is_dir():
+            shutil.copytree(REPO / rel, target)
+        else:
+            shutil.copy2(REPO / rel, target)
     (root / "app.py").write_text(APP, encoding="utf-8")
     (root / "tests").mkdir()
     (root / "tests" / "test_fast.py").write_text(PASSING, encoding="utf-8")
@@ -273,6 +279,17 @@ def test_a_staged_hand_edit_of_a_generated_file_is_refused(repo: Repo) -> None:
     done = commit(repo, "Edit the brief by hand, which the check refuses")
     assert done.returncode != 0
     assert "AGENTS.md: edited by hand" in said(done)
+    assert repo.head() == before
+
+
+def test_a_staged_hand_edit_of_the_owners_page_is_refused(repo: Repo) -> None:
+    before = repo.head()
+    page = (repo.root / "TODO.HUMAN.md").read_text()
+    repo.write("TODO.HUMAN.md", page.replace("- [ ] Q9 ", "- [x] Q9 "))
+    repo.git("add", "TODO.HUMAN.md")
+    done = commit(repo, "Tick a box on the owner's page by hand")
+    assert done.returncode != 0
+    assert "differs from its render" in said(done)
     assert repo.head() == before
 
 

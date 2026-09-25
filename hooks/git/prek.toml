@@ -15,7 +15,7 @@ default_install_hook_types = ["pre-commit", "commit-msg", "pre-push"]
 [[repos]]
 repo = "local"                            # local: every entry is a command on this machine
 
-# ---- pre-commit: format, lint, the staged check, the private-term scan.
+# ---- pre-commit: format, lint, the staged check, the owner's page, the private-term scan.
 
 [[repos.hooks]]
 id = "ruff-format"                        # the id [git] pre_commit names
@@ -40,6 +40,15 @@ entry = "uv run --frozen --no-sync --project .agents tac check --staged"   # the
 language = "system"                       # system: run the entry as it is, nothing installed
 pass_filenames = false                    # it reads the whole index itself
 always_run = true                         # also when no file it cares about is staged
+stages = ["pre-commit"]                   # pre-commit | commit-msg | pre-push
+
+[[repos.hooks]]
+id = "human-render-check"                 # the id [git] pre_commit names
+name = "tac human render --check"         # what prek prints
+entry = "uv run --frozen --no-sync --project .agents tac human render --check"   # TODO.HUMAN.md must be the render of .human/ (design section 7)
+language = "system"                       # system: run the entry as it is, nothing installed
+pass_filenames = false                    # it renders the whole queue itself
+files = '^(TODO\.HUMAN\.md|\.human/)'   # only when the page or its sources are staged
 stages = ["pre-commit"]                   # pre-commit | commit-msg | pre-push
 
 [[repos.hooks]]

@@ -56,6 +56,9 @@ DEFAULT_TTL_HOURS = 72
 # A review in one of these states is a decision; COMMENTED and PENDING are not.
 DECISIVE = ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")
 REVIEWS_PAGE = 100
+# 30 pages is 3000 reviews; a pull request past that is refused, not half read,
+# since the owner's latest decision could sit on a page never fetched.
+MAX_REVIEW_PAGES = 30
 
 State = Literal["approved", "rejected", "waiting", "refused"]
 
@@ -304,6 +307,31 @@ def _login(user: Any) -> str:
     return str((user or {}).get("login") or "")
 
 
+def list_reviews(transport: Transport, repository: str, number: int) -> list[Any]:
+    """Every review on the pull request, page by page, oldest first.
+
+    A short page is the last one. Raises ApiError when the list runs past
+    MAX_REVIEW_PAGES or a page is not a list.
+    """
+    reviews: list[Any] = []
+    for page in range(1, MAX_REVIEW_PAGES + 1):
+        body = transport.call(
+            "GET",
+            f"repos/{repository}/pulls/{number}/reviews"
+            f"?per_page={REVIEWS_PAGE}&page={page}",
+        )
+        if not isinstance(body, list):
+            raise ApiError(None, f"page {page} of the reviews is not a list")
+        reviews += body
+        if len(body) < REVIEWS_PAGE:
+            return reviews
+    raise ApiError(
+        None,
+        f"pull request #{number} has more than "
+        f"{MAX_REVIEW_PAGES * REVIEWS_PAGE} reviews; too many to read them all",
+    )
+
+
 def verify_github(
     item: Item,
     transport: Transport,
@@ -332,9 +360,7 @@ def verify_github(
                 "owner is not settled, so no review can count",
             )
         pull = transport.call("GET", f"repos/{repository}/pulls/{number}")
-        reviews = transport.call(
-            "GET", f"repos/{repository}/pulls/{number}/reviews?per_page={REVIEWS_PAGE}"
-        )
+        reviews = list_reviews(transport, repository, number)
     except (ApiError, KeyError, TypeError) as exc:
         return Verdict("refused", f"GitHub did not answer: {exc}")
     if owner.lower() == agent_identity.lower():
@@ -358,7 +384,7 @@ def verify_github(
             f"the owner opened pull request #{number}; an author's review never "
             "counts, so the owner's edits travel as agent pull requests",
         )
-    listed = [r for r in reviews or [] if isinstance(r, Mapping)]
+    listed = [r for r in reviews if isinstance(r, Mapping)]
     mine = [
         r
         for r in listed

@@ -439,6 +439,12 @@ def approvals_exit(state: str) -> int:
 
 # ---------------------------------------------------------------- GitHub reviews
 
+GET = "GET"
+
+
+def reviews_page(page: int) -> str:
+    return f"repos/{GH_REPO}/pulls/{PR}/reviews?per_page=100&page={page}"
+
 
 def github(
     pull: dict | None = None,
@@ -449,7 +455,7 @@ def github(
         {
             ("GET", f"repos/{GH_REPO}"): [Reply(200, repo_body or load("repo"))],
             ("GET", f"repos/{GH_REPO}/pulls/{PR}"): [Reply(200, pull or load("pull"))],
-            ("GET", f"repos/{GH_REPO}/pulls/{PR}/reviews?per_page=100"): [
+            (GET, reviews_page(1)): [
                 Reply(200, load("pull_reviews") if reviews is None else reviews)
             ],
         }
@@ -543,6 +549,28 @@ def test_a_review_after_the_item_expired_is_refused(project: Path) -> None:
     item = pr_item(project, expires_at="2019-11-17T00:00:00Z")
     verdict = by_github(item, github())
     assert verdict.state == "refused" and "expired" in verdict.reason
+
+
+def test_every_page_of_reviews_is_read(project: Path) -> None:
+    """The owner's approval on page two decides; page one alone would wait."""
+    others = [review(id=1000 + n, login=f"reader{n}") for n in range(100)]
+    transport = github(reviews=others)
+    transport.replies[(GET, reviews_page(2))] = [Reply(200, [review()])]
+    verdict = by_github(pr_item(project), transport)
+    assert verdict.approved, verdict.reason
+    asked = [path for _, path, _ in transport.calls if "/reviews" in path]
+    assert asked == [reviews_page(1), reviews_page(2)]
+
+
+def test_a_pull_request_with_too_many_reviews_is_refused_not_half_read(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(approvals, "MAX_REVIEW_PAGES", 2)
+    full = [review(id=2000 + n, login=f"reader{n}") for n in range(100)]
+    transport = github(reviews=full)
+    transport.replies[(GET, reviews_page(2))] = [Reply(200, full)]
+    verdict = by_github(pr_item(project), transport)
+    assert verdict.state == "refused" and "too many" in verdict.reason
 
 
 def test_an_organisation_repository_counts_no_review(project: Path) -> None:

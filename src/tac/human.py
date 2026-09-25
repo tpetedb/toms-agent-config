@@ -34,6 +34,7 @@ from pydantic import (
 
 from tac.config_schema import Human
 from tac.draft07 import draft07
+from tac.handoff import HumanItem
 from tac.receipts import SHA_PATTERN
 from tac.work import KNOBS_FILE
 
@@ -52,6 +53,10 @@ ITEM_ID = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
 # A GitHub login: letters, digits and single hyphens, at most 39 characters.
 LOGIN = r"^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$"
 QUESTION_ID = re.compile(r"^Q(\d+)$")
+# Escalations from `tac handoff validate` get their own numbers, apart from the
+# board's questions, and land in their own section of the page.
+ESCALATION_ID = re.compile(r"^H(\d+)$")
+ESCALATION_TOPIC = "escalations"
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,47}$")
 EM_DASH = "\u2014"
 
@@ -360,6 +365,11 @@ def next_question_id(items: Iterable[Item]) -> str:
     return f"Q{max(numbers, default=0) + 1}"
 
 
+def next_escalation_id(items: Iterable[Item]) -> str:
+    numbers = [int(m.group(1)) for i in items if (m := ESCALATION_ID.match(i.id))]
+    return f"H{max(numbers, default=0) + 1}"
+
+
 def next_rank(items: Iterable[Item], topic: str) -> int:
     ranks = [i.rank for i in items if i.topic == topic]
     return max(ranks, default=0) + 10
@@ -524,6 +534,66 @@ def answer(
     changed = Item.model_validate(changed.model_dump())
     write_item(paths, changed)
     return changed
+
+
+def item_from_handoff(
+    raw: str, where: str, items: Sequence[Item], *, item_id: str | None = None
+) -> Item:
+    """The pending item `tac handoff validate` wrote for a result that failed its
+    contract after the repair, as a question in the owner's queue.
+
+    Only the fixed text of the escalation reaches the page: the question, its
+    three options and the validator's default. The findings may quote model
+    output, so they stay in the envelope and the page gives only their count.
+    The envelope's folder is the worker store, outside the repository, so only
+    its file name is kept. The same escalation is never queued twice.
+    """
+    try:
+        source = HumanItem.model_validate_json(raw)
+    except ValidationError as exc:
+        raise HumanError(f"{where}: {first_error(exc)}") from exc
+    for item in items:
+        if item.arguments.get("handoff_item") == source.id:
+            raise HumanError(f"{source.id} is already in the queue as {item.id}")
+    arguments: dict[str, JsonValue] = {
+        "handoff_item": source.id,
+        "run_id": source.run_id,
+        "contract": source.arguments.contract,
+        "envelope": Path(source.arguments.envelope).name,
+    }
+    if source.order_id is not None:
+        arguments["order_id"] = source.order_id
+    count = len(source.errors)
+    noun = "finding" if count == 1 else "findings"
+    body = {
+        "id": item_id or next_escalation_id(items),
+        "kind": "question",
+        "topic": ESCALATION_TOPIC,
+        "rank": next_rank(items, ESCALATION_TOPIC),
+        "title": f"handoff {source.stage}",
+        "question": source.question,
+        "details": [
+            f"{count} {noun} against contract {source.arguments.contract} after "
+            f"the repair pass; they stay in the envelope "
+            f"`{arguments['envelope']}` of run {source.run_id}, never on this page."
+        ],
+        "options": list(source.options),
+        "recommendation": source.recommendation,
+        "recommendation_source": "the handoff validator's default, not the board's",
+        "blocks": [f"stage {source.stage} of run {source.run_id}"],
+        "waits": (
+            f"order {source.order_id}" if source.order_id else f"run {source.run_id}"
+        ),
+        "stage": source.stage,
+        "agent": source.agent,
+        "tool": source.tool,
+        "arguments": arguments,
+        "asked_at": source.asked_at,
+    }
+    try:
+        return Item.model_validate(body)
+    except ValidationError as exc:
+        raise HumanError(f"{where}: {first_error(exc)}") from exc
 
 
 # ---------------------------------------------------------------- recaps
