@@ -1,0 +1,29 @@
+%% Lifecycle: hook, one client event through the stamped guard and the checker.
+%% Drawn from docs/DESIGN.md sections 9 and 10 and .agents/config/hooks.toml.
+%% Legend: green terminator, blue process, yellow decision, orange input or output, dim red data store, red stop.
+flowchart TD
+    E(["client event<br/>PreToolUse, PostToolUse, Stop, SessionStart"]) --> G["/usr/bin/python3 -I .agents/hooks/run.py<br/>fixed PATH and environment"]
+    G --> V{"every file beside the guard<br/>matches generated.lock?"}
+    LOCK[("generated.lock")] -.-> V
+    V -->|no| D1{"deny class?"}
+    V -->|yes| C["tac hook run from .agents/.venv<br/>the checks of hooks.toml"]
+    HT[(".agents/config/hooks.toml")] -.-> C
+    C -->|"crash, timeout or garbage"| D1
+    C --> R{"verdict"}
+    R -->|allow| OK(["the call proceeds"])
+    R -->|reminder| CTX[/"additionalContext at exit 0"/]
+    R -->|deny| X[/"exit 2: refused, the reason to the model"/]
+    D1 -->|yes| X
+    D1 -->|no| REP[/"reported, exit 0"/]
+    classDef term fill:#00A86B,stroke:#00D084,color:#000000
+    classDef proc fill:#0067A5,stroke:#0088CC,color:#FFFFFF
+    classDef dec fill:#FFBF00,stroke:#FFD500,color:#000000
+    classDef io fill:#FF8C1A,stroke:#FFA94D,color:#000000
+    classDef store fill:#9A2A2A,stroke:#F04923,color:#FFFFFF
+    classDef stop fill:#D32F2F,stroke:#F04923,color:#FFFFFF
+    class E,OK term
+    class G,C proc
+    class V,D1,R dec
+    class CTX,REP io
+    class LOCK,HT store
+    class X stop

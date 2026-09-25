@@ -1,0 +1,30 @@
+%% Lifecycle: init, from a clone to a checkout every harness obeys.
+%% Drawn from docs/DESIGN.md section 13 (Bootstrap, tac init) and docs/HARNESS.md.
+%% Legend: green terminator, blue process, yellow decision, orange input or output, dim red data store, red stop.
+flowchart TD
+    A(["clone the repository"]) --> B["mise trust, mise install<br/>uv and just, pinned"]
+    B --> C["bash bootstrap.sh<br/>installs uv and mise when absent"]
+    C --> D["uv sync --frozen --no-editable --project .agents<br/>the deployed judge"]
+    D --> E["tac init<br/>the question bank"]
+    Q[("templates/init/questions.toml")] -.-> E
+    ANS[/"answers: the terminal or --answers file.toml"/] --> E
+    E --> F["detect the clients and their versions<br/>choose the profile and the harnesses"]
+    F --> G[/"preview of the diff"/]
+    G --> H{"unknown config<br/>in the way?"}
+    H -->|yes| X[/"refused: never overwrites unknown config"/]
+    H -->|no| K[(".agents/config.toml and config/")]
+    K --> S["tac sync"]
+    S --> T[/"one-time trust steps for the owner<br/>TODO.HUMAN.md"/]
+    T --> Z(["ready: tac doctor is green"])
+    classDef term fill:#00A86B,stroke:#00D084,color:#000000
+    classDef proc fill:#0067A5,stroke:#0088CC,color:#FFFFFF
+    classDef dec fill:#FFBF00,stroke:#FFD500,color:#000000
+    classDef io fill:#FF8C1A,stroke:#FFA94D,color:#000000
+    classDef store fill:#9A2A2A,stroke:#F04923,color:#FFFFFF
+    classDef stop fill:#D32F2F,stroke:#F04923,color:#FFFFFF
+    class A,Z term
+    class B,C,D,E,F,S proc
+    class H dec
+    class ANS,G,T io
+    class Q,K store
+    class X stop

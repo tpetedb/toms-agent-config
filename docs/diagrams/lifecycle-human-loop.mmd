@@ -1,0 +1,29 @@
+%% Lifecycle: human loop, from a question for the owner to a resumed stage.
+%% Drawn from docs/DESIGN.md section 7.
+%% Legend: green terminator, blue process, yellow decision, orange input or output, dim red data store, red stop.
+flowchart TD
+    S(["a stage needs the owner"]) --> ASK["tac human ask<br/>recommendation, what it blocks, the milestone"]
+    ASK --> AP[(".human/approvals/&lt;id&gt;.json")]
+    AP -.-> REN["tac human render"]
+    TODO[(".human/todo.toml")] -.-> REN
+    REN --> PAGE[/"TODO.HUMAN.md"/]
+    PAGE --> OWN["the owner answers: their own GitHub review or comment,<br/>or a host-signed tac approve"]
+    OWN --> VF{"tac human verify<br/>identity, action, revision, expiry"}
+    VF -->|fails| X1[/"ignored: a ticked box is a hint"/]
+    VF -->|passes| ANS["tac human answer<br/>recorded under the item"]
+    ANS --> A{"approved?"}
+    A -->|yes| Z(["the paused stage resumes"])
+    A -->|no| B["back to the named stage"]
+    A -->|no answer| X2[/"waits: a timeout is never consent"/]
+    classDef term fill:#00A86B,stroke:#00D084,color:#000000
+    classDef proc fill:#0067A5,stroke:#0088CC,color:#FFFFFF
+    classDef dec fill:#FFBF00,stroke:#FFD500,color:#000000
+    classDef io fill:#FF8C1A,stroke:#FFA94D,color:#000000
+    classDef store fill:#9A2A2A,stroke:#F04923,color:#FFFFFF
+    classDef stop fill:#D32F2F,stroke:#F04923,color:#FFFFFF
+    class S,Z term
+    class ASK,REN,OWN,ANS,B proc
+    class VF,A dec
+    class PAGE io
+    class AP,TODO store
+    class X1,X2 stop

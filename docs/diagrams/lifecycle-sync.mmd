@@ -1,0 +1,30 @@
+%% Lifecycle: sync, rendering every harness file and judging it against the lock.
+%% Drawn from docs/DESIGN.md sections 2.3 and 12.
+%% Legend: green terminator, blue process, yellow decision, dim red data store, red stop.
+flowchart TD
+    A(["tac sync or tac check"]) --> R["render every template<br/>sandboxed Jinja, StrictUndefined"]
+    IN[(".agents/config.toml, config/, context/")] -.-> R
+    TPL[("templates/adapters/")] -.-> R
+    R --> AL{"output path in<br/>the allowlist?"}
+    AL -->|no| X1[/"refused: the template fails"/]
+    AL -->|yes| SER["serialise JSON and TOML with a writer<br/>Markdown as text"]
+    SER --> MODE{"sync or check?"}
+    MODE -->|sync| W["write the outputs and generated.lock<br/>link skills, skip an opt-in one"]
+    W --> OUT[("CLAUDE.md, AGENTS.md, .claude/, .codex/")]
+    W --> L[("generated.lock")]
+    MODE -->|check| CMP{"outputs and lock match<br/>a fresh render?"}
+    L -.-> CMP
+    OUT -.-> CMP
+    CMP -->|no| X2[/"exit 1: drift, hand edit or stale lock"/]
+    CMP -->|yes| Z(["exit 0"])
+    classDef term fill:#00A86B,stroke:#00D084,color:#000000
+    classDef proc fill:#0067A5,stroke:#0088CC,color:#FFFFFF
+    classDef dec fill:#FFBF00,stroke:#FFD500,color:#000000
+    classDef io fill:#FF8C1A,stroke:#FFA94D,color:#000000
+    classDef store fill:#9A2A2A,stroke:#F04923,color:#FFFFFF
+    classDef stop fill:#D32F2F,stroke:#F04923,color:#FFFFFF
+    class A,Z term
+    class R,SER,W proc
+    class AL,MODE,CMP dec
+    class IN,TPL,OUT,L store
+    class X1,X2 stop

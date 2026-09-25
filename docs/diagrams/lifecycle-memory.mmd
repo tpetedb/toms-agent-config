@@ -1,0 +1,29 @@
+%% Lifecycle: memory, from a record in the live journal to a stage prompt.
+%% Drawn from docs/DESIGN.md section 6.
+%% Legend: green terminator, blue process, yellow decision, orange input or output, dim red data store, red stop.
+flowchart TD
+    A(["an agent records what it learnt"]) --> REC["tac memory add<br/>provenance from the launch record"]
+    LR[/"launch record, written by the launcher"/] --> REC
+    REC --> SC{"secrets scan"}
+    SC -->|hit| X1[/"refused"/]
+    SC -->|clean| J[("live journal in the worker store<br/>records.jsonl, events.jsonl")]
+    EVT["tac memory event<br/>review, supersede, correct, conflict"] --> J
+    J --> P{"tac memory promote, runner only<br/>basis recomputed, confirmed, no secret"}
+    P -->|refused| X2[/"the rule is named; the record stays live"/]
+    P -->|promoted| R[(".agents/memory/records/<br/>through a pull request")]
+    R --> IDX["tac memory index"]
+    IDX --> K[(".agents/memory/_index/")]
+    K -.-> PICK["tac select --stage --order<br/>capped at select_cap_chars"]
+    PICK --> Z(["the next stage prompt"])
+    classDef term fill:#00A86B,stroke:#00D084,color:#000000
+    classDef proc fill:#0067A5,stroke:#0088CC,color:#FFFFFF
+    classDef dec fill:#FFBF00,stroke:#FFD500,color:#000000
+    classDef io fill:#FF8C1A,stroke:#FFA94D,color:#000000
+    classDef store fill:#9A2A2A,stroke:#F04923,color:#FFFFFF
+    classDef stop fill:#D32F2F,stroke:#F04923,color:#FFFFFF
+    class A,Z term
+    class REC,EVT,IDX,PICK proc
+    class SC,P dec
+    class LR io
+    class J,R,K store
+    class X1,X2 stop
