@@ -3,8 +3,9 @@
 CI runs the base revision's copy of `scripts/private_scan.sh`, `private_scan.py`
 and `private_terms.txt` against the candidate (docs/DESIGN.md, section 8). The
 scan reads committed blobs, never the checkout and never through gitattributes,
-and with `--range` every commit, message and the branch name. Each test runs the
-base's copy from a folder outside the checkout, as CI does.
+text or binary alike, and with `--range` every commit object whole (identities,
+headers and message) and the branch name. Each test runs the base's copy from a
+folder outside the checkout, as CI does.
 """
 
 from __future__ import annotations
@@ -27,10 +28,15 @@ TERMS_PATH = "scripts/private_terms.txt"
 TERM = "e-Boek" + "houden"
 KEY = "F" + "079"
 TEXT = f"notes on {TERM}\nsee {KEY}\n"
-LFS_POINTER = (
-    "version https://git-lfs.github.com/spec/v1\n"
-    "oid sha256:" + "4" * 64 + "\nsize 1234\n"
-)
+LFS_BODY = "oid sha256:" + "4" * 64 + "\nsize 1234\n"
+LFS_POINTER = "version https://git-lfs.github.com/spec/v1\n" + LFS_BODY
+# The identity every fixture commit and every local scan runs under, unless a
+# test sets its own: the host's git identity must not decide a result.
+FIXTURE_IDENTITY = {
+    f"GIT_{role}_{part}": value
+    for role in ("AUTHOR", "COMMITTER")
+    for part, value in (("NAME", "fixture"), ("EMAIL", "fixture@example.invalid"))
+}
 
 
 def base_copy(folder: Path) -> Path:
@@ -41,11 +47,16 @@ def base_copy(folder: Path) -> Path:
     return folder / "private_scan.sh"
 
 
-def run_scan(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def run_scan(
+    root: Path, *args: str, terms: str | None = None
+) -> subprocess.CompletedProcess[str]:
     scan = base_copy(root.parent / "gates")
+    if terms is not None:
+        (scan.parent / "private_terms.txt").write_text(terms, encoding="utf-8")
     return subprocess.run(
         ["bash", str(scan), *args],
         cwd=root,
+        env=FIXTURE_IDENTITY | dict(os.environ),
         capture_output=True,
         text=True,
         errors="replace",
@@ -53,8 +64,10 @@ def run_scan(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def run_range(root: Path, base: str, *args: str) -> subprocess.CompletedProcess[str]:
-    return run_scan(root, "--range", f"{base}..HEAD", *args)
+def run_range(
+    root: Path, base: str, *args: str, terms: str | None = None
+) -> subprocess.CompletedProcess[str]:
+    return run_scan(root, "--range", f"{base}..HEAD", *args, terms=terms)
 
 
 def short(root: Path, rev: str = "HEAD") -> str:
@@ -173,30 +186,108 @@ def test_a_utf16_blob_is_read_as_text(repo: Path, base: str, data: bytes) -> Non
     assert_found(run_range(repo, base), f"{short(repo)}:docs/a.md:")
 
 
-def real_binary() -> bytes:
-    """A PNG-shaped file holding a term's bytes: binary by content, since it has
-    NUL bytes and repeated 0xD8 bytes make a lone UTF-16 surrogate in every byte
-    order and alignment, so no UTF-16 reading of it exists."""
-    body = zlib.compress(bytes(range(256)) * 8) + TERM.encode() + b"\xd8" * 8
-    return b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + body
+def png_with(text: bytes) -> bytes:
+    """A PNG-shaped file carrying `text` as plain bytes, as a tEXt chunk does,
+    among NUL bytes and repeated 0xD8 bytes, which make a lone UTF-16 surrogate
+    in every byte order and alignment: binary by any content test."""
+    body = zlib.compress(bytes(range(256)) * 8) + text + b"\xd8" * 8
+    return b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + body + b"\x00" * 4
 
 
-def test_a_real_binary_file_is_skipped(repo: Path, base: str) -> None:
-    (repo / "logo.png").write_bytes(real_binary())
-    assert run_scan(repo).returncode == 0
+@pytest.mark.parametrize(
+    "data",
+    [
+        png_with(TEXT.encode()),
+        # A NUL byte and a lone surrogate in every UTF-16 reading, in front of
+        # plain UTF-8 anyone can read in the raw download.
+        b"\x00\xdc\xdc\xdc\xdc" + TEXT.encode(),
+        TEXT.encode("utf-32"),
+        TEXT.encode("utf-32-le"),
+        TEXT.encode("utf-32-be"),
+        # One stray byte in front shifts every UTF-32 code unit.
+        b"#" + TEXT.encode("utf-32-le"),
+    ],
+    ids=[
+        "png-text-chunk",
+        "nul-surrogate",
+        "utf32-bom",
+        "utf32-le",
+        "utf32-be",
+        "utf32-shifted",
+    ],
+)
+def test_no_blob_is_skipped_as_binary(repo: Path, base: str, data: bytes) -> None:
+    # A guess at binary can be forced, and would hide the whole file; so every
+    # blob gets every reading.
+    (repo / "docs").mkdir()
+    (repo / "docs/a.bin").write_bytes(data)
+    assert_found(run_scan(repo), "docs/a.bin:", f"notes on {TERM}")
+    commit_all(repo, "candidate")
+    assert_found(run_scan(repo), "docs/a.bin:", f"notes on {TERM}")
+    assert_found(run_range(repo, base), f"{short(repo)}:docs/a.bin:")
+
+
+def test_a_hit_in_one_long_line_shows_a_window_around_the_term(
+    repo: Path, base: str
+) -> None:
+    write(repo, "docs/a.txt", "x" * 5000 + f" {TERM} " + "y" * 5000)
+    commit_all(repo, "candidate")
+    lines = run_range(repo, base).stdout.splitlines()
+    assert len(lines) == 1, lines
+    assert TERM in lines[0] and len(lines[0]) < 300, lines
+
+
+def test_a_real_binary_without_a_term_passes(repo: Path, base: str) -> None:
+    (repo / "logo.png").write_bytes(png_with(b"a public logo"))
     commit_all(repo, "candidate")
     for done in (run_scan(repo), run_range(repo, base)):
         assert (done.returncode, done.stdout) == (0, ""), done.stdout
 
 
-def test_a_git_lfs_pointer_is_refused(repo: Path, base: str) -> None:
+@pytest.mark.parametrize(
+    "pointer",
+    [
+        LFS_POINTER,
+        # git-lfs trims surrounding whitespace before it parses a pointer.
+        "\n" + LFS_POINTER,
+        "   " + LFS_POINTER,
+        "\t" + LFS_POINTER + "\n\n",
+        "\u00a0" + LFS_POINTER,
+        # The two older spec URLs git-lfs still accepts.
+        "version https://hawser.github.com/spec/v1\n" + LFS_BODY,
+        "version http://git-media.io/v/2\n" + LFS_BODY,
+        # A spec URL git-lfs may accept later, found by its oid line.
+        "version https://git-lfs.example/spec/v9\n" + LFS_BODY,
+    ],
+    ids=[
+        "canonical",
+        "newline",
+        "spaces",
+        "tab",
+        "nbsp",
+        "hawser",
+        "git-media",
+        "unknown-spec",
+    ],
+)
+def test_a_git_lfs_pointer_is_refused(repo: Path, base: str, pointer: str) -> None:
     # The pointer names content stored outside the repository, which the scan
-    # cannot read; the file itself has to be committed instead.
+    # cannot read, and git-lfs uploads that content on push; the file itself has
+    # to be committed instead.
     write(repo, ".gitattributes", "*.md filter=lfs diff=lfs merge=lfs -text\n")
-    write(repo, "docs/a.md", LFS_POINTER)
+    write(repo, "docs/a.md", pointer)
     commit_all(repo, "candidate")
     assert_found(run_scan(repo), "docs/a.md: a Git LFS pointer")
     assert_found(run_range(repo, base), f"{short(repo)}:docs/a.md: a Git LFS pointer")
+
+
+def test_a_file_that_only_mentions_a_version_is_not_a_pointer(
+    repo: Path, base: str
+) -> None:
+    write(repo, "docs/a.md", "version 2 of the notes\nsize matters\n")
+    commit_all(repo, "candidate")
+    for done in (run_scan(repo), run_range(repo, base)):
+        assert (done.returncode, done.stdout) == (0, ""), done.stdout
 
 
 def test_a_term_added_then_removed_is_found_in_the_history(
@@ -215,6 +306,81 @@ def test_a_term_in_a_commit_message_is_found(repo: Path, base: str) -> None:
     write(repo, "docs/a.md", "plain\n")
     sha = commit_all(repo, f"Add notes\n\nTaken from {TERM}.")
     assert_found(run_range(repo, base), f"{sha[:12]} (message):3:Taken from {TERM}.")
+
+
+@pytest.mark.parametrize("role", ["AUTHOR", "COMMITTER"])
+def test_a_term_in_a_commit_identity_is_found(
+    repo: Path, base: str, role: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A commit made under a work identity publishes the employer's domain.
+    monkeypatch.setenv(f"GIT_{role}_EMAIL", f"tom@{TERM}.example")
+    assert_found(run_scan(repo), f"({role.lower()}):1:fixture <tom@{TERM}.example>")
+    write(repo, "docs/a.md", "plain\n")
+    sha = commit_all(repo, "plain")
+    monkeypatch.delenv(f"GIT_{role}_EMAIL")
+    assert run_scan(repo).returncode == 0
+    assert_found(
+        run_range(repo, base), f"{sha[:12]} ({role.lower()}):1:fixture <tom@{TERM}"
+    )
+
+
+def test_a_term_in_any_other_commit_header_is_found(repo: Path, base: str) -> None:
+    # The whole commit object is published, so a header git does not write
+    # itself is read too.
+    tree = git(repo, "write-tree")
+    raw = (
+        f"tree {tree}\nparent {base}\n"
+        "author fixture <fixture@example.invalid> 0 +0000\n"
+        "committer fixture <fixture@example.invalid> 0 +0000\n"
+        f"x-note see {TERM}\n\nplain\n"
+    )
+    sha = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "hash-object",
+            "-t",
+            "commit",
+            "-w",
+            "--stdin",
+            "--literally",
+        ],
+        input=raw,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    git(repo, "reset", "-q", "--soft", sha)
+    assert_found(run_range(repo, base), f"{sha[:12]} (x-note):1:see {TERM}")
+
+
+def test_only_a_listed_identity_is_exempt(
+    repo: Path, base: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The owner commits under a listed identity, which every commit already
+    # publishes; the same words elsewhere and any other identity are refused.
+    terms = (
+        "text " + b"owner".hex() + "\n"
+        "identity " + b"Owner <owner@home.example>".hex() + "\n"
+    )
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "Owner")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "OWNER@home.example")
+    write(repo, "docs/a.md", "plain\n")
+    listed = commit_all(repo, "first")
+    assert run_scan(repo, terms=terms).returncode == 0
+    assert run_range(repo, base, terms=terms).returncode == 0
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "owner@work.example")
+    write(repo, "docs/a.md", "Owner <owner@home.example>\n")
+    other = commit_all(repo, "second")
+    done = run_range(repo, base, terms=terms)
+    assert_found(
+        done,
+        f"{other[:12]} (author):1:Owner <owner@work.example>",
+        f"{other[:12]}:docs/a.md:1:Owner <owner@home.example>",
+    )
+    assert listed[:12] not in done.stdout
+    assert_found(run_scan(repo, terms=terms), "(author):1:Owner <owner@work")
 
 
 def test_a_term_in_the_branch_name_is_found(repo: Path, base: str) -> None:
@@ -280,9 +446,9 @@ def test_the_scan_and_its_term_list_carry_no_term() -> None:
         for line in (REPO / "scripts" / name).read_text(encoding="utf-8").splitlines():
             for kind, term in terms:
                 hit = (
-                    term.lower() in line.lower()
-                    if kind == "text"
-                    else re.search(term, line)
+                    re.search(term, line)
+                    if kind == "regex"
+                    else term.lower() in line.lower()
                 )
                 assert not hit, (name, line)
 

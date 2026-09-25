@@ -4,15 +4,18 @@ The design under docs/ was distilled from private notes. This scan reads what
 git will publish: committed blobs, straight from the object store with
 `git cat-file --batch`, never the checkout and never through gitattributes, so
 no attribute, filter or checkout encoding the candidate carries decides what is
-read. Every text blob is read as UTF-8 with replacement and as UTF-16 in both
-byte orders; only a blob that is binary by content is skipped.
+read. Every blob, text or binary, is read as UTF-8 with replacement and as UTF-16
+and UTF-32 in both byte orders at every alignment; none is skipped. A Git LFS
+pointer is refused, found the way git-lfs finds one.
 
 Two modes:
   (default)            the index, plus new and changed files in the working tree,
-                       and the current branch name: what the next commit holds.
+                       the author and committer identity git would record, and
+                       the current branch name: what the next commit holds.
   --range BASE..HEAD   every blob added or changed by each commit of the range,
-                       the whole tree at HEAD, every commit message and the
-                       branch name: everything a pull request publishes.
+                       the whole tree at HEAD, every commit object whole (author,
+                       committer, other headers and message) and the branch
+                       name: everything a pull request publishes.
 
 The term list is scripts/private_terms.txt next to this file (in CI, the base
 revision's copy); the one path whose content the scan skips is that list's own
@@ -27,7 +30,6 @@ Exit: 0 and no output when clean; 1 with each hit on its own line; 2 on error.
 from __future__ import annotations
 
 import argparse
-import contextlib
 import os
 import re
 import subprocess
@@ -38,18 +40,26 @@ from pathlib import Path
 
 # The term list's path in any tree: the only content the scan does not read.
 TERMS_PATH = "scripts/private_terms.txt"
-# Git's own window for deciding a blob is binary by a NUL byte.
-SNIFF = 8000
-# The first line of a Git LFS pointer, current and pre-release spec. The real
-# content lives outside the repository, where the scan cannot read it.
-LFS_PREFIXES = (
-    b"version https://git-lfs.github.com/spec/v1",
-    b"version https://hawser.github.com/spec/v1",
+# git-lfs reads at most this many bytes of a blob when it looks for a pointer.
+LFS_WINDOW = 1024
+# The spec URLs git-lfs accepts on a pointer's version line (v1Aliases in its
+# lfs/pointer.go). The content a pointer stands for lives outside the repository,
+# where the scan cannot read it.
+LFS_SPECS = (
+    "https://git-lfs.github.com/spec/v1",
+    "https://hawser.github.com/spec/v1",
+    "http://git-media.io/v/2",
 )
-UTF16 = ("utf-16-le", "utf-16-be")
+# Every multi-byte reading and its code unit width: each is decoded at every
+# alignment, so a stray leading byte cannot shift a text out of reach.
+WIDE = (("utf-16-le", 2), ("utf-16-be", 2), ("utf-32-le", 4), ("utf-32-be", 4))
+# A hit shows at most this much of its line: a binary blob can be one long line.
+SHOWN = 200
 # Mode of a submodule entry: a commit in another repository, no blob here.
 GITLINK = b"160000"
-KINDS = ("text", "regex")
+KINDS = ("text", "regex", "identity")
+# The commit headers that carry an identity, `Name <email> time zone`.
+IDENTITY_HEADERS = ("author", "committer")
 
 
 class ScanError(Exception):
@@ -60,12 +70,19 @@ class ScanError(Exception):
 class Terms:
     texts: tuple[str, ...]  # lowercased: matched without regard to case
     patterns: tuple[re.Pattern[str], ...]
+    # Lowercased `Name <email>` pairs an author or committer header may carry.
+    identities: frozenset[str] = frozenset()
+
+    def find(self, line: str) -> int | None:
+        """Where in `line` the first term found starts, or None."""
+        folded = line.lower()
+        starts = [folded.find(t) for t in self.texts]
+        starts += [m.start() for p in self.patterns if (m := p.search(line))]
+        found = [start for start in starts if start >= 0]
+        return min(found) if found else None
 
     def match(self, line: str) -> bool:
-        folded = line.lower()
-        return any(t in folded for t in self.texts) or any(
-            p.search(line) for p in self.patterns
-        )
+        return self.find(line) is not None
 
 
 def parse_terms(path: Path) -> list[tuple[str, str]]:
@@ -98,16 +115,19 @@ def parse_terms(path: Path) -> list[tuple[str, str]]:
 
 
 def load_terms(path: Path) -> Terms:
-    texts, patterns = [], []
+    texts, patterns, identities = [], [], set()
     for kind, term in parse_terms(path):
         if kind == "text":
             texts.append(term.lower())
+            continue
+        if kind == "identity":
+            identities.add(term.lower())
             continue
         try:
             patterns.append(re.compile(term))
         except re.error as err:
             raise ScanError(f"{path}: a regex does not compile: {err}") from err
-    return Terms(tuple(texts), tuple(patterns))
+    return Terms(tuple(texts), tuple(patterns), frozenset(identities))
 
 
 def git(*args: str) -> bytes:
@@ -129,14 +149,15 @@ class Blobs:
             stdout=subprocess.PIPE,
         )
 
-    def read(self, oid: str) -> bytes:
+    def read(self, oid: str, kind: bytes = b"blob") -> bytes:
         stdin, stdout = self.proc.stdin, self.proc.stdout
         assert stdin is not None and stdout is not None
         stdin.write(oid.encode("ascii") + b"\n")
         stdin.flush()
         header = stdout.readline().split()
-        if len(header) != 3 or header[1] != b"blob":
-            raise ScanError(f"object {oid} is not a readable blob: {header!r}")
+        if len(header) != 3 or header[1] != kind:
+            name = kind.decode("ascii")
+            raise ScanError(f"object {oid} is not a readable {name}: {header!r}")
         data = stdout.read(int(header[2]))
         stdout.read(1)  # the newline after the content
         return data
@@ -147,24 +168,30 @@ class Blobs:
         self.proc.wait()
 
 
-def utf16_readings(data: bytes, errors: str) -> list[str]:
-    """The UTF-16 readings of `data` in both byte orders and at both alignments,
-    so one stray leading byte cannot shift a UTF-16 text out of reach."""
-    out = []
-    for start in (0, 1):
-        for codec in UTF16:
-            with contextlib.suppress(UnicodeDecodeError):
-                out.append(data[start:].decode(codec, errors))
+def readings(data: bytes) -> list[str]:
+    """Every reading of a blob. No blob counts as binary: a guess at binary can
+    be forced with a NUL byte and an invalid code unit, and would then hide the
+    whole file, while GitHub's raw download still serves its bytes. UTF-8 with
+    replacement keeps every ASCII byte in place, so it also reads an ASCII term
+    inside a binary format or a legacy single-byte encoding."""
+    out = [data.decode("utf-8", "replace")]
+    for codec, width in WIDE:
+        out += [data[start:].decode(codec, "replace") for start in range(width)]
     return out
 
 
-def readings(data: bytes) -> list[str] | None:
-    """Every text reading of a blob, or None when it is binary by content: a
-    NUL byte in the first 8000 bytes and no valid UTF-16 reading. git grep -I
-    would call a UTF-16 text binary for its NUL bytes, while GitHub shows it."""
-    if b"\0" in data[:SNIFF] and not utf16_readings(data, "strict"):
-        return None
-    return [data.decode("utf-8", "replace"), *utf16_readings(data, "replace")]
+def lfs_pointer(data: bytes) -> bool:
+    """A blob git-lfs would take for a pointer, found as git-lfs finds one: in
+    its first 1024 bytes, after surrounding whitespace is trimmed, a version
+    line naming an accepted spec. A version line followed by an `oid` line also
+    counts, so a spec git-lfs adds later is refused too."""
+    head = data[:LFS_WINDOW].decode("utf-8", "replace").strip()
+    if not head.startswith("version"):
+        return False
+    first, _, rest = head.partition("\n")
+    return any(spec in first for spec in LFS_SPECS) or any(
+        line.lstrip().startswith("oid ") for line in rest.split("\n")
+    )
 
 
 def printable(text: str) -> str:
@@ -172,20 +199,28 @@ def printable(text: str) -> str:
     return "".join(c if c.isprintable() or c == "\t" else "?" for c in text)
 
 
+def shown(line: str, start: int) -> str:
+    """The part of a hit's line printed: all of it when short, else a window
+    around the term."""
+    line = line.rstrip("\r")
+    if len(line) <= SHOWN:
+        return printable(line)
+    left = max(0, start - SHOWN // 4)
+    return f"...{printable(line[left : left + SHOWN])}..."
+
+
 def content_hits(where: str, data: bytes, terms: Terms) -> list[str]:
-    if data.startswith(LFS_PREFIXES):
+    if lfs_pointer(data):
         return [
             f"{where}: a Git LFS pointer; the scan cannot read the content it "
             "stands for, so commit the file itself"
         ]
-    texts = readings(data)
-    if texts is None:
-        return []
     hits = []
-    for text in texts:
+    for text in readings(data):
         for number, line in enumerate(text.split("\n"), 1):
-            if terms.match(line):
-                hits.append(f"{where}:{number}:{printable(line.rstrip(chr(13)))}")
+            start = terms.find(line)
+            if start is not None:
+                hits.append(f"{where}:{number}:{shown(line, start)}")
     return hits
 
 
@@ -223,6 +258,57 @@ class Scan:
     def branch(self, name: str | None) -> None:
         if name:
             self.text("(branch name)", name)
+
+    def commit(self, sha: str) -> None:
+        """The whole raw commit object: every header (author, committer, and any
+        other, such as encoding or an embedded tag) under its own name, and
+        the message, since GitHub publishes all of it."""
+        raw = self.blobs.read(sha, b"commit")
+        headers, _, body = raw.partition(b"\n\n")
+        short = sha[:12]
+        for name, value in commit_headers(headers):
+            if name in IDENTITY_HEADERS:
+                value = self.unlisted(value)
+            self.hits += content_hits(f"{short} ({name})", value, self.terms)
+        self.hits += content_hits(f"{short} (message)", body, self.terms)
+
+    def identity(self) -> None:
+        """The author and committer identity the next commit would record,
+        which the commit publishes. A repository with no identity set has none
+        to publish yet, so a failure here is not an error."""
+        for name in ("author", "committer"):
+            done = subprocess.run(
+                ["git", "var", f"GIT_{name.upper()}_IDENT"],
+                capture_output=True,
+                check=False,
+            )
+            if done.returncode == 0:
+                value = self.unlisted(done.stdout.rstrip(b"\n"))
+                self.hits += content_hits(f"({name})", value, self.terms)
+
+    def unlisted(self, value: bytes) -> bytes:
+        """An identity header's value, less its `Name <email>` when the term
+        list names that exact pair as one the owner commits under. Any other
+        identity is matched whole, so a work address is still found."""
+        pair, mark, when = value.rpartition(b"> ")
+        if not mark:
+            return value
+        text = (pair + b">").decode("utf-8", "replace").lower()
+        return when if text in self.terms.identities else value
+
+
+def commit_headers(headers: bytes) -> list[tuple[str, bytes]]:
+    """A commit's headers as (name, value) pairs, a line starting with a space
+    continuing the header above it, as git writes a signature or a tag."""
+    pairs: list[tuple[str, bytes]] = []
+    for line in headers.split(b"\n"):
+        if line.startswith(b" ") and pairs:
+            name, value = pairs[-1]
+            pairs[-1] = (name, value + b"\n" + line[1:])
+            continue
+        name, _, value = line.partition(b" ")
+        pairs.append((printable(name.decode("utf-8", "replace")), value))
+    return pairs
 
 
 def decode_path(raw: bytes) -> str:
@@ -299,6 +385,7 @@ def scan_index(scan: Scan) -> None:
     for entry in index_entries():
         scan.entry(entry, entry.path)
     scan_worktree(scan)
+    scan.identity()
 
 
 def commit(rev: str) -> str:
@@ -325,8 +412,7 @@ def scan_range(scan: Scan, spec: str) -> None:
         # a merge's own resolution included.
         for entry in changed_entries(parents[0] if parents else empty, sha):
             scan.entry(entry, f"{short}:{entry.path}")
-        body = git("cat-file", "commit", sha).partition(b"\n\n")[2]
-        scan.text(f"{short} (message)", body.decode("utf-8", "replace"))
+        scan.commit(sha)
     for entry in tree_entries(head):
         scan.entry(entry, f"{head[:12]}:{entry.path}")
 

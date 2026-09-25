@@ -49,6 +49,13 @@ Credential handover convention: every secret goes into `agents.env`, outside the
 - [ ] Q13 Soda: an optional extra pinned to the Apache-2.0 v3 line (3.5.6, SodaCL), the v4 line under the Elastic License 2.0, or postponed to 1.1?
       Recommendation: postpone to 1.1, and pin v3 as an opt-in extra if data work needs it sooner. Waits: M8.
 
+## The public repository's history and identity
+
+- [ ] Q21 the private-term list is public in the history: the earlier private scans carried their term list in plain text, and those commits are pushed on `origin/tac/m0-bootstrap` and `tac/m1-core`, so anyone can read the list there today. The range scan reports those commits, so the pull request that brings `tac/m0-bootstrap` into main fails its private scan until this is settled ([docs/DESIGN.md](docs/DESIGN.md), section 8). Options: (a) rewrite or squash both branches so no commit carries the plain list and force-push them (the owner's own action) before main takes them; (b) accept the exposure, and add a known-history exception to the scan naming exactly those commits and that one file.
+      Recommendation: (b). GitHub keeps every pull request's commits readable under its pull request after a branch is rewritten or deleted (only GitHub support can purge them), so a rewrite hides little of what is already public, and it needs a force-push, which agents never do. The exception names only the commits that carry the plain list (those on `tac/m0-bootstrap` that add or change the older `scripts/private_scan.sh`, and `50bc1ca` and `8f5f2cc` on `tac/m1-core`) and that one path. Waits: the pull request from `tac/m0-bootstrap` to main.
+- [ ] Q22 the commit identity: the owner commits as `tpetedb` with a personal address that is itself on the private-term list, so every commit publishes it. The scan exempts that exact pair in author and committer headers (an `identity` line in `scripts/private_terms.txt`). Keep the exemption, or commit under the GitHub noreply address (`<id>+tpetedb@users.noreply.github.com`, with "Keep my email addresses private" on) and drop the exemption?
+      Recommendation: the noreply address for this repository, set in its local git config; the exemption line goes once no open branch holds a commit under the old address, since the range scan reads only the commits a pull request brings. Waits: M2.
+
 ## Skills and third-party material
 
 - [ ] Q1 ponytail: vendor DietrichGebert/ponytail (MIT), trimmed and opt-in, or is there a version of the owner's own that the board has not found?
