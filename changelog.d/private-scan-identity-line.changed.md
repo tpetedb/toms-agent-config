@@ -1,0 +1,1 @@
+The shipped private term list no longer exempts a commit identity: this repository commits under the GitHub noreply address (Q22, ADR 0002), so a commit under a listed personal address now fails the scan like any other hit. The `identity` kind stays supported for an adopter whose own commit identity carries a listed term.
