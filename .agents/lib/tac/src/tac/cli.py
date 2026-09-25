@@ -14,9 +14,13 @@ from tac.github_cli import github_group
 from tac.handoff_cli import handoff_group
 from tac.hook_cli import hook_group
 from tac.human_cli import approve_command, human_group, recap_command
+from tac.inbox_cli import inbox_group
+from tac.launch_cli import launch_command
 from tac.pipeline_cli import pipeline_group
+from tac.run_cli import run_command
 from tac.runner_cli import receipt_group, runner_group
 from tac.sync_cli import check_command, sync_command
+from tac.usage_cli import usage_group
 from tac.work_cli import work_group
 
 
@@ -65,6 +69,10 @@ cli.add_command(hook_group)
 cli.add_command(human_group)
 cli.add_command(approve_command)
 cli.add_command(recap_command)
+cli.add_command(run_command)
+cli.add_command(launch_command)
+cli.add_command(inbox_group)
+cli.add_command(usage_group)
 
 
 def main() -> None:
