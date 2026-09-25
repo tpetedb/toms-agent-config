@@ -139,4 +139,7 @@ def test_ci_runs_the_floor_check_from_the_base_in_a_required_job() -> None:
     # A branch name reaches the shell as a variable, never as script text.
     assert "${{" not in step["run"]
     assert step["env"] == {"BASE_REF": "${{ github.base_ref }}"}
-    assert step["run"] == 'bash scripts/ci_config_from_base.sh "origin/$BASE_REF"'
+    # The base revision's copy of the script, taken by an earlier step.
+    assert step["run"] == (
+        'bash "$RUNNER_TEMP/gates/ci_config_from_base.sh" "origin/$BASE_REF"'
+    )

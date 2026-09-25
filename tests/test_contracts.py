@@ -116,7 +116,6 @@ OUTSIDE = [
         {**TIGHT, "patternProperties": {"^x": {"type": "string"}}},
         "/properties/p: patternProperties",
     ),
-    ("const", {"const": "x"}, "/properties/p: const"),
     ("minLength", {"type": "string", "minLength": 1}, "/properties/p: minLength"),
 ]
 
@@ -226,10 +225,6 @@ def _flat(names: list[str]) -> dict:
     }
 
 
-def _sized(problems: list[str], needle: str) -> list[str]:
-    return [p for p in problems if needle in p]
-
-
 def test_more_than_5000_object_properties_are_refused() -> None:
     # The root's own properties count, and so do a nested object's.
     at_limit = _flat([f"p{i}" for i in range(4999)])
@@ -252,12 +247,20 @@ def test_names_enum_and_const_values_share_a_120000_character_budget() -> None:
         return root
 
     budget = 120_000 - (4 + 6 + 3 + 1)
+    # The whole list: const is in the subset, so nothing else may be named.
     problems = strict_subset_problems(schema(budget))
-    assert _sized(problems, "characters") == [], problems
+    assert problems == [], problems
     problems = strict_subset_problems(schema(budget + 1))
-    assert _sized(problems, "characters") == [
+    assert problems == [
         "/: names, enum and const values hold 120001 characters, over 120000"
     ], problems
+
+
+def test_const_is_in_the_strict_subset() -> None:
+    # The Structured Outputs guide counts const values in its size limit, and
+    # the official openai-node parser emits const in strict schemas.
+    assert strict_subset_problems(_root({"const": "x"})) == []
+    assert strict_subset_problems(_root({"type": "integer", "const": 3})) == []
 
 
 def test_more_than_1000_enum_values_in_all_are_refused() -> None:

@@ -1454,7 +1454,7 @@ def test_ci_runs_the_work_gate_after_the_tests_with_refs_as_variables() -> None:
         "HEAD_REF": "${{ github.head_ref }}",
     }
     # The base revision's checker judges, never the candidate's.
-    assert step["run"].startswith("bash scripts/ci_work_from_base.sh ")
+    assert step["run"].startswith('bash "$RUNNER_TEMP/gates/ci_work_from_base.sh" ')
     script = (REPO / "scripts/ci_work_from_base.sh").read_text()
     assert 'git archive --format=tar "$base" -- .agents' in script
     assert '"$tac" work ci --base' in script

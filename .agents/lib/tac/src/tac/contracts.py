@@ -40,10 +40,11 @@ MAX_ENUM_VALUES = 1000
 # A string enum of more than LARGE_ENUM values may hold at most this many characters.
 LARGE_ENUM = 250
 MAX_LARGE_ENUM_CHARS = 15_000
-# The keywords the strict subset lists: the types, enum and anyOf, the string,
-# number and array constraints, $defs and $ref, plus annotations and the object
-# keywords. Anything else is refused at any depth, since the API errors on an
-# unsupported keyword rather than ignoring it.
+# The keywords the strict subset lists: the types, enum, const and anyOf, the
+# string, number and array constraints, $defs and $ref, plus annotations and the
+# object keywords; the guide counts const values in its size limit. Anything else
+# is refused at any depth, since the API errors on an unsupported keyword rather
+# than ignoring it.
 # https://developers.openai.com/api/docs/guides/structured-outputs#supported-schemas
 SUPPORTED = frozenset(
     {
@@ -55,6 +56,7 @@ SUPPORTED = frozenset(
         "description",
         "type",
         "enum",
+        "const",
         "anyOf",
         "properties",
         "required",

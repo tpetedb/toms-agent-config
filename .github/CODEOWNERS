@@ -20,3 +20,9 @@
 /mise.toml                  @tpetedb
 /uv.lock                    @tpetedb
 /.python-version            @tpetedb
+# What CI runs from. On pull_request the workflow and these scripts are the
+# candidate's copy, so the owner's review is their gate; tac doctor names a gap.
+/.github/workflows/         @tpetedb
+/.github/CODEOWNERS         @tpetedb
+/scripts/ci_*.sh            @tpetedb
+/scripts/private_scan.sh    @tpetedb
