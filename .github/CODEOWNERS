@@ -26,6 +26,9 @@
 /.github/CODEOWNERS         @tpetedb
 /scripts/ci_*.sh            @tpetedb
 /scripts/private_scan.sh    @tpetedb
+/scripts/private_scan.py    @tpetedb
+# The term list the scan reads, and the one path whose content it skips.
+/scripts/private_terms.txt  @tpetedb
 # Attributes decide what git treats as binary and how it checks files out, at
 # any depth, so a bare name owns every one of them.
 .gitattributes              @tpetedb

@@ -54,7 +54,7 @@ jobs:
         # the ruleset's required owner review protect it (docs/DESIGN.md, 8).
         env:
           BASE_REF: ${{ github.base_ref }}
-          GATES: private_scan.sh
+          GATES: private_scan.sh private_scan.py private_terms.txt
         run: |
           base="$(git rev-parse --verify "origin/$BASE_REF^{commit}")"
           mkdir -p "$RUNNER_TEMP/gates"
@@ -66,8 +66,26 @@ jobs:
               cp "scripts/$name" "$RUNNER_TEMP/gates/$name"
             fi
           done
-      - name: Private scan, the base revision's term list
-        run: bash "$RUNNER_TEMP/gates/private_scan.sh"
+      - name: Private scan of every commit, the base revision's term list
+        # Every blob each commit of the pull request adds or changes, the tip's
+        # tree, every commit message and the branch name: a term added in one
+        # commit and removed in the next is still public in the history. A base
+        # whose scan predates the range mode (it has no private_terms.txt) runs
+        # that scan over the final tree; the owner's review covers the history.
+        # The branch name reaches the scan as a variable, never as script text.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          base="$(git rev-parse --verify "origin/$BASE_REF^{commit}")"
+          if git cat-file -e "$base:scripts/private_scan.sh" 2>/dev/null &&
+            ! git cat-file -e "$base:scripts/private_terms.txt" 2>/dev/null; then
+            echo "::warning::the base revision ${base:0:12} has the older private scan; it scans the final tree only, and the owner's review covers the history"
+            bash "$RUNNER_TEMP/gates/private_scan.sh"
+          else
+            bash "$RUNNER_TEMP/gates/private_scan.sh" --range "$base..$HEAD_SHA" --branch "$HEAD_REF"
+          fi
 
   # After the tests, so that an order still waiting for its review can never
   # hide a failing test. An order that ships code ships its accepted review and
