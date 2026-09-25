@@ -1,0 +1,39 @@
+%% ledger ingest: a CSV in, the rows stored once, or the file refused whole.
+%% House subset of ISO 5807 with the palette (docs/DESIGN.md, Diagram conventions).
+%% Legend: green terminator, blue process, yellow decision, orange input or output,
+%% dim red data store, red stop.
+flowchart TD
+    A(["ledger ingest file.csv --db ledger.duckdb"])
+    B[/"read the CSV: header and rows"/]
+    S[("schema.json<br/>four columns and their types")]
+    C{"header and values<br/>match the schema?"}
+    X[/"refused: exit 3<br/>each differing column named"/]
+    H["sha256 of the file bytes"]
+    D{"sha256 already<br/>in loads?"}
+    N(["already loaded: nothing added"])
+    T["one transaction:<br/>insert rows into expenses,<br/>record the file in loads"]
+    DB[("ledger.duckdb<br/>expenses, loads")]
+    R(["loaded N rows"])
+    A --> B
+    B --> C
+    S -.-> C
+    C -->|no| X
+    C -->|yes| H
+    H --> D
+    D -->|yes| N
+    D -->|no| T
+    T --> DB
+    T --> R
+    DB -.-> D
+    classDef term fill:#00A86B,stroke:#00D084,color:#000000
+    classDef proc fill:#0067A5,stroke:#0088CC,color:#FFFFFF
+    classDef dec fill:#FFBF00,stroke:#FFD500,color:#000000
+    classDef io fill:#FF8C1A,stroke:#FFA94D,color:#000000
+    classDef store fill:#9A2A2A,stroke:#F04923,color:#FFFFFF
+    classDef stop fill:#D32F2F,stroke:#F04923,color:#FFFFFF
+    class A,N,R term
+    class H,T proc
+    class C,D dec
+    class B io
+    class S,DB store
+    class X stop

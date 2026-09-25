@@ -1,0 +1,10 @@
+{
+  "name": "expenses",
+  "version": 1,
+  "columns": [
+    { "name": "date", "type": "date" },
+    { "name": "category", "type": "text" },
+    { "name": "description", "type": "text" },
+    { "name": "amount_eur", "type": "decimal" }
+  ]
+}

@@ -1,0 +1,32 @@
+# The ledger's own tasks, run from dev/ledger: just --justfile dev/ledger/justfile --working-directory dev/ledger verify
+
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+default:
+    @just --list
+
+# Lint, format and the tests; the ledger's whole gate.
+verify:
+    uv run --frozen ruff check .
+    uv run --frozen ruff format --check .
+    uv run --frozen pytest -q
+
+# The schema drift gate: the good fixture loads into a throwaway database, the drifted one exits 3.
+gate-schema-drift:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    scratch="$(mktemp -d)"
+    trap 'rm -rf "$scratch"' EXIT
+    uv run --frozen ledger ingest fixtures/expenses-2026-08.csv --db "$scratch/ledger.duckdb"
+    status=0
+    uv run --frozen ledger ingest fixtures/expenses-drifted.csv --db "$scratch/ledger.duckdb" || status=$?
+    if [ "$status" -ne 3 ]; then
+        echo "gate-schema-drift: the drifted fixture exited $status, expected 3" >&2
+        exit 1
+    fi
+    echo "gate-schema-drift: the drifted fixture was refused with exit 3"
+
+# The installed command prints its version and its help and exits 0.
+gate-cli-smoke:
+    uv run --frozen ledger --version
+    uv run --frozen ledger --help > /dev/null
