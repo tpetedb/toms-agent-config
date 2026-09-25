@@ -207,9 +207,10 @@ def check_handoff_guard(
     Every spawn tool is refused under native_delegation = "off" and to a role
     whose charter does not delegate. A Workflow call is allowed only for a role
     that delegates and launches with ultracode, running a script that a stage of
-    that role registers with the hash generated.lock records, and only once the
-    call is recorded. Agent and Task from a delegating role pass until the
-    runner's single-use dispatch tokens (M3, C1)."""
+    that role registers with the hash generated.lock records, with the runner's
+    single-use token for it, and only once the call is recorded; no token exists
+    before M3, so until then every Workflow call is refused. Agent and Task from
+    a delegating role pass until the runner's dispatch tokens (M3, C1)."""
     tool = str(payload.get("tool_name") or "")
     if tool not in SPAWN_TOOLS:
         return None
@@ -232,9 +233,40 @@ def check_handoff_guard(
     return _check_workflow(root, payload, config, role)
 
 
+def _lexical(raw: str, payload: Mapping[str, Any], root: Path) -> str | None:
+    """`raw` relative to the checkout as written, no link followed, or None when
+    it leaves the checkout or climbs with `..`, which the OS resolves after any
+    link on the way and so cannot be judged by its spelling."""
+    path = Path(os.path.expanduser(raw))
+    if ".." in path.parts:
+        return None
+    if not path.is_absolute():
+        base = payload.get("cwd")
+        path = (Path(base) if isinstance(base, str) and base else root) / path
+    path = Path(os.path.normpath(path))
+    for top in (root, root.resolve()):
+        try:
+            return path.relative_to(top).as_posix()
+        except ValueError:
+            continue
+    return None
+
+
+def _links_on_the_way(root: Path, rel: str) -> str | None:
+    """The first component from the checkout down to the file that is a
+    symlink, since a link outside `.agents/` can be retargeted by an agent
+    between this check and the client reading the file."""
+    here = root
+    for part in Path(rel).parts:
+        here = here / part
+        if here.is_symlink():
+            return here.relative_to(root).as_posix()
+    return None
+
+
 def _script_bytes(root: Path, payload: Mapping[str, Any]) -> tuple[bytes, str] | str:
-    """The script a Workflow call runs and its path relative to the checkout
-    (empty when inline), or the reason no single script can be read."""
+    """The script a Workflow call runs and its path relative to the checkout as
+    spelled (empty when inline), or the reason no single script can be read."""
     given = payload.get("tool_input")
     given = given if isinstance(given, Mapping) else {}
     named = [k for k in SCRIPT_KEYS if isinstance(given.get(k), str) and given[k]]
@@ -246,20 +278,28 @@ def _script_bytes(root: Path, payload: Mapping[str, Any]) -> tuple[bytes, str] |
     if named[0] == "script":
         return str(given["script"]).encode("utf-8"), ""
     raw = str(given["scriptPath"])
-    unresolved = Path(os.path.expanduser(raw))
-    if not unresolved.is_absolute():
-        base = payload.get("cwd")
-        unresolved = (Path(base) if isinstance(base, str) and base else root) / raw
-    path = _absolute(raw, payload, root)
-    rel = _relative(path, root)
+    rel = _lexical(raw, payload, root)
     if rel is None:
-        return f"the script {raw} is outside this checkout"
-    if unresolved.is_symlink() or not path.is_file():
+        return f"the script {raw} is outside this checkout or climbs with .."
+    link = _links_on_the_way(root, rel)
+    if link is not None:
+        return f"the script {raw} goes through the symlink {link}"
+    path = root / rel
+    if not path.is_file():
         return f"the script {raw} is not a plain file"
     try:
         return path.read_bytes(), rel
     except OSError as e:
         return f"the script {raw} cannot be read ({e.strerror})"
+
+
+def _runner_token(
+    _root: Path, _payload: Mapping[str, Any], _script: str, _digest: str
+) -> str | None:
+    """The runner's single-use token for this call, bound to the run, the stage
+    and the script hash, once consumed; None when the call carries none. The
+    runner issues tokens from M3, so until then no call carries one."""
+    return None
 
 
 def _check_workflow(
@@ -293,8 +333,9 @@ def _check_workflow(
         if owner == role
         and pipeline in enabled
         and locked.get(script) == digest
-        # A file is run from its registered path, which no agent may write, so
-        # it cannot change between this check and the client reading it.
+        # A file runs only from its registered path, spelled with no link on
+        # the way, which no agent may write, so it cannot change between this
+        # check and the client reading it.
         and rel in ("", script)
     ]
     if not matches:
@@ -305,6 +346,14 @@ def _check_workflow(
             f"and {LOCK_FILE} records its hash (run tac sync after registering)"
         )
     script, pipeline, stage = matches[0]
+    token = _runner_token(root, payload, script, digest)
+    if token is None:
+        # Fail closed until M3: a registered script alone does not run.
+        return (
+            f"Workflow is refused: {script} is registered for {role}, but the call "
+            "carries no single-use runner token bound to its run, stage and "
+            "script hash, and tac run issues those only from M3"
+        )
     record = {
         "at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         "session_id": payload.get("session_id"),
@@ -313,9 +362,7 @@ def _check_workflow(
         "stage": stage,
         "script": script,
         "sha256": digest,
-        # The runner's single-use token bound to run, stage and script hash
-        # arrives in M3; until then the call is bound only to the registry.
-        "token": None,
+        "token": token,
     }
     try:
         journal = worker_store(root, config) / WORKFLOW_JOURNAL

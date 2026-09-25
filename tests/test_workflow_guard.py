@@ -4,9 +4,11 @@ Ultracode starts agents through Workflow, which neither the handoff guard on
 Agent|Task nor native_delegation = "off" covered. Workflow is now allowed only
 for a role whose charter delegates and that launches with ultracode, and only
 for a script a pipeline stage of that role registers, with the script's sha256
-in generated.lock matching the bytes in the tool input; the call is recorded
-before it is allowed. Every other Workflow call is denied. Single-use runner
-tokens bound to run, stage and script hash join in M3.
+in generated.lock matching the bytes in the tool input, and only with the
+runner's single-use token bound to run, stage and script hash; the call is
+recorded before it is allowed. The runner issues tokens from M3, so until then
+every Workflow call is denied; the tests stand a token in for the runner's to
+prove the rest of the path.
 """
 
 from __future__ import annotations
@@ -56,6 +58,16 @@ def project(tmp_path: Path) -> Path:
     register(root)
     sync(root, links=False)
     return root
+
+
+TOKEN = "t-1"
+
+
+@pytest.fixture
+def tokens(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stand in for the runner's single-use token (M3), so a test reaches the
+    part of the guard that runs after it."""
+    monkeypatch.setattr(hook, "_runner_token", lambda *_: TOKEN)
 
 
 def journal(root: Path) -> list[dict[str, Any]]:
@@ -124,6 +136,20 @@ def test_a_session_without_a_role_cannot_start_a_workflow(project: Path) -> None
     assert "claude --agent" in verdict.reason
 
 
+def test_a_registered_script_without_a_runner_token_is_denied(
+    project: Path,
+) -> None:
+    # Fail closed until M3: the registry alone does not let a script run.
+    for verdict in (
+        workflow(project, "chief"),
+        workflow(project, "chief", scriptPath=SCRIPT),
+    ):
+        assert (verdict.verdict, verdict.check) == ("deny", "handoff-guard")
+        assert "runner token" in verdict.reason and SCRIPT in verdict.reason
+    assert journal(project) == []
+
+
+@pytest.mark.usefixtures("tokens")
 def test_a_registered_script_by_the_chief_is_allowed_and_recorded(
     project: Path,
 ) -> None:
@@ -137,10 +163,72 @@ def test_a_registered_script_by_the_chief_is_allowed_and_recorded(
         assert (record["pipeline"], record["stage"]) == ("order", "specify")
         assert (record["script"], record["sha256"]) == (SCRIPT, digest)
         assert record["session_id"] == "s-1"
-        # No runner token exists before M3; the record says so.
-        assert record["token"] is None
+        assert record["token"] == TOKEN
 
 
+@pytest.mark.usefixtures("tokens")
+def test_a_delegating_role_without_ultracode_cannot_start_a_workflow(
+    project: Path,
+) -> None:
+    ultracode_off(project)
+    verdict = workflow(project, "chief")
+    assert (verdict.verdict, verdict.check) == ("deny", "handoff-guard")
+    assert "does not launch with ultracode" in verdict.reason
+    assert journal(project) == []
+
+
+@pytest.mark.usefixtures("tokens")
+def test_a_script_path_through_a_symlinked_folder_is_denied(project: Path) -> None:
+    # linkdir sits outside .agents/, so an agent could retarget it between the
+    # guard's read and the client's.
+    (project / "linkdir").symlink_to(project / ".agents/workflows")
+    verdict = workflow(project, "chief", scriptPath="linkdir/specify.js")
+    assert (verdict.verdict, verdict.check) == ("deny", "handoff-guard")
+    assert journal(project) == []
+
+
+@pytest.mark.usefixtures("tokens")
+def test_a_symlink_to_the_registered_script_is_denied(project: Path) -> None:
+    link = project / "notes" / "specify.js"
+    link.parent.mkdir()
+    link.symlink_to(project / SCRIPT)
+    verdict = workflow(project, "chief", scriptPath="notes/specify.js")
+    assert (verdict.verdict, verdict.check) == ("deny", "handoff-guard")
+    assert journal(project) == []
+
+
+@pytest.mark.usefixtures("tokens")
+def test_a_registered_path_that_is_a_symlink_is_denied(project: Path) -> None:
+    # Same bytes, but the registered path now points at a file an agent writes.
+    elsewhere = project / "notes" / "specify.js"
+    elsewhere.parent.mkdir()
+    elsewhere.write_text(BODY, encoding="utf-8")
+    (project / SCRIPT).unlink()
+    (project / SCRIPT).symlink_to(elsewhere)
+    verdict = workflow(project, "chief", scriptPath=SCRIPT)
+    assert (verdict.verdict, verdict.check) == ("deny", "handoff-guard")
+    assert "symlink" in verdict.reason
+    assert journal(project) == []
+
+
+@pytest.mark.usefixtures("tokens")
+def test_a_script_path_that_climbs_through_a_symlink_is_denied(
+    project: Path, tmp_path: Path
+) -> None:
+    # The spelling normalises to the registered path, but the OS resolves
+    # away/.. after following away, to a tree an agent writes.
+    decoy = tmp_path / "decoy"
+    (decoy / "inner").mkdir(parents=True)
+    (decoy / ".agents/workflows").mkdir(parents=True)
+    (decoy / ".agents/workflows/specify.js").write_text(BODY, encoding="utf-8")
+    (project / "away").symlink_to(decoy / "inner")
+    verdict = workflow(project, "chief", scriptPath=f"away/../{SCRIPT}")
+    assert (verdict.verdict, verdict.check) == ("deny", "handoff-guard")
+    assert ".." in verdict.reason
+    assert journal(project) == []
+
+
+@pytest.mark.usefixtures("tokens")
 def test_a_registered_path_with_other_bytes_is_denied(project: Path) -> None:
     (project / SCRIPT).write_text(BODY + "log('changed')\n", encoding="utf-8")
     verdict = workflow(project, "chief", scriptPath=SCRIPT)
@@ -148,6 +236,7 @@ def test_a_registered_path_with_other_bytes_is_denied(project: Path) -> None:
     assert journal(project) == []
 
 
+@pytest.mark.usefixtures("tokens")
 def test_a_copy_of_a_registered_script_at_another_path_is_denied(
     project: Path,
 ) -> None:
@@ -176,6 +265,7 @@ def test_a_script_path_outside_the_checkout_is_denied(
     assert (verdict.verdict, verdict.check) == ("deny", "handoff-guard")
 
 
+@pytest.mark.usefixtures("tokens")
 def test_a_registered_script_is_denied_to_a_role_it_is_not_registered_for(
     project: Path,
 ) -> None:
@@ -185,6 +275,7 @@ def test_a_registered_script_is_denied_to_a_role_it_is_not_registered_for(
     assert (verdict.verdict, verdict.check) == ("deny", "handoff-guard")
 
 
+@pytest.mark.usefixtures("tokens")
 def test_a_call_that_cannot_be_recorded_is_denied(tmp_path: Path) -> None:
     # Not a git repository: no worker store, so no record, so no workflow.
     root = copy_project(tmp_path / "bare")
@@ -330,6 +421,19 @@ def test_only_the_lead_director_s_stage_may_register_a_script(project: Path) -> 
     )
     [problem] = stage_refusals(project)
     assert "stage review" in problem and "lead" in problem
+
+
+def test_a_lead_director_stage_other_than_design_may_not_register_a_script(
+    project: Path,
+) -> None:
+    # revise runs in the lead seat too, but the ruling names the design stage.
+    replace_in(
+        project / ".agents/config/pipelines/board.toml",
+        'template = "handoffs/revise.md.j2"',
+        f'template = "handoffs/revise.md.j2"\nworkflows = ["{SCRIPT}"]',
+    )
+    [problem] = stage_refusals(project)
+    assert "stage revise" in problem and "design stage" in problem
 
 
 @pytest.mark.parametrize(

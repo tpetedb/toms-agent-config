@@ -6,7 +6,7 @@ A ticked box is a hint, never consent. An approval counts only as your own appro
 
 Credential handover convention: every secret goes into `agents.env`, outside the repository (Q17), under the env var named in the item. Never put a secret in chat or in the repository. Agents never receive what a step does not need; the runtime injects it.
 
-Rendered by `tac human render` from 29 items in `.human/approvals/` and `.human/todo.toml`, 29 open, as of 2026-09-25. Never edit this file by hand: `tac human render --check` fails on any difference.
+Rendered by `tac human render` from 30 items in `.human/approvals/` and `.human/todo.toml`, 30 open, as of 2026-09-25. Never edit this file by hand: `tac human render --check` fails on any difference.
 
 ## Agent identity (first: milestone M0 cannot pass without it)
 
@@ -30,6 +30,8 @@ Rendered by `tac human render` from 29 items in `.human/approvals/` and `.human/
       Recommendation: yes. Waits: M3.
 - [ ] Q6 chief authority: the chief opens issues and pull requests and pushes branches as the machine account, through the runner; merges and releases are the owner's own action (one command or a GitHub review)?
       Recommendation: yes. Waits: M3.
+- [ ] Q23 the Workflow ruling's M2 parts: the board's ruling on the Workflow tool puts the runner's single-use token (bound to run, stage and script hash), the signed run receipt and the classifier check in M2, but the runner that issues tokens is M3's `tac run`. As built, M2's guard refuses every Workflow call that carries no token, which is every call until M3, so a script registered early cannot run on the registry check alone (docs/DESIGN.md, section 5). Record a board amendment that moves the token, the receipt and the classifier check to M3 with the runner?
+      Recommendation: yes; the token also binds the director's lead seat, which the hook cannot tell from the other seats. Blocks: registering the first Workflow script, which runs only once the ruling says where its token comes from. Waits: M3.
 
 ## Profiles, billing, secrets, telemetry
 

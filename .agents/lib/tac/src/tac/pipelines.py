@@ -507,7 +507,8 @@ def _workflow_problems(
     root: Path, where: str, stage: PipelineStage, known_: Known
 ) -> list[str]:
     """A registered Workflow script belongs to a role that delegates, to the
-    lead seat when the role is the director's, and exists as a file."""
+    lead seat's design stage when the role is the director's, and exists as a
+    file."""
     if not stage.workflows:
         return []
     problems = []
@@ -517,10 +518,11 @@ def _workflow_problems(
             f"{where}: workflows are registered only for a role that delegates, "
             f"and {ROLES_DIR}/{role}.toml does not (delegates = false)"
         )
-    elif role == "director" and stage.seats != "lead":
+    elif role == "director" and (stage.seats != "lead" or stage.id != "design"):
         problems.append(
             f"{where}: workflows on a director stage run only in the lead "
-            f'seat\'s design, and this stage runs seats = "{stage.seats}"'
+            f"seat's design stage, and this is stage {stage.id} with seats = "
+            f'"{stage.seats}"'
         )
     for script in stage.workflows:
         path = root / script
