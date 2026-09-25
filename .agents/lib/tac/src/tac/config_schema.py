@@ -484,6 +484,33 @@ class HookCheck(_Model):
     codex: str
 
 
+# ---------------------------------------------------------------- probes
+
+# What a client probe in config/probes.toml observes, which the runner can
+# observe today.
+OfflineProbeKind = Literal["version", "trust"]
+# The live probes of acceptance 8 (design sections 13 and 18). The schema takes
+# them ahead of the follow-up probes.toml that lists them, since CI judges that
+# file with the base revision's checker; the runner refuses each by name
+# (tac.probes.NotYetLive) until it observes it.
+LiveProbeKind = Literal[
+    "spawn-missing-token",
+    "spawn-altered-token",
+    "spawn-reused-token",
+    "spawn-tool-absent",
+    "runner-lost",
+    "hook-timeout",
+    "keychain-token-denied",
+    "keychain-key-denied",
+    "ruleset-owner-review",
+    "push-required-checks",
+    "classifier-script-computed",
+]
+# Two Literals rather than one, so the comment of a shipped probes.toml is held
+# to the kinds it may use today; tests/test_proof.py holds it to OfflineProbeKind.
+ProbeKind = OfflineProbeKind | LiveProbeKind
+
+
 class GitHooks(_Model):
     pre_commit: Strs
     commit_msg: Strs

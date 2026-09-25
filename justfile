@@ -139,6 +139,16 @@ adapter-proof:
     uv run --frozen tac launch claude --role builder --print
     uv run --frozen tac launch codex --role builder --print
 
+# ---- proof: acceptance 8, the offline part now, the live probes once the owner's steps are done (docs/DESIGN.md, 13)
+
+# The ledger end to end, the bypass attempts, the mutation runs, then one SKIP line per live probe with its reason; --require-live turns a skip into a failure.
+dev-proof *args:
+    uv run --frozen tac proof dev {{ args }}
+
+# Every guard, gate, hook, stage, handoff, memory, human and layer condition maps to a test that ran; a missing entry or a failed test exits non-zero.
+coverage-proof *args:
+    uv run --frozen tac proof coverage {{ args }}
+
 # Every effective configuration value and the file it came from.
 config-show:
     {{ tac }} config show

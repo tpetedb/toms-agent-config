@@ -15,12 +15,32 @@
           "type": "integer"
         },
         "kind": {
-          "enum": [
-            "version",
-            "trust"
+          "anyOf": [
+            {
+              "enum": [
+                "version",
+                "trust"
+              ],
+              "type": "string"
+            },
+            {
+              "enum": [
+                "spawn-missing-token",
+                "spawn-altered-token",
+                "spawn-reused-token",
+                "spawn-tool-absent",
+                "runner-lost",
+                "hook-timeout",
+                "keychain-token-denied",
+                "keychain-key-denied",
+                "ruleset-owner-review",
+                "push-required-checks",
+                "classifier-script-computed"
+              ],
+              "type": "string"
+            }
           ],
-          "title": "Kind",
-          "type": "string"
+          "title": "Kind"
         }
       },
       "required": [

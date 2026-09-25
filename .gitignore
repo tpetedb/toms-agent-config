@@ -31,3 +31,6 @@ work/orders/*/repair.md
 # What tac sync makes locally and never commits: per-skill links, local settings.
 .claude/skills/
 .claude/settings.local.json
+
+# What the proofs write under dev/ (tac proof dev, tac proof coverage).
+dev/out/

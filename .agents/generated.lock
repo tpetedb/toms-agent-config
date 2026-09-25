@@ -37,7 +37,7 @@ schema_version = 1
 ".agents/config/roles/scout.toml" = "9bdaf08792159950ce3c4907770ff1852c05c15e400a0c9d66b7056e770b614b"
 ".agents/config/runtime.toml" = "42f91290afea8a3c6c450bdb288f5a7ba17543a1c0a26421ea6282baa5441821"
 ".agents/config/standards.toml" = "62936d92098c954ead3c87ab2a1cc2dc9e2694a4b0934dea75de08aa874b34aa"
-".agents/config/teams.toml" = "ba0cb4c331ba1b46121a1be7963ddc6ef40d3b3002f798f95f16134db1a7fed6"
+".agents/config/teams.toml" = "2560ec12358ab295c581502d90620989110cca66caf50a5c907a1f364c567245"
 ".agents/context/brief.md" = "a528bc9c81526f63124a818202fd1ffa4b6f4a6c5421f0d2d786da3bfe96bc16"
 ".agents/context/claude.md" = "cff1c2de685136f7e1a078c1287cb2438537ea3618832f9825e7944d02b300c5"
 

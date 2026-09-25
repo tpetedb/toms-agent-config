@@ -69,8 +69,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 from pydantic import ValidationError as PydanticValidationError
 
+from tac.config_schema import ProbeKind
 from tac.keychain import SIGNING_KEY, Keychain, KeychainError, system_keychain
-from tac.probes import project_trust
+from tac.probes import NotYetLive, live_kind, project_trust
 from tac.receipts import (
     ID_PATTERN,
     ORDER_PATTERN,
@@ -607,7 +608,7 @@ REQUEST = TypeAdapter(Request)
 class ProbeSpec(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     description: str
-    kind: Literal["version", "trust"]
+    kind: ProbeKind
     expect_exit: int = 0
 
 
@@ -866,6 +867,10 @@ class Runner:
             request.run_id, f"probe.{request.probe}", request.order_id
         )
         spec = self.probe_spec(binding.revision, request.probe)
+        if live_kind(spec.kind):
+            # Accepted by the schema ahead of the runner's observation of it.
+            not_yet = NotYetLive(request.probe, "the runner does not observe it yet")
+            raise RunnerError(str(not_yet))
         executable = self.which(HARNESS_EXECUTABLES[request.harness])
         # A client's startup code is not the runner's: it gets the gate's
         # confinement, no write to the tree, the scrubbed environment and a

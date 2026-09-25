@@ -69,6 +69,7 @@ owns = [
   ".github/",
   "scripts/",
   "work/",
+  "dev/",
   "justfile",
   "bootstrap.sh",
   "mise.toml",

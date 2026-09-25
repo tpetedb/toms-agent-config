@@ -6,7 +6,7 @@ A ticked box is a hint, never consent. An approval counts only as your own appro
 
 Credential handover convention: every secret goes into `agents.env`, outside the repository (Q17), under the env var named in the item. Never put a secret in chat or in the repository. Agents never receive what a step does not need; the runtime injects it.
 
-Rendered by `tac human render` from 32 items in `.human/approvals/` and `.human/todo.toml`, 13 open, as of 2026-09-25. Never edit this file by hand: `tac human render --check` fails on any difference.
+Rendered by `tac human render` from 33 items in `.human/approvals/` and `.human/todo.toml`, 14 open, as of 2026-09-25. Never edit this file by hand: `tac human render --check` fails on any difference.
 
 ## Agent identity (first: milestone M0 cannot pass without it)
 
@@ -116,3 +116,7 @@ Rendered by `tac human render` from 32 items in `.human/approvals/` and `.human/
       `just github-labels --apply` creates and updates them with your own `gh`, reads them back, and never deletes a label the file does not declare.
       Waits: M2 (the issue forms name these labels; GitHub drops a label that does not exist).
 - [ ] Q24 Move the runner key and the tac-bot token into the login keychain: Run just runner-keychain on the host once, then restart the runner
+- [ ] S10 Acceptance 8, the live part: Once Codex is resumed, answer this item; then, after S5, Q24 and S3, run `just dev-proof --require-live` on the host and land `docs/evidence/m4-dev-proof.md` from that run.
+      In your own terminal on the host, never an agent session, with the runner serving: `just dev-proof --live --harness claude`, then `just dev-proof --live --harness codex`, run each C1 and C6 probe through `tac receipt client`; the probe entries of `.agents/config/probes.toml` and `receipts.toml` (follow-up config) land first.
+      Until this item is answered every Codex probe skips as paused; `just dev-proof` prints the step each other probe still waits on.
+      Waits: M4 (acceptance 8, the live part: C1 and C6 proven live, docs/DESIGN.md sections 13 and 18).
