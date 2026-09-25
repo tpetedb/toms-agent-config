@@ -9,6 +9,7 @@ and a copy of the candidate `src/tac` when the test is about a real check.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -23,7 +24,9 @@ from jsonschema import Draft7Validator
 from tac import adapters, hook, work
 from tac.config import load_config
 from tac.doctor import Status, check_hook_guard
+from tac.handoff import worker_store
 from tac.sync import check_tree, locked_outputs, read_lock, sync
+from tests._gitrepo import GIT
 from tests._guard import (
     REPO,
     SOURCE_GUARD,
@@ -42,8 +45,15 @@ from tests._guard import (
 )
 from tests._syncproject import copy_project, replace_in
 
-CLAUDE_EVENTS = ("PreToolUse", "PostToolUse", "Stop", "SubagentStop", "SessionStart")
-CODEX_EVENTS = ("PreToolUse", "PostToolUse", "Stop", "SessionStart")
+CLAUDE_EVENTS = (
+    "PreToolUse",
+    "PostToolUse",
+    "Stop",
+    "SubagentStop",
+    "SessionStart",
+    "SubagentStart",
+)
+CODEX_EVENTS = ("PreToolUse", "PostToolUse", "Stop", "SessionStart", "SubagentStart")
 EVERY = [("claude", e) for e in CLAUDE_EVENTS] + [("codex", e) for e in CODEX_EVENTS]
 
 
@@ -694,3 +704,140 @@ def test_the_candidate_install_is_not_the_source_tree(tmp_path: Path) -> None:
     installed = site_packages(root) / "tac" / "__init__.py"
     assert installed.is_file()
     assert not str(installed.resolve()).startswith(str(REPO / "src"))
+
+
+# ---------------------------------------------------------------- the records
+#
+# spawn-record (SubagentStart, both clients) and workflow-record (PostToolUse
+# after Claude's Workflow) through the stamped guard and the real checker: each
+# event writes one line with the fields the runner reads, a payload in any
+# other shape writes none and still exits 0, and a record never lets a call
+# through that a deny check refuses.
+
+WORKFLOW_SCRIPT = "export default 1;\n"
+
+
+@pytest.fixture
+def recording(tmp_path: Path) -> Fixture:
+    """The real checker in a git checkout, since the journals live in the
+    worker store under the git common dir."""
+    fx = real_checkout(tmp_path)
+    subprocess.run([*GIT, "init", "-q", str(fx.root)], check=True)
+    return fx
+
+
+def journal_lines(root: Path, rel: str) -> list[dict[str, Any]]:
+    path = worker_store(root) / rel
+    if not path.is_file():
+        return []
+    return [json.loads(line) for line in path.read_text("utf-8").splitlines()]
+
+
+def workflow_result(root: Path, **more: Any) -> dict[str, Any]:
+    return tool_event("PostToolUse", tool="Workflow", script=WORKFLOW_SCRIPT) | {
+        "cwd": str(root),
+        "tool_response": {"result": "spec"},
+        **more,
+    }
+
+
+@pytest.mark.parametrize("client", ["claude", "codex"])
+def test_a_subagent_start_through_the_guard_writes_one_record(
+    recording: Fixture, client: str
+) -> None:
+    start = event("SubagentStart", agent_type="scout", agent_id="a-1")
+    done = run_guard(recording, client, "SubagentStart", start)
+    assert (done.returncode, done.stdout) == (0, ""), done.stderr
+    [line] = journal_lines(recording.root, hook.SPAWN_JOURNAL)
+    assert set(line) == {"at", "session_id", "agent_type", "agent_id"}
+    assert (line["session_id"], line["agent_type"], line["agent_id"]) == (
+        "s-1",
+        "scout",
+        "a-1",
+    )
+
+
+def test_a_workflow_result_through_the_guard_writes_one_record(
+    recording: Fixture,
+) -> None:
+    done = run_guard(
+        recording, "claude", "PostToolUse", workflow_result(recording.root)
+    )
+    assert (done.returncode, done.stdout) == (0, ""), done.stderr
+    [line] = journal_lines(recording.root, hook.WORKFLOW_RESULTS)
+    assert set(line) == {
+        "at",
+        "session_id",
+        "script_sha256",
+        "token_sha256",
+        "result_sha256",
+    }
+    assert line["session_id"] == "s-1"
+    assert line["script_sha256"] == hashlib.sha256(WORKFLOW_SCRIPT.encode()).hexdigest()
+    # No dispatch record: the owner's own session, so no token to hash.
+    assert line["token_sha256"] is None
+    result = json.dumps({"result": "spec"}, sort_keys=True).encode()
+    assert line["result_sha256"] == hashlib.sha256(result).hexdigest()
+    # Another tool after the call is not a Workflow result.
+    bash = tool_event("PostToolUse", tool="Bash", command="ls")
+    assert run_guard(recording, "claude", "PostToolUse", bash).returncode == 0
+    assert len(journal_lines(recording.root, hook.WORKFLOW_RESULTS)) == 1
+
+
+@pytest.mark.parametrize(
+    ("name", "body"),
+    [
+        ("SubagentStart", "not json"),
+        ("SubagentStart", "[1, 2]"),
+        ("SubagentStart", {"hook_event_name": "SubagentStart", "agent_id": "a-1"}),
+        ("SubagentStart", {"session_id": "s-1", "agent_type": "scout"}),
+        ("SubagentStart", {"session_id": "../s", "agent_type": "x", "agent_id": "a"}),
+        ("SubagentStart", {"session_id": "s-1", "agent_type": 3, "agent_id": "a-1"}),
+        ("PostToolUse", "not json"),
+        ("PostToolUse", {"session_id": "s-1", "tool_name": "Workflow"}),
+        (
+            "PostToolUse",
+            {
+                "session_id": "s-1",
+                "tool_name": "Workflow",
+                "tool_input": {"script": "a", "scriptPath": "b.js"},
+                "tool_response": {},
+            },
+        ),
+        (
+            "PostToolUse",
+            {
+                "session_id": "s-1",
+                "tool_name": "Workflow",
+                "tool_input": {"script": "a"},
+            },
+        ),
+    ],
+)
+def test_a_malformed_record_event_is_refused_without_crashing(
+    recording: Fixture, name: str, body: str | dict[str, Any]
+) -> None:
+    """Nothing is recorded and the guard still answers: exit 0, since neither
+    event can block, with no traceback, and at most the guard's own note."""
+    done = run_guard(recording, "claude", name, body)
+    assert done.returncode == 0, done.stderr
+    assert "Traceback" not in done.stderr
+    if done.stdout:
+        context = emitted(done)["hookSpecificOutput"]
+        assert context["hookEventName"] == name
+        assert context["additionalContext"].startswith("tac guard: ")
+    assert journal_lines(recording.root, hook.SPAWN_JOURNAL) == []
+    assert journal_lines(recording.root, hook.WORKFLOW_RESULTS) == []
+
+
+def test_a_workflow_the_guard_denies_leaves_no_result_record(
+    recording: Fixture,
+) -> None:
+    call = tool_event("PreToolUse", tool="Workflow", script=WORKFLOW_SCRIPT) | {
+        "cwd": str(recording.root),
+        "agent_type": "builder",
+    }
+    done = run_guard(recording, "claude", "PreToolUse", call)
+    assert done.returncode == 2
+    assert "[handoff-guard]" in done.stderr
+    assert journal_lines(recording.root, hook.WORKFLOW_RESULTS) == []

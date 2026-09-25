@@ -80,6 +80,8 @@ SCRIPT_KEYS = ("script", "scriptPath")
 WORKFLOW_JOURNAL = "journal/workflows.jsonl"
 WORKFLOW_RESULTS = "journal/workflow-results.jsonl"
 SPAWN_JOURNAL = "journal/spawns.jsonl"
+# The longest agent id or type a spawn record keeps; both clients send short names.
+RECORD_FIELD_MAX = 256
 # The launcher's record of a session it started: the worker store holds the
 # record with the token (agent-writable, so read as data only), the controller
 # store a marker the runner writes, which no agent can write or remove.
@@ -578,39 +580,60 @@ def _check_workflow(
     return None
 
 
-def _append(root: Path, config: Config, rel: str, record: Mapping[str, Any]) -> None:
-    """One JSON line in a worker store journal; a record never changes an answer,
-    so a failure to write is dropped here and missing evidence shows downstream."""
+def _append(
+    root: Path, config: Config, rel: str, record: Mapping[str, Any]
+) -> str | None:
+    """One JSON line in a worker store journal, or the reason it was not written.
+    A record never changes an answer, so missing evidence shows downstream, where
+    the runner signs what the journal holds into the dispatch receipt."""
     try:
         journal = worker_store(root, config) / rel
         journal.parent.mkdir(parents=True, exist_ok=True)
         with journal.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
-    except (OSError, work.Bad):
-        pass
+    except (OSError, work.Bad) as e:
+        return f"{rel} cannot be written ({e})"
+    return None
 
 
 def _now() -> str:
     return dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
 
 
+def _recorded_session(payload: Mapping[str, Any]) -> str | None:
+    """The event's session id when the runner could match it, else None."""
+    given = payload.get("session_id")
+    return (
+        given if isinstance(given, str) and re.match(SESSION_PATTERN, given) else None
+    )
+
+
 def check_spawn_record(
     root: Path, payload: Mapping[str, Any], config: Config
 ) -> str | None:
     """A subagent start, recorded: SubagentStart cannot block in either client,
-    so it only leaves evidence in journal/spawns.jsonl in the worker store."""
-    _append(
+    so it only leaves evidence in journal/spawns.jsonl in the worker store. Both
+    clients name the session, the subagent's id and its type; an event missing
+    one of them is not recorded, and the reason is returned."""
+    session = _recorded_session(payload)
+    if session is None:
+        return "a SubagentStart with no usable session id is not recorded"
+    agent_id, agent_type = payload.get("agent_id"), payload.get("agent_type")
+    if not isinstance(agent_id, str) or not 0 < len(agent_id) <= RECORD_FIELD_MAX:
+        return "a SubagentStart with no usable agent_id is not recorded"
+    if not isinstance(agent_type, str) or len(agent_type) > RECORD_FIELD_MAX:
+        return "a SubagentStart with no usable agent_type is not recorded"
+    return _append(
         root,
         config,
         SPAWN_JOURNAL,
         {
             "at": _now(),
-            "session_id": payload.get("session_id"),
-            "agent_type": payload.get("agent_type"),
-            "agent_id": payload.get("agent_id"),
+            "session_id": session,
+            "agent_type": agent_type,
+            "agent_id": agent_id,
         },
     )
-    return None
 
 
 def check_workflow_record(
@@ -618,30 +641,37 @@ def check_workflow_record(
 ) -> str | None:
     """After a Workflow call: the script hash, the hash of what it returned and
     the token the guard consumed for it, one line the runner signs into the
-    dispatch receipt of the session's stage."""
+    dispatch receipt of the session's stage. An event that names no usable
+    session, no single script or no result is not recorded, and the reason is
+    returned."""
     if payload.get("tool_name") != WORKFLOW_TOOL:
         return None
+    session = _recorded_session(payload)
+    if session is None:
+        return "a Workflow result with no usable session id is not recorded"
     found = _script_bytes(root, payload)
-    script = hashlib.sha256(found[0]).hexdigest() if isinstance(found, tuple) else None
-    result = json.dumps(payload.get("tool_response"), sort_keys=True, default=str)
+    if isinstance(found, str):
+        return f"a Workflow result is not recorded: {found}"
+    if "tool_response" not in payload:
+        return "a Workflow result with no tool_response is not recorded"
+    result = json.dumps(payload["tool_response"], sort_keys=True, default=str)
     token = None
     with contextlib.suppress(TokenRefused):
         token = _dispatch_record(root, payload, config)["token"]
-    _append(
+    return _append(
         root,
         config,
         WORKFLOW_RESULTS,
         {
             "at": _now(),
-            "session_id": payload.get("session_id"),
-            "script_sha256": script,
+            "session_id": session,
+            "script_sha256": hashlib.sha256(found[0]).hexdigest(),
             "token_sha256": hashlib.sha256(token.encode()).hexdigest()
             if token
             else None,
             "result_sha256": hashlib.sha256(result.encode("utf-8")).hexdigest(),
         },
     )
-    return None
 
 
 CHECKS: Mapping[str, Check] = {
@@ -651,8 +681,6 @@ CHECKS: Mapping[str, Check] = {
     "order-check": check_order,
     "handoff-guard": check_handoff_guard,
     "spawn-record": check_spawn_record,
-    # Not wired in hooks.toml yet: a PostToolUse record renders once the
-    # configuration names it (a follow-up of M3).
     "workflow-record": check_workflow_record,
 }
 
@@ -672,6 +700,19 @@ def wired(matcher: str, tool: str) -> bool:
         return re.fullmatch(matcher, tool) is not None
     except re.error:
         return False
+
+
+def _record(
+    run: Check | None, root: Path, payload: Mapping[str, Any], config: Config
+) -> None:
+    """Run a record check for its evidence alone. What it refuses to record and
+    any failure of its own are dropped here, so a record never changes the
+    answer either way: it cannot let through a call a deny check refuses, and
+    it cannot refuse one."""
+    if run is None:
+        return
+    with contextlib.suppress(Exception):
+        run(root, payload, config)
 
 
 def evaluate(
@@ -697,9 +738,7 @@ def evaluate(
             continue
         run = CHECKS.get(name)
         if spec.kind == "record":
-            # Evidence only: a record never changes the answer.
-            if run is not None:
-                run(root, payload, config)
+            _record(run, root, payload, config)
             continue
         why = (
             run(root, payload, config)

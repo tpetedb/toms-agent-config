@@ -691,15 +691,127 @@ def test_a_workflow_result_is_recorded_for_the_dispatch_receipt(
     assert len(line["result_sha256"]) == 64
 
 
-def test_a_record_check_never_changes_the_answer(project: Path) -> None:
-    # A record-kind check wired in hooks.toml runs, and the verdict stays allow.
-    hooks = project / ".agents/config/hooks.toml"
-    hooks.write_text(
-        hooks.read_text("utf-8")
-        + '\n[checks.workflow-record]\nevent = "PostToolUse"\nkind = "record"\n'
-        'claude = "Workflow"\ncodex = ""\n',
-        encoding="utf-8",
+def records(root: Path, rel: str) -> list[dict[str, Any]]:
+    path = root / ".git" / "agents" / rel
+    if not path.is_file():
+        return []
+    return [json.loads(line) for line in path.read_text("utf-8").splitlines()]
+
+
+@pytest.mark.parametrize(
+    ("payload", "why"),
+    [
+        ({"agent_type": "scout", "agent_id": "a-1"}, "no usable session id"),
+        (
+            {"session_id": "../s-1", "agent_type": "scout", "agent_id": "a-1"},
+            "no usable session id",
+        ),
+        ({"session_id": "s-1", "agent_type": "scout"}, "no usable agent_id"),
+        ({"session_id": "s-1", "agent_type": "scout", "agent_id": ""}, "agent_id"),
+        ({"session_id": "s-1", "agent_type": "scout", "agent_id": 7}, "agent_id"),
+        (
+            {"session_id": "s-1", "agent_type": "scout", "agent_id": "a" * 257},
+            "agent_id",
+        ),
+        ({"session_id": "s-1", "agent_id": "a-1"}, "no usable agent_type"),
+    ],
+)
+def test_a_malformed_subagent_start_is_not_recorded(
+    project: Path, payload: dict[str, Any], why: str
+) -> None:
+    event = {"hook_event_name": "SubagentStart", **payload}
+    refusal = hook.check_spawn_record(project, event, load_config(project))
+    assert refusal is not None and why in refusal
+    assert hook.evaluate(project, "claude", "SubagentStart", event).verdict == "allow"
+    assert records(project, hook.SPAWN_JOURNAL) == []
+
+
+@pytest.mark.parametrize(
+    ("more", "why"),
+    [
+        ({"session_id": 3}, "no usable session id"),
+        ({"tool_input": "not a table"}, "names 0"),
+        ({"tool_input": {"script": BODY, "scriptPath": SCRIPT}}, "names 2"),
+        ({"tool_input": {"scriptPath": "../elsewhere.js"}}, "outside this checkout"),
+    ],
+)
+def test_a_malformed_workflow_result_is_not_recorded(
+    project: Path, more: dict[str, Any], why: str
+) -> None:
+    event = {
+        "hook_event_name": "PostToolUse",
+        "session_id": "s-1",
+        "cwd": str(project),
+        "tool_name": "Workflow",
+        "tool_input": {"script": BODY},
+        "tool_response": {"result": "spec"},
+        **more,
+    }
+    refusal = hook.check_workflow_record(project, event, load_config(project))
+    assert refusal is not None and why in refusal
+    assert hook.evaluate(project, "claude", "PostToolUse", event).verdict == "allow"
+    assert records(project, hook.WORKFLOW_RESULTS) == []
+
+
+def test_a_workflow_result_without_a_response_is_not_recorded(project: Path) -> None:
+    event = {
+        "hook_event_name": "PostToolUse",
+        "session_id": "s-1",
+        "tool_name": "Workflow",
+        "tool_input": {"script": BODY},
+    }
+    refusal = hook.check_workflow_record(project, event, load_config(project))
+    assert refusal is not None and "no tool_response" in refusal
+    assert records(project, hook.WORKFLOW_RESULTS) == []
+
+
+EARLY_RECORD = (
+    "[checks.early-record]\n"
+    'event = "PreToolUse"\n'
+    'kind = "record"\n'
+    'claude = "Workflow"\n'
+    'codex = ""\n\n'
+)
+
+
+def _raises(*_: Any) -> str | None:
+    raise RuntimeError("a record that breaks")
+
+
+@pytest.mark.parametrize("behaviour", ["records", "raises"])
+def test_a_record_never_lets_through_a_call_the_guard_denies(
+    project: Path, monkeypatch: pytest.MonkeyPatch, behaviour: str
+) -> None:
+    """A record check wired on the same event and tool as the handoff guard, and
+    evaluated before it, changes nothing: the worker's Workflow call is still
+    refused whether the record writes or breaks."""
+    replace_in(
+        project / ".agents/config/hooks.toml",
+        "[checks.handoff-guard]",
+        EARLY_RECORD + "[checks.handoff-guard]",
     )
+    names = list(load_config(project).hooks.checks)
+    assert names.index("early-record") < names.index("handoff-guard")
+    seen: list[str] = []
+
+    def records_it(_root: Path, payload: Any, _config: Any) -> str | None:
+        seen.append(str(payload.get("tool_name")))
+        return None
+
+    monkeypatch.setitem(
+        hook.CHECKS,  # pyright: ignore[reportArgumentType]
+        "early-record",
+        records_it if behaviour == "records" else _raises,
+    )
+    verdict = workflow(project, "builder")
+    assert (verdict.verdict, verdict.check) == ("deny", "handoff-guard")
+    assert seen == (["Workflow"] if behaviour == "records" else [])
+    assert records(project, hook.WORKFLOW_RESULTS) == []
+
+
+def test_a_record_check_never_changes_the_answer(project: Path) -> None:
+    # The record-kind check hooks.toml wires runs, and the verdict stays allow.
+    assert load_config(project).hooks.checks["workflow-record"].kind == "record"
     payload = {
         "hook_event_name": "PostToolUse",
         "session_id": "s-1",
