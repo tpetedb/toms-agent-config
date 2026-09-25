@@ -96,21 +96,37 @@ tests = [
 
 [[entries]]
 condition = "hook.spawn-record.claude.record"
-why = "a subagent start is journaled and never changes an answer; no hook renders until the follow-up config"
+why = "every subagent start writes one line through the guard, a malformed one none, and emptying the matcher records nothing"
 tests = [
   "tests/test_workflow_guard.py::test_a_subagent_start_is_recorded_in_the_worker_store",
-  "tests/test_workflow_guard.py::test_a_record_check_never_changes_the_answer",
-  "tests/test_sync.py::test_a_record_check_renders_no_hook",
-  "tests/test_mutation.py::test_the_checks_named_not_load_bearing_refuse_nothing_yet",
+  "tests/test_workflow_guard.py::test_a_malformed_subagent_start_is_not_recorded",
+  "tests/test_hooks.py::test_a_subagent_start_through_the_guard_writes_one_record[claude]",
+  "tests/test_hooks.py::test_a_malformed_record_event_is_refused_without_crashing",
+  "tests/test_sync.py::test_the_record_checks_render_their_hooks",
+  "tests/test_mutation.py::test_emptying_a_record_matcher_leaves_no_record[spawn-record-claude]",
 ]
 
 [[entries]]
 condition = "hook.spawn-record.codex.record"
-why = "as on Claude: journaled only, and rendered into no Codex hook yet"
+why = "as on Claude: one line per Codex subagent start, and the mutant records nothing"
 tests = [
+  "tests/test_hooks.py::test_a_subagent_start_through_the_guard_writes_one_record[codex]",
+  "tests/test_sync.py::test_the_record_checks_render_their_hooks",
+  "tests/test_mutation.py::test_emptying_a_record_matcher_leaves_no_record[spawn-record-codex]",
+]
+
+[[entries]]
+condition = "hook.workflow-record.claude.record"
+why = "a Workflow result writes one line with the script, token and result hashes; a record never lets a denied call through"
+tests = [
+  "tests/test_workflow_guard.py::test_a_workflow_result_is_recorded_for_the_dispatch_receipt",
   "tests/test_workflow_guard.py::test_a_record_check_never_changes_the_answer",
-  "tests/test_sync.py::test_a_record_check_renders_no_hook",
-  "tests/test_mutation.py::test_the_checks_named_not_load_bearing_refuse_nothing_yet",
+  "tests/test_workflow_guard.py::test_a_malformed_workflow_result_is_not_recorded",
+  "tests/test_workflow_guard.py::test_a_record_never_lets_through_a_call_the_guard_denies",
+  "tests/test_hooks.py::test_a_workflow_result_through_the_guard_writes_one_record",
+  "tests/test_hooks.py::test_a_workflow_the_guard_denies_leaves_no_result_record",
+  "tests/test_sync.py::test_the_record_checks_render_their_hooks",
+  "tests/test_mutation.py::test_emptying_a_record_matcher_leaves_no_record[workflow-record-claude]",
 ]
 
 [[entries]]

@@ -557,7 +557,7 @@ def test_the_adapters_and_the_guard_agree_on_events_and_environment() -> None:
 def test_codex_hooks_use_the_tool_names_codex_reports(tmp_path: Path) -> None:
     root = synced(tmp_path)
     hooks = json.loads((root / ".codex/hooks.json").read_text())["hooks"]
-    assert set(hooks) == {"PreToolUse", "Stop"}
+    assert set(hooks) == {"PreToolUse", "Stop", "SubagentStart"}
     (pre,) = hooks["PreToolUse"]
     # apply_patch for every file edit, spawn_agent for a native subagent:
     # https://developers.openai.com/codex/hooks
@@ -572,25 +572,33 @@ def test_codex_hooks_use_the_tool_names_codex_reports(tmp_path: Path) -> None:
             assert "--client codex" in one["command"]
 
 
-def test_a_record_check_renders_no_hook(tmp_path: Path) -> None:
+def test_the_record_checks_render_their_hooks(tmp_path: Path) -> None:
+    """spawn-record on every subagent start of both clients, and workflow-record
+    after Claude's Workflow tool; Codex has no Workflow tool, so no PostToolUse
+    there (https://code.claude.com/docs/en/hooks, https://developers.openai.com/codex/hooks)."""
     root = synced(tmp_path)
     claude = json.loads((root / ".claude/settings.json").read_text())["hooks"]
     codex = json.loads((root / ".codex/hooks.json").read_text())["hooks"]
-    assert "SubagentStart" not in claude
-    assert "SubagentStart" not in codex
+    for hooks, client in ((claude, "claude"), (codex, "codex")):
+        (start,) = hooks["SubagentStart"]
+        assert "matcher" not in start, "every subagent start, whatever its type"
+        (one,) = start["hooks"]
+        assert f"--client {client} --event SubagentStart " in one["command"]
+    (post,) = claude["PostToolUse"]
+    assert post["matcher"] == "Workflow"
+    (one,) = post["hooks"]
+    assert "--client claude --event PostToolUse " in one["command"]
+    assert "PostToolUse" not in codex
 
 
 def test_a_check_on_an_event_the_guard_does_not_answer_is_refused(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # The guard answers every event the schema takes on both clients today, so
+    # a client without SubagentStart stands in for one that lacks an event.
     root = copy_project(tmp_path)
-    replace_in(
-        root / ".agents/config/hooks.toml",
-        'event = "SubagentStart"                   # PreToolUse | PostToolUse | '
-        "SessionStart | SubagentStart | Stop\n"
-        'kind = "record"',
-        'event = "SubagentStart"\nkind = "reminder"',
-    )
+    without = tuple(e for e in adapters.GUARD_EVENTS["claude"] if e != "SubagentStart")
+    monkeypatch.setitem(adapters.GUARD_EVENTS, "claude", without)
     with pytest.raises(Bad, match=r"spawn-record is wired on claude for SubagentStart"):
         render(root)
 

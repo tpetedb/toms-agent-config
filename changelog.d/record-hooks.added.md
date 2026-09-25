@@ -1,0 +1,1 @@
+The guard now answers SubagentStart, so every subagent start on Claude and Codex is journaled in the worker store, and a PostToolUse hook on Claude's Workflow tool records each result for the dispatch receipt. A record never refuses and never lets through a call a deny check refuses.

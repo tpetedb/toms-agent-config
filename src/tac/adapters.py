@@ -72,9 +72,18 @@ CODEX_HANDOFF_GUARD = False
 # The events the guard answers per client, as each client's docs name them:
 # https://code.claude.com/docs/en/hooks and https://developers.openai.com/codex/hooks.
 # hooks/run.py keeps the same table, since it cannot import this package.
+# SubagentStart is forwarded for the record check alone: neither client lets it
+# block a start.
 GUARD_EVENTS: dict[str, tuple[str, ...]] = {
-    "claude": ("PreToolUse", "PostToolUse", "Stop", "SubagentStop", "SessionStart"),
-    "codex": ("PreToolUse", "PostToolUse", "Stop", "SessionStart"),
+    "claude": (
+        "PreToolUse",
+        "PostToolUse",
+        "Stop",
+        "SubagentStop",
+        "SessionStart",
+        "SubagentStart",
+    ),
+    "codex": ("PreToolUse", "PostToolUse", "Stop", "SessionStart", "SubagentStart"),
 }
 # An event wired and judged by the checks hooks.toml writes for another: a
 # subagent's stop on Claude is held to what a session's stop is held to.
@@ -375,12 +384,12 @@ def _merge(matchers: list[str]) -> list[str]:
 def hooks(config: Config, client: str) -> list[dict[str, Any]]:
     """Every hook group a client's file takes, from config/hooks.toml: one per
     event and matcher, each running the guard once. A check with an empty
-    matcher is not wired on that client; a record-only check changes no answer
-    and waits for the worker store journal, so it renders nothing yet."""
+    matcher is not wired on that client. A record check renders like any
+    other: it journals into the worker store and never changes the answer."""
     wanted: dict[str, list[str]] = {}
     for name, spec in config.hooks.checks.items():
         matcher = spec.claude if client == "claude" else spec.codex
-        if not matcher or spec.kind == "record":
+        if not matcher:
             continue
         events = [spec.event] + [
             fired

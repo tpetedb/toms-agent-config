@@ -37,9 +37,18 @@ VENV = os.path.join(".agents", ".venv")
 VENV_PYTHON = os.path.join(VENV, "bin", "python")
 # The events each client fires that the guard answers, as its docs name them:
 # https://code.claude.com/docs/en/hooks and https://developers.openai.com/codex/hooks
+# SubagentStart is answered for the record check alone: neither client lets it
+# block a start.
 EVENTS = {
-    "claude": ("PreToolUse", "PostToolUse", "Stop", "SubagentStop", "SessionStart"),
-    "codex": ("PreToolUse", "PostToolUse", "Stop", "SessionStart"),
+    "claude": (
+        "PreToolUse",
+        "PostToolUse",
+        "Stop",
+        "SubagentStop",
+        "SessionStart",
+        "SubagentStart",
+    ),
+    "codex": ("PreToolUse", "PostToolUse", "Stop", "SessionStart", "SubagentStart"),
 }
 # Only a PreToolUse refusal stops anything; every other event is reminder-class.
 DENY_CLASS = frozenset({"PreToolUse"})
@@ -302,8 +311,8 @@ def answer(
     if event == "PostToolUse" and client == "codex" and verdict == "deny":
         # Codex feeds the reason to the model in place of the tool result.
         return 2
-    # A reminder before or after a tool, and anything at a session start,
-    # cannot refuse; the reason goes into the model's context instead.
+    # A reminder before or after a tool, and anything at a session or subagent
+    # start, cannot refuse; the reason goes into the model's context instead.
     _context(event, message)
     return 0
 

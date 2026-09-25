@@ -15,13 +15,15 @@ checker in its venv, never the repository:
 
 A check that refuses nothing yet is named in NOT_LOAD_BEARING with its reason,
 and a test holds that list to what the guard does, so it cannot grow unnoticed.
+A record check refuses nothing by design; each is held in RECORDS instead, by a
+run that finds its journal line through the stamped guard and none once its
+matcher is emptied.
 No test sleeps: every run waits on the guard's own exit.
 """
 
 from __future__ import annotations
 
 import contextlib
-import json
 import re
 import subprocess
 from collections.abc import Callable, Iterator
@@ -33,6 +35,7 @@ import pytest
 
 from tac import proof
 from tac.config import load_config
+from tac.handoff import worker_store
 from tac.sync import sync
 from tests._gitrepo import GIT
 from tests._guard import (
@@ -59,10 +62,6 @@ NOT_LOAD_BEARING: dict[tuple[str, str], str] = {
     ("handoff-guard", "codex"): "Codex's spawn_agent is judged allow until the "
     "Codex dispatch tokens; native Codex subagents render off "
     "([agents] enabled = false) in every profile",
-    ("spawn-record", "claude"): "a record check renders no hook until a "
-    "SubagentStart record is configured (follow-up config)",
-    ("spawn-record", "codex"): "a record check renders no hook until a "
-    "SubagentStart record is configured (follow-up config)",
 }
 
 
@@ -74,9 +73,6 @@ def wired() -> list[tuple[str, str]]:
         for client in ("claude", "codex")
         if (spec.claude if client == "claude" else spec.codex)
     ]
-
-
-LOAD_BEARING = [pair for pair in wired() if pair not in NOT_LOAD_BEARING]
 
 
 def _id(pair: tuple[str, str]) -> str:
@@ -254,6 +250,46 @@ CASES: dict[tuple[str, str], Case] = {
 }
 
 
+# ---------------------------------------------------------------- the records
+
+
+@dataclass(frozen=True)
+class Record:
+    event: str
+    payload: Callable[[Path], dict[str, Any]]
+    # The worker store journal the check appends one line to.
+    journal: str
+
+
+def _subagent_start(_root: Path) -> dict[str, Any]:
+    return event("SubagentStart", agent_type="scout", agent_id="a-1")
+
+
+def _workflow_result(root: Path) -> dict[str, Any]:
+    return tool_event("PostToolUse", tool="Workflow", script="export default 1;\n") | {
+        "cwd": str(root),
+        "tool_response": {"result": "done"},
+    }
+
+
+RECORDS: dict[tuple[str, str], Record] = {
+    ("spawn-record", "claude"): Record(
+        "SubagentStart", _subagent_start, "journal/spawns.jsonl"
+    ),
+    ("spawn-record", "codex"): Record(
+        "SubagentStart", _subagent_start, "journal/spawns.jsonl"
+    ),
+    ("workflow-record", "claude"): Record(
+        "PostToolUse", _workflow_result, "journal/workflow-results.jsonl"
+    ),
+}
+
+
+LOAD_BEARING = [
+    pair for pair in wired() if pair not in NOT_LOAD_BEARING and pair not in RECORDS
+]
+
+
 def fire(
     co: Checkout, check: str, client: str, python: str | None = None
 ) -> subprocess.CompletedProcess[str]:
@@ -314,8 +350,40 @@ def empty_matcher(text: str, check: str, client: str) -> str:
 
 
 def test_every_wired_check_is_a_case_or_named_as_not_load_bearing() -> None:
-    assert set(wired()) == set(CASES) | set(NOT_LOAD_BEARING)
+    assert set(wired()) == set(CASES) | set(NOT_LOAD_BEARING) | set(RECORDS)
     assert not set(CASES) & set(NOT_LOAD_BEARING)
+    assert not (set(CASES) | set(NOT_LOAD_BEARING)) & set(RECORDS)
+    assert {c for c, _ in RECORDS} == {
+        name for name, spec in CONFIG.hooks.checks.items() if spec.kind == "record"
+    }
+
+
+@pytest.mark.parametrize("pair", list(RECORDS), ids=_id)
+def test_emptying_a_record_matcher_leaves_no_record(
+    checkout: Checkout, pair: tuple[str, str]
+) -> None:
+    check, client = pair
+    case = RECORDS[pair]
+    journal = worker_store(checkout.root) / case.journal
+
+    def lines() -> int:
+        return len(journal.read_text("utf-8").splitlines()) if journal.is_file() else 0
+
+    before = lines()
+    done = run_guard(checkout.fx, client, case.event, case.payload(checkout.root))
+    assert (done.returncode, done.stdout) == (0, ""), done.stderr
+    assert lines() == before + 1, "the unmutated render records the event"
+    hooks = checkout.root / HOOKS
+    with restored(checkout.root, HOOKS):
+        hooks.write_text(
+            empty_matcher(hooks.read_text("utf-8"), check, client), encoding="utf-8"
+        )
+        sync(checkout.root, links=False)
+        # No other check wires this event on this client, so its hook goes.
+        assert f'"{case.event}"' not in rendered_file(checkout.root, client)
+        done = run_guard(checkout.fx, client, case.event, case.payload(checkout.root))
+        assert done.returncode == 0, done.stdout + done.stderr
+        assert lines() == before + 1, "the mutant records nothing"
 
 
 def test_every_case_names_a_test_that_collects() -> None:
@@ -432,7 +500,4 @@ def test_the_checks_named_not_load_bearing_refuse_nothing_yet(
     }
     done = run_guard(checkout.fx, "codex", "PreToolUse", spawn)
     assert done.returncode == 0, done.stdout + done.stderr
-    for client in ("claude", "codex"):
-        groups = json.loads(rendered_file(checkout.root, client))["hooks"]
-        assert "SubagentStart" not in groups
-    assert CONFIG.hooks.checks["spawn-record"].kind == "record"
+    assert set(NOT_LOAD_BEARING) == {("handoff-guard", "codex")}

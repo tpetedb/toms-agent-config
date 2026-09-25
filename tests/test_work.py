@@ -1536,8 +1536,10 @@ def test_the_hooks_are_wired_to_events_claude_code_has() -> None:
                 [_claude_hook("PreToolUse")],
             )
         ],
+        "PostToolUse": [("Workflow", [_claude_hook("PostToolUse")])],
         "Stop": [("*", [_claude_hook("Stop")])],
         "SubagentStop": [("*", [_claude_hook("SubagentStop")])],
+        "SubagentStart": [("*", [_claude_hook("SubagentStart")])],
     }
     for groups in claude.values():
         for group in groups:
@@ -1550,6 +1552,7 @@ def test_the_hooks_are_wired_to_events_and_tools_codex_has() -> None:
     assert _wired(codex) == {
         "PreToolUse": [("apply_patch|spawn_agent", [_codex_hook("PreToolUse")])],
         "Stop": [("*", [_codex_hook("Stop")])],
+        "SubagentStart": [("*", [_codex_hook("SubagentStart")])],
     }
     for groups in codex.values():
         for group in groups:

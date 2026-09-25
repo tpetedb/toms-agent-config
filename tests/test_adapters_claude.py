@@ -171,7 +171,13 @@ def test_the_network_allowlist_comes_from_network_toml(root: Path) -> None:
 
 def test_every_hook_runs_the_stamped_guard_isolated(root: Path) -> None:
     hooks = settings(root)["hooks"]
-    assert set(hooks) == {"PreToolUse", "Stop", "SubagentStop"}
+    assert set(hooks) == {
+        "PreToolUse",
+        "PostToolUse",
+        "Stop",
+        "SubagentStop",
+        "SubagentStart",
+    }
     for event, groups in hooks.items():
         for group in groups:
             (hook,) = group["hooks"]

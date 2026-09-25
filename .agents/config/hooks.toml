@@ -25,8 +25,8 @@ timeout_s = 10                            # the hook timeout rendered for the cl
 #   event: when it fires, PreToolUse | PostToolUse | SessionStart | SubagentStart | Stop;
 #   kind: deny (exit 2 refuses the call) | reminder (exit 0 with a message) | record (exit 0, journals only);
 #   claude, codex: the tool matcher on that client, by the tool names its hook
-#   docs give; empty means not wired on that client. A record check renders no
-#   hook until the worker store journal exists (M3).
+#   docs give; empty means not wired on that client. A record check renders a
+#   hook like any other and journals into the worker store; it never refuses.
 
 # An edit outside the paths the current order owns.
 [checks.owned-paths]
@@ -65,6 +65,14 @@ event = "SubagentStart"                   # PreToolUse | PostToolUse | SessionSt
 kind = "record"                           # deny | reminder | record
 claude = "*"                              # every subagent start
 codex = "*"                               # every subagent start
+
+# A Workflow result, recorded only: the script hash, the token hash and the
+# result hash, which the runner signs into the dispatch receipt.
+[checks.workflow-record]
+event = "PostToolUse"                     # PreToolUse | PostToolUse | SessionStart | SubagentStart | Stop
+kind = "record"                           # deny | reminder | record
+claude = "Workflow"                       # the dynamic workflow tool, after it returns
+codex = ""                                # not wired: Codex has no Workflow tool
 
 # A session that stops with its order's acceptance still failing.
 [checks.order-check]

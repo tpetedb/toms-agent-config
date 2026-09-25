@@ -23,6 +23,17 @@
           }
         ]
       }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "g=\"$(/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin /usr/bin/git rev-parse --show-toplevel)/.agents/hooks/run.py\" && [ -f \"$g\" ] || { echo 'tac guard: no stamped guard in this checkout; run tac init' >&2; exit 0; }; /usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME=\"$HOME\" USER=\"$USER\" LOGNAME=\"$LOGNAME\" LANG=\"$LANG\" LC_ALL=\"$LC_ALL\" LC_CTYPE=\"$LC_CTYPE\" TMPDIR=\"$TMPDIR\" /usr/bin/python3 -I \"$g\" --client codex --event SubagentStart --deadline-s 8 --path /usr/bin:/bin:/usr/sbin:/sbin",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

@@ -102,6 +102,18 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "g=\"$CLAUDE_PROJECT_DIR/.agents/hooks/run.py\" && [ -f \"$g\" ] || { echo 'tac guard: no stamped guard in this checkout; run tac init' >&2; exit 0; }; /usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME=\"$HOME\" USER=\"$USER\" LOGNAME=\"$LOGNAME\" LANG=\"$LANG\" LC_ALL=\"$LC_ALL\" LC_CTYPE=\"$LC_CTYPE\" TMPDIR=\"$TMPDIR\" /usr/bin/python3 -I \"$g\" --client claude --event PostToolUse --deadline-s 8 --path /usr/bin:/bin:/usr/sbin:/sbin",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
@@ -119,6 +131,17 @@
           {
             "type": "command",
             "command": "g=\"$CLAUDE_PROJECT_DIR/.agents/hooks/run.py\" && [ -f \"$g\" ] || { echo 'tac guard: no stamped guard in this checkout; run tac init' >&2; exit 0; }; /usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME=\"$HOME\" USER=\"$USER\" LOGNAME=\"$LOGNAME\" LANG=\"$LANG\" LC_ALL=\"$LC_ALL\" LC_CTYPE=\"$LC_CTYPE\" TMPDIR=\"$TMPDIR\" /usr/bin/python3 -I \"$g\" --client claude --event SubagentStop --deadline-s 8 --path /usr/bin:/bin:/usr/sbin:/sbin",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "g=\"$CLAUDE_PROJECT_DIR/.agents/hooks/run.py\" && [ -f \"$g\" ] || { echo 'tac guard: no stamped guard in this checkout; run tac init' >&2; exit 0; }; /usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME=\"$HOME\" USER=\"$USER\" LOGNAME=\"$LOGNAME\" LANG=\"$LANG\" LC_ALL=\"$LC_ALL\" LC_CTYPE=\"$LC_CTYPE\" TMPDIR=\"$TMPDIR\" /usr/bin/python3 -I \"$g\" --client claude --event SubagentStart --deadline-s 8 --path /usr/bin:/bin:/usr/sbin:/sbin",
             "timeout": 10
           }
         ]
