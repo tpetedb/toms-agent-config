@@ -110,9 +110,11 @@ def _codex_guard_rendered(root: Path) -> bool:
 
 @pytest.mark.parametrize("profile", ["enterprise", "standard", "yolo"])
 def test_no_profile_enables_codex_delegation_without_a_rendered_guard(
-    tmp_path: Path, profile: str
+    tmp_path: Path, profile: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # A native spawn with no guard installed would run without an envelope.
+    # A container profile renders only inside a container, so the test says so.
+    monkeypatch.setattr("tac.config.container_evidence", lambda *_: "/.dockerenv")
     root = copy_project(tmp_path)
     ultracode_off(root)
     replace_in(
